@@ -1,0 +1,7 @@
+[workspace]
+members = ["programs/oracle", "programs/demo-pool"]
+resolver = "2"
+
+# enclave/ is intentionally NOT a workspace member — it builds via Docker +
+# nitro-cli into a Nitro Enclave Image File (.eif), a different toolchain
+# and target than the Anchor programs above. See enclave/README.md.

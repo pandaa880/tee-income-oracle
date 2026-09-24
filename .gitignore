@@ -1,0 +1,23 @@
+# Rust / Anchor
+target/
+.anchor/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Secrets and keys — never commit these
+.env
+.env.local
+.env.*.local
+**/id.json
+**/*.pem
+**/*.key
+test-vectors/*.key
+
+# Nitro enclave build output
+*.eif
+
+# OS
+.DS_Store
