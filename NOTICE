@@ -1,0 +1,28 @@
+TEE Income Oracle
+Copyright 2026 Prashant Chaudhari
+
+This product includes / was built with reference to the following
+third-party open-source work. See each project's own repository for its
+full license text.
+
+- Sahamati's forward-secrecy reference implementation ("rahasya")
+  https://github.com/finbox-in/rahasya
+
+- Finvu's ReBIT JWS reference implementation ("finvu-rebit-aa-jws")
+  https://github.com/finvu/finvu-rebit-aa-jws
+
+- Finvu's Curve25519/Diffie-Hellman reference implementation ("finvu-dh")
+  https://github.com/finvu/finvu-dh
+
+- Solana Attestation Service
+  https://github.com/solana-foundation/solana-attestation-service
+
+- Anchor
+  https://github.com/coral-xyz/anchor
+
+- AWS Nitro Enclaves SDK / samples
+  https://github.com/aws/aws-nitro-enclaves-sdk-c
+  https://github.com/aws/aws-nitro-enclaves-samples
+
+This list will be updated as further upstream code, libraries, or reference
+implementations are used.
