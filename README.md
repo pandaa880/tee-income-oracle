@@ -6,7 +6,7 @@ ever exists outside it. The enclave emits a signed risk-tier attestation,
 written to Solana via the Solana Attestation Service, that any lending
 program can read.
 
-Full docs: pitch, architecture, milestones, licensing — see `docs/`.
+Technical docs: see `docs/`.
 
 ## Layout
 
@@ -17,7 +17,7 @@ enclave/                Rust, runs inside the Nitro enclave. Decrypt, verify, sc
 proxy/                  Node/TS, untrusted host. Relays ciphertext to/from the enclave.
 verifier/               Node/TS, off-chain. Parses and checks the Nitro attestation document.
 web/                    Next.js. Borrower flow, lender dashboard, public verification page.
-docs/                   Pitch, milestones, technical overview, licensing.
+docs/                   Technical overview, architecture, trust boundaries.
 test-vectors/           Self-signed ReBIT-format test payloads for the verifier's tests.
 ```
 
@@ -37,5 +37,5 @@ than `anchor build`.
 
 ## Status
 Scaffolding only — directory structure and tooling config, no program/service
-code yet. See `docs/HACKATHON-STARTER-CHECKLIST-tee-income-oracle.md` for the
-next steps (Nitro hello-world, self-signed test payload + Rust JWS verifier).
+code yet. Nitro enclave hosting and the ReBIT JWS signature scheme are both
+proven working in isolation; enclave/proxy/program implementation is next.
