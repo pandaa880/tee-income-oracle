@@ -29,6 +29,26 @@ step that needs it).
 
 ---
 
+## 0.1 Version identifiers — FROZEN
+
+Each contract below carries its own version. Bump it **only** on a breaking
+change to that contract. Bumping one is a breaking change for the repo too,
+so the PR title is `feat!:` (see CONTRIBUTING → Versioning and releases). The
+same PR updates this file, both implementations and the regenerated vectors.
+
+| Contract | Id today | Bump when |
+|---|---|---|
+| Enclave signed message (§8) | domain tag `TIO-ATTEST-v1` | any change to the signed bytes or their order |
+| Enclave HTTP API (§10) | path prefix `/v1/` | a breaking request/response change (adding optional fields isn't breaking) |
+| Scoring policy (§6) | `"v": 1` | a policy schema change |
+| Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
+| `proof_type` values (§7) | `1 = tee_nitro_oyster` | append-only; never reuse or renumber |
+| Enclave build | image id (+ on-chain `measurement_id`) | every enclave change (automatic); the release notes list it |
+| Anchor programs | program id + IDL; every account starts with `version: u8` | an account layout change → migration path |
+| Test vectors (§11) | `manifest.json` generator version | a vector file-format change |
+
+---
+
 ## 1. Persona file and FI data (DEPOSIT) — FROZEN
 
 `test-vectors/personas/<persona_id>.json`. Plaintext input to the generator;
