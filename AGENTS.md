@@ -29,7 +29,7 @@ real ReBIT protocol with test keys: "simulated bank, real protocol".
 
 1. Plaintext bank data exists only inside the enclave, in memory, for one
    session. Never log, persist, return or snapshot it.
-2. The X25519 session key **and** the FIU request-signing RSA key are
+2. The Curve25519 session key **and** the FIU request-signing RSA key are
    generated inside the enclave. The gateway only carries signed bytes.
 3. Verification keys (FIP, AA) are pinned in `enclave/pinned/`. Never accept
    keys from the network or from JWS headers.
@@ -40,6 +40,11 @@ real ReBIT protocol with test keys: "simulated bank, real protocol".
 7. The oracle accepts a result only via the secp256k1 precompile in the same
    transaction, with instruction-index fields pointing at that precompile.
 8. Test vectors are generated, never hand-edited to make code pass.
+9. Committed keys are **test-only** and nothing deployed may trust them.
+   Test-vector keys (`test-vectors/`, `*.test-private.*`) are for offline
+   tests only. The live sandbox bank uses **separate, never-committed** demo
+   keys, and only their public halves go in `enclave/pinned/`. The enclave
+   refuses to start if a pinned key is a test key (FORMATS §2).
 
 ## Repo map
 

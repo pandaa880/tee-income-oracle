@@ -128,9 +128,28 @@ more than 20,000 transactions.
 | Enclave attester key | secp256k1, provided by Oyster at `/app/ecdsa.sec` | eth address exposed by `GET /v1/info` |
 | Test enclave keys | Curve25519 scalar (used in both §3 modes) + secp256k1, fixed | `test-vectors/keys/enclave.test-private.json` |
 
-Test private keys are committed on purpose so vectors are reproducible. They
-are **TEST ONLY**: named `*.test-private.*`, never loaded by a production
-build, never pinned in a production image.
+### Two key sets: committed test keys vs secret demo keys
+
+| Key set | Committed? | Used by | Pinned in a deployed enclave? |
+|---|---|---|---|
+| **Test-vector keys** (`test-vectors/keys/*.test-private.*`, golden-vector keys flagged `private_key_test_only`) | **Yes**, on purpose, so anyone can reproduce the vectors | offline unit tests only | **Never** |
+| **Demo sandbox-bank keys** (FIP + AA signing keys for the running sandbox bank) | **Never.** Private halves live only in `sandbox-bank`'s `.env` / secret store | the live sandbox bank | Public halves only, in `enclave/pinned/` |
+
+Why two sets: a committed private key is public. If the deployed enclave
+pinned a committed key, anyone could forge "signed bank data" and the enclave
+would attest to it. That defeats the provenance claim (G1).
+
+Rules:
+- A test key is generated only for tests and never reused anywhere else.
+- `enclave/pinned/` holds **only** demo (or, later, real FIP/AA) public keys.
+  Test-vector public keys stay in `test-vectors/` and reach unit tests as
+  inputs.
+- **Startup guard:** the enclave keeps a compiled-in deny-list of every
+  test-key `kid` and SPKI hash from `test-vectors/`. At boot it refuses to
+  start (exit non-zero, `test_key_pinned`) if any pinned key matches.
+- Committing private keys is allowed **only** under `test-vectors/`, with the
+  `test-private` naming or flag. Anywhere else it's a bug; `.gitignore` blocks
+  `*.pem`, `*.key` and `id.json`.
 
 ---
 
