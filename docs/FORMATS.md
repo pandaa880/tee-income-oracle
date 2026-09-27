@@ -42,8 +42,8 @@ same PR updates this file, both implementations and the regenerated vectors.
 | Enclave HTTP API (§10) | path prefix `/v1/` | a breaking request/response change (adding optional fields isn't breaking) |
 | Scoring policy (§6) | `"v": 1` | a policy schema change |
 | Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
-| `proof_type` values (§7) | `1 = tee_nitro_oyster` | append-only; never reuse or renumber |
-| Enclave build | image id (+ on-chain `measurement_id`) | every enclave change (automatic); the release notes list it |
+| `proof_type` values (§7) | `1 = tee_nitro_oyster`; `2 = tee_nitro_aws` reserved | append-only; never reuse or renumber |
+| Enclave build | platform measurement (Oyster image id, or AWS PCR0 hash) + on-chain `measurement_id` | every enclave change (automatic); the release notes list it. **`measurement_id`s are append-only: an id is never reused, even after revoke** |
 | Anchor programs | program id + IDL; every account starts with `version: u8` | an account layout change → migration path |
 | Test vectors (§11) | `manifest.json` generator version | a vector file-format change |
 
@@ -416,8 +416,8 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 | Offset | Size | Field | Type | Values |
 |---|---|---|---|---|
 | 0 | 1 | `tier` | u8 | 1=A, 2=B, 3=C. Reject is never written |
-| 1 | 1 | `proof_type` | u8 | 1 = `tee_nitro_oyster` |
-| 2 | 1 | `measurement_id` | u8 | index into the oracle registry |
+| 1 | 1 | `proof_type` | u8 | 1 = `tee_nitro_oyster`; 2 = `tee_nitro_aws` (reserved) |
+| 2 | 1 | `measurement_id` | u8 | index into the oracle registry. Append-only: never reused, even after revoke, so revoking an id permanently invalidates its attestations |
 | 3 | 32 | `policy_hash` | bytes | section 6 |
 | 35 | 32 | `consent_hash` | bytes | section 5.3 |
 | 67 | 8 | `issued_at` | i64 | unix seconds, enclave clock (checked on-chain) |

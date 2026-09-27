@@ -54,19 +54,20 @@ programs/oracle/      Anchor. Enclave registry (image id → attester), verifies
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
 enclave/              Rust. Runs in the Oyster CVM. HTTP wrapper around tio-core.
                       Built with Docker + docker-compose (images pinned by digest).
-proxy/                → being renamed gateway/. Node/TS, untrusted orchestrator + tx relayer.
+gateway/              Node/TS, untrusted orchestrator + tx relayer (formerly proxy/).
+sandbox-bank/         Node/TS mock FIP + AA (ReBIT, demo keys) + test-vector generator.
 verifier/             TS. Nitro attestation doc → AWS root; image id; on-chain key match.
 web/                  Next.js. Borrower flow, lender dashboard, verify page.
 test-vectors/         Generated fixtures + TEST-ONLY keys. Positive and negative cases.
-docs/                 FORMATS.md (wire formats, source of truth), CODING-GUIDELINES.md.
+docs/                 ARCHITECTURE.md, FORMATS.md (wire formats, source of truth),
+                      CODING-GUIDELINES.md.
 ```
 
-Planned additions: `tio-core` (Rust lib, no I/O), `sandbox-bank/` (TS mock
-FIP + AA, also the test-vector generator).
+Planned addition: `tio-core/` (Rust lib, no I/O), created in build step 1.
 
 ## Toolchain
 
-Rust 1.98.0 · Anchor 1.2.0 · Solana/Agave CLI 4.3.0 · pnpm 12.6.0 (corepack) ·
+Rust 1.89.0 (pinned in `rust-toolchain.toml`, Anchor 1.2's toolchain) · Anchor 1.2.0 · Solana/Agave CLI 4.3.0 · pnpm 12.6.0 (corepack) ·
 Node 22+ · Docker. Chain: devnet (localnet for tests).
 
 Two build worlds: Cargo workspace (`programs/*`, later `tio-core`) and pnpm
@@ -74,15 +75,16 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 
 ## Commands
 
-The repo is mid-scaffold: package dirs hold only READMEs, so none of these
-work yet. Update the status as each one starts working.
+The repo is early: the Cargo workspace builds (empty program skeletons);
+most packages hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
 |---|---|---|
-| Build (Rust) | `cargo build` | not yet — see Gotchas |
-| Build (programs) | `anchor build` | not yet |
+| Build (Rust) | `cargo build` | works (empty skeletons) |
+| Build (programs) | `anchor build` | works (empty skeletons) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
-| Test (Rust) | `cargo test` — `tio-core` against `test-vectors/` | not yet |
+| Test (Rust) | `cargo test` — `tio-core` against `test-vectors/` | runs; no tests until `tio-core` |
+| Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` — localnet | not yet |
 | Test (TS) | `pnpm -r test` | not yet |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | not yet |
@@ -107,15 +109,14 @@ work yet. Update the status as each one starts working.
 
 Add a line whenever an agent makes the same mistake twice.
 
-- The Cargo workspace lists `programs/oracle` and `programs/demo-pool`, but
-  neither has a `Cargo.toml` yet, so every `cargo` command at the root fails
-  until `anchor new` creates them (or the members are commented out).
-- `Anchor.toml`: program ids are commented out and the `test` script is
-  `echo "no tests yet"` — a green `anchor test` proves nothing yet.
+- `Anchor.toml`: the `test` script is `echo "no tests yet"` — a green
+  `anchor test` proves nothing yet. `cluster` is still `localnet`.
+- Program keypairs live in `target/deploy/` (gitignored). Losing them changes
+  the program ids; they are backed up outside the repo.
+- `rust-toolchain.toml` pins Rust 1.89.0 for the whole workspace, even though
+  a newer rustc is installed. Don't bump it without checking Anchor support.
 - The Anchor wallet is `~/.config/solana/tee-income-oracle.json`, not the
   default `id.json`.
-- `proxy/` is being renamed to `gateway/`; `pnpm-workspace.yaml` still lists
-  `proxy`. Rename both together.
 - `enclave/` runs on Marlin Oyster (Docker + docker-compose). There is no
   `nitro-cli` / `.eif` step — that was the parked self-hosted Nitro path.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent

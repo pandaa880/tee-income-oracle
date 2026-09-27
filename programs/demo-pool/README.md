@@ -4,9 +4,15 @@ Anchor program. A minimal lending pool built only to prove composability
 — not a real protocol, designed so a real one could replace it.
 
 - `borrow` instruction: takes the SAS attestation account as input, verifies
-  it inline (credential/schema/signer match, not expired, enclave measurement
-  approved, `policy_hash` matches what this pool requires), then transfers
-  testnet tokens if the attested tier clears its threshold.
+  it inline:
+  - owner is SAS; the PDA matches `[attestation, credential, schema, borrower]`;
+  - the signer is the oracle's SAS signer PDA;
+  - not expired, and within `max_age`;
+  - enclave `measurement_id` approved *and* still active in the oracle registry;
+  - `policy_hash` matches what this pool requires.
+
+  Then it transfers testnet tokens up to the tier's limit. One open loan per
+  borrower.
 - Does **not** CPI to read the attestation — it deserializes an account
   passed into its own instruction. CPI is only used by `programs/oracle` to
   *write* to SAS.
