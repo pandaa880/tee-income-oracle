@@ -52,7 +52,7 @@ real ReBIT protocol with test keys: "simulated bank, real protocol".
 programs/oracle/      Anchor. Enclave registry (image id → attester), verifies the
                       enclave signature via secp256k1 precompile, CPIs SAS.
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
-tio-core/             Rust lib, no I/O. Key exchange, decryption (later: JWS, parsing,
+tio-core/             Rust lib, no I/O. Key exchange, decryption, JWS (later: parsing,
                       scoring, payload). Everything trusted that isn't HTTP.
 enclave/              Rust. Runs in the Oyster CVM. HTTP wrapper around tio-core.
                       Built with Docker + docker-compose (images pinned by digest).
@@ -75,7 +75,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 
 ## Commands
 
-The repo is early: `tio-core` has key exchange and decryption; the programs
+The repo is early: `tio-core` has key exchange, decryption and JWS; the programs
 are empty skeletons; most other packages hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
@@ -83,7 +83,7 @@ are empty skeletons; most other packages hold only READMEs. Update the status as
 | Build (Rust) | `cargo build` | works (empty program skeletons + `tio-core`) |
 | Build (programs) | `anchor build` | works (empty skeletons) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
-| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` | works (key exchange + decryption) |
+| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` | works (key exchange, decryption, JWS) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` — localnet | not yet |
 | Test (TS) | `pnpm -r test` | not yet |
