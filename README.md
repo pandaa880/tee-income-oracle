@@ -23,7 +23,7 @@ protocol with test keys: simulated bank, real protocol.
 programs/oracle/     Anchor. Enclave registry, verifies the enclave's secp256k1
                      signature (precompile), writes the SAS attestation.
 programs/demo-pool/  Anchor. Reads and checks the SAS attestation, lends testnet tokens.
-tio-core/            (planned) Rust library, no I/O: crypto, parsing, scoring, payload.
+tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
 enclave/             Rust HTTP wrapper around tio-core. Runs in the Oyster CVM.
 gateway/             Node/TS, untrusted. Orchestrates sessions, relays signed bytes,
                      pays Solana fees.
@@ -44,7 +44,7 @@ docs/                Architecture, formats, coding guidelines.
 - Docker (enclave image) · Python 3 (test-vector tooling)
 
 Two build worlds:
-- **Rust/Anchor**: a Cargo workspace (`programs/*`, later `tio-core`). See the root `Cargo.toml`.
+- **Rust/Anchor**: a Cargo workspace (`programs/*`, `tio-core`). See the root `Cargo.toml`.
 - **Node/TS**: a pnpm workspace (`gateway/`, `sandbox-bank/`, `verifier/`, `web/`).
 
 `enclave/` is not in the Cargo workspace. It builds as a Docker image, pinned

@@ -1,5 +1,5 @@
 [workspace]
-members = ["programs/oracle", "programs/demo-pool"]
+members = ["programs/oracle", "programs/demo-pool", "tio-core"]
 resolver = "2"
 
 [workspace.package]

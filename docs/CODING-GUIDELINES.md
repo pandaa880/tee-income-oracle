@@ -30,7 +30,9 @@ scope. See `AGENTS.md` for the full wording.
    yourself (`subtle` in Rust, `crypto.timingSafeEqual` in Node).
 9. **Log ids, not data.** `session_id`, `txnid`, stage, error code.
 10. **Formats live in `docs/FORMATS.md`.** Change the doc in the same commit
-    as the code.
+    as the code. Crypto text there names the exact crate that does each
+    secret-dependent step, and error-variant docs in code match the FORMATS
+    error-code list.
 
 ## 2. Rust
 
@@ -74,13 +76,23 @@ scope. See `AGENTS.md` for the full wording.
   HTTP error codes in one place.
 - **No `unwrap()` / `expect()` / `panic!` / indexing that can panic** outside
   tests and `main` startup. Use `get()`, `checked_*`, `?`.
+- **Panic-free slicing:** `split_at_checked`, `split_first_chunk`, `get(..)`,
+  `try_into()` — not `split_at` / `copy_from_slice` behind a length check.
+  Clippy's `indexing_slicing` doesn't catch those.
 - No floats in scoring or money. Integers (paise, basis points, days).
 
 ### Crypto hygiene
 - `#![forbid(unsafe_code)]` in `tio-core`.
 - Secrets in `Zeroizing<…>` or types deriving `ZeroizeOnDrop`.
-- Use audited crates (RustCrypto: `x25519-dalek`, `hkdf`, `aes-gcm`, `sha2`,
-  `k256`, `rsa`; `josekit` raw verifier). No hand-rolled primitives.
+- **Zeroize reaches the crate that holds the key.** A `zeroize` feature on an
+  umbrella crate (e.g. `aes-gcm`) doesn't turn it on in the inner crates
+  (`aes`, `ghash`/`polyval`, `crypto-bigint`). Check
+  `cargo tree -p tio-core -e features -i zeroize`, and confirm the wiping
+  `Drop` actually runs on the enclave target (x86_64), not only on the dev
+  machine: autodetect backends can skip it. Residuals that can't be wiped get
+  a `Known residual:` comment.
+- Use audited crates (RustCrypto: `curve25519-dalek`, `crypto-bigint`, `hkdf`,
+  `aes-gcm`, `sha2`, `k256`, `rsa`). No hand-rolled primitives.
 - Randomness from `OsRng` only.
 
 ### Anchor programs
@@ -189,6 +201,10 @@ Stdlib only unless a dependency is agreed.
   passes, then that the tampered input fails *for the expected reason*.
 - **A parsed but unused field usually means a missing check.** If you decode
   it, validate it or delete it.
+- **Every prefix, template or OID check gets its own negative test with an
+  input of the correct length**, so an earlier length check can't mask it.
+- **Mutation-check security checks:** disable each check in turn; at least one
+  test must fail. A check no test notices is untested.
 
 ## 6. Git, commits and PRs
 The workflow lives in `CONTRIBUTING.md` → **Git workflow** (single source).
