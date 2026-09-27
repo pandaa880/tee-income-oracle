@@ -119,6 +119,9 @@ Add a line whenever an agent makes the same mistake twice.
   default `id.json`.
 - `enclave/` runs on Marlin Oyster (Docker + docker-compose). There is no
   `nitro-cli` / `.eif` step — that was the parked self-hosted Nitro path.
+- Crypto function names quoted in comments, `Cargo.toml` or FORMATS go
+  stale when the code changes (`try_sign_with_rng` vs `sign_with_rng`).
+  Grep each cited name against the code before a PR.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent
   settings don't reach other contributors. Shared guidance goes here.
 
