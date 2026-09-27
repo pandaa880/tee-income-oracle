@@ -14,4 +14,4 @@ Anchor program. A minimal lending pool built only to prove composability
   attestation Pool A used, zero re-verification) can be the same program
   code, just deployed/configured twice. No separate crate needed.
 
-Skeleton generated with `anchor new` (Anchor 1.2.0). It still contains Anchor's example counter (`initialize`/`increment`) as a placeholder; build step 3 replaces it with the real instructions.
+Generated with `anchor new` (Anchor 1.2.0) and reduced to an empty skeleton: `declare_id!` plus an empty `#[program]` module. The real instructions arrive in build step 3.
