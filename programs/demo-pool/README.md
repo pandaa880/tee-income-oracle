@@ -14,5 +14,4 @@ Anchor program. A minimal lending pool built only to prove composability
   attestation Pool A used, zero re-verification) can be the same program
   code, just deployed/configured twice. No separate crate needed.
 
-Not yet scaffolded with `anchor init` / no `lib.rs` — this README is a
-placeholder for the program that will live here.
+Skeleton generated with `anchor new` (Anchor 1.2.0); no instructions yet.

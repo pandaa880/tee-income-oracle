@@ -11,5 +11,4 @@ Anchor program. The on-chain trust anchor.
 - Nothing personal ever goes into this program's accounts — no amounts, no
   account numbers, no transaction data. Just a tier and some hashes.
 
-Not yet scaffolded with `anchor init` / no `lib.rs` — this README is a
-placeholder for the program that will live here.
+Skeleton generated with `anchor new` (Anchor 1.2.0); no instructions yet.
