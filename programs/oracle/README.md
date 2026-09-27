@@ -11,4 +11,4 @@ Anchor program. The on-chain trust anchor.
 - Nothing personal ever goes into this program's accounts — no amounts, no
   account numbers, no transaction data. Just a tier and some hashes.
 
-Skeleton generated with `anchor new` (Anchor 1.2.0); no instructions yet.
+Skeleton generated with `anchor new` (Anchor 1.2.0). It still contains Anchor's example counter (`initialize`/`increment`) as a placeholder; build step 3 replaces it with the real instructions.
