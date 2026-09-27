@@ -412,6 +412,23 @@ The raw bytes are the same either way; `_lo` = bytes 0..16 of the hash.
 
 SAS attestation account total: 256 bytes.
 
+**Verified on devnet 2026-09-27** (throwaway spike, `sas-lib` 1.0.10, SAS
+`22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG`):
+- The schema layout above is accepted and stored as `0,0,0,4,4,4,4,8,2,2`.
+- An 83-byte payload is stored byte-for-byte. The account is exactly **256
+  bytes**, and `deserializeAttestationData` decodes it with this schema.
+- Rent for 256 bytes is **1,950,720 lamports (≈ 0.00195 SOL)**, below the
+  2,672,640 we had estimated from the older rent rate.
+- SAS enforces the rules the oracle relies on:
+  - signer not in the credential's authorized signers → error `0x5`;
+  - data length that doesn't match the layout (82 bytes) → error `0x6`;
+  - a second attestation for the same (credential, schema, nonce) → the
+    system program's "account already in use". **Refreshing a borrower's
+    attestation needs `close_attestation` first.**
+- The attestation address equals `["attestation", credential, schema, nonce]`
+  as derived by `deriveAttestationPda`, and the stored `nonce` is the borrower
+  wallet.
+
 ---
 
 ## 8. Enclave signed message — FROZEN
