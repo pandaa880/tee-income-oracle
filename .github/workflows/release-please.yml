@@ -2,6 +2,8 @@
 # Conventional Commit titles. Merging that PR tags vX.Y.Z and creates the
 # GitHub Release. Promotion to `main` is a separate develop -> main PR.
 # See CONTRIBUTING.md -> "Versioning and releases".
+# Note: PRs/releases created with GITHUB_TOKEN don't trigger other workflows.
+# If CI becomes a required check, switch `token` to a GitHub App/PAT token.
 name: release-please
 
 on:

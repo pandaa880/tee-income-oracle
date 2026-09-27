@@ -86,7 +86,7 @@ develop  ──●──●──●──R────●──●──●─�
 ### Versioning and releases
 - **One version for the whole repo**, SemVer `vMAJOR.MINOR.PATCH`, `0.x`
   until production. Pre-1.0, `feat` and breaking changes bump MINOR; `fix`
-  bumps PATCH. `docs`/`test`/`chore`/`ci`/`refactor` don't cause a release.
+  bumps PATCH. `docs`/`test`/`chore`/`ci`/`refactor`/`perf` don't cause a release.
 - **release-please** (GitHub Action on `develop`) keeps **one** release PR
   open, `chore(develop): release X.Y.Z`. Each feature or fix merged into
   `develop` updates that same PR: version and CHANGELOG. No tags by hand.
