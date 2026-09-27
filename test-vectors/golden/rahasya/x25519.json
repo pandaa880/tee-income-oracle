@@ -1,0 +1,51 @@
+{
+  "description": "X25519 (RFC 7748) path. NOT produced by rahasya: image V1.2 exposes only /ecc/v1/* (no X25519Service). Keys generated + shared secret derived by OpenSSL 3.6.4 (pkeyutl -derive) and cross-checked with an independent stdlib Python Montgomery ladder; KDF/GCM applied per rahasya CipherService (same as ECC path). key_material_synthesized field names/values for curve are a guess, not observed. All private keys TEST ONLY.",
+  "generated": "2026-09-26",
+  "fip": {
+    "role": "FIP (encryptor)",
+    "private_key_pem": "-----BEGIN PRIVATE KEY-----MC4CAQAwBQYDK2VuBCIEIAiSUHCWkWN+0K/Bt9xqjkV0wT3LPlFBXt35T5F9an1F-----END PRIVATE KEY-----",
+    "private_key_test_only": true,
+    "private_key_raw_hex": "089250709691637ed0afc1b7dc6a8e4574c13dcb3e51415eddf94f917d6a7d45",
+    "public_key_pem": "-----BEGIN PUBLIC KEY-----MCowBQYDK2VuAyEAwkmMQzL8i5SoFXR0xq79C+ZCSTcmP6DBav8Wt+ROOgk=-----END PUBLIC KEY-----",
+    "public_key_spki_hex": "302a300506032b656e032100c2498c4332fc8b94a8157474c6aefd0be6424937263fa0c16aff16b7e44e3a09",
+    "public_key_raw_hex": "c2498c4332fc8b94a8157474c6aefd0be6424937263fa0c16aff16b7e44e3a09",
+    "key_material_synthesized": {
+      "cryptoAlg": "ECDH",
+      "curve": "X25519",
+      "params": "",
+      "DHPublicKey": {
+        "expiry": "<ISO-8601>",
+        "Parameter": "",
+        "KeyValue": "-----BEGIN PUBLIC KEY-----MCowBQYDK2VuAyEAwkmMQzL8i5SoFXR0xq79C+ZCSTcmP6DBav8Wt+ROOgk=-----END PUBLIC KEY-----"
+      }
+    }
+  },
+  "fiu": {
+    "role": "FIU (decryptor)",
+    "private_key_pem": "-----BEGIN PRIVATE KEY-----MC4CAQAwBQYDK2VuBCIEIBhr+mhmT1oGxk+xKlkcc/RuQod5sTOxeLnL8xSnYlp0-----END PRIVATE KEY-----",
+    "private_key_test_only": true,
+    "private_key_raw_hex": "186bfa68664f5a06c64fb12a591c73f46e428779b133b178b9cbf314a7625a74",
+    "public_key_pem": "-----BEGIN PUBLIC KEY-----MCowBQYDK2VuAyEAZkU6HEyShqnfBy/dXppxEqL3jv2+EXgTp56rxD4m/38=-----END PUBLIC KEY-----",
+    "public_key_spki_hex": "302a300506032b656e03210066453a1c4c9286a9df072fdd5e9a7112a2f78efdbe117813a79eabc43e26ff7f",
+    "public_key_raw_hex": "66453a1c4c9286a9df072fdd5e9a7112a2f78efdbe117813a79eabc43e26ff7f",
+    "key_material_synthesized": {
+      "cryptoAlg": "ECDH",
+      "curve": "X25519",
+      "params": "",
+      "DHPublicKey": {
+        "expiry": "<ISO-8601>",
+        "Parameter": "",
+        "KeyValue": "-----BEGIN PUBLIC KEY-----MCowBQYDK2VuAyEAZkU6HEyShqnfBy/dXppxEqL3jv2+EXgTp56rxD4m/38=-----END PUBLIC KEY-----"
+      }
+    }
+  },
+  "fip_nonce_b64": "QNr7zfliN/qUQuaaqAsEi9ansrrqPIFVtivu4mhzgZU=",
+  "fiu_nonce_b64": "dEZLWf6mtSfovZPyQ2TWQ6T0gTW4KHSLKqULdKYK/30=",
+  "xored_nonce_hex": "349cb09407c482dd7cff7568eb6fd2c87253338f5214f5de9c8ee596ce797ee8",
+  "plaintext": "{\"type\":\"DEPOSIT\",\"Transactions\":{\"Transaction\":[{\"type\":\"CREDIT\",\"amount\":85000}]}}",
+  "ciphertext_b64": "2eeqRAELJj3nmgs6W1HF+tM4WTy/8Q0BY5pXhlBmTgkbFitRavL3KrBo4/FnKMKokJbdfA6oZzcJiiE/wP+tIHGAQ57xiah3mWKmuh/hrIjymV6pPAkiJcjGzFL5t36Tupt6Sw==",
+  "shared_secret_hex": "5f5dfe7fdf2b3f00442c21dfa9b14d449dbd95b47104986020ae9d8aa848174e",
+  "shared_secret_encoding": "RFC 7748 u-coordinate, 32 bytes little-endian (as returned by X25519)",
+  "aes_key_hex": "4d7428e89cd5bd20e37071ca4b4091e1076eb48c24e57bd4002a31b0f342c57f",
+  "iv_hex": "5214f5de9c8ee596ce797ee8"
+}

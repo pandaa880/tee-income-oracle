@@ -1,7 +1,7 @@
 # programs/demo-pool
 
 Anchor program. A minimal lending pool built only to prove composability
-(rubric §8(e)) — not a real protocol, designed so a real one could replace it.
+— not a real protocol, designed so a real one could replace it.
 
 - `borrow` instruction: takes the SAS attestation account as input, verifies
   it inline (credential/schema/signer match, not expired, enclave measurement
