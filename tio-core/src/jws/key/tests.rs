@@ -346,3 +346,28 @@ fn from_jwk_rejects_a_json_array() {
     let err = PinnedKey::from_jwk(&json).expect_err("a JWK must be a JSON object");
     assert_eq!(err, JwsError::BadPinnedKey);
 }
+
+#[test]
+fn from_jwk_rejects_non_minimal_n_or_e() {
+    let a2 = a2_fixture();
+    let n = field(&a2["jwk"], "n");
+    let e = field(&a2["jwk"], "e");
+
+    // Baseline: the minimal encodings pin.
+    assert!(PinnedKey::from_jwk(&pinned_jwk_json(n, e, A2_TEST_KID)).is_ok());
+
+    // Same integers with one leading zero octet: RFC 7518 §2 forbids it.
+    let padded = |b64: &str| {
+        let mut bytes = URL_SAFE_NO_PAD.decode(b64).unwrap();
+        bytes.insert(0, 0);
+        URL_SAFE_NO_PAD.encode(bytes)
+    };
+    for json in [
+        pinned_jwk_json(&padded(n), e, A2_TEST_KID),
+        pinned_jwk_json(n, &padded(e), A2_TEST_KID),
+        pinned_jwk_json(n, "", A2_TEST_KID),
+    ] {
+        let err = PinnedKey::from_jwk(&json).expect_err("non-minimal n/e must be rejected");
+        assert_eq!(err, JwsError::BadPinnedKey);
+    }
+}

@@ -107,9 +107,15 @@ impl PinnedKey {
     }
 }
 
+/// Decodes a JWK `Base64urlUInt` (RFC 7518 §2): big-endian, minimal length,
+/// so empty or leading-zero values are refused and each integer has one
+/// accepted encoding.
 fn decode_biguint(b64url: &str) -> Result<BigUint, JwsError> {
     let bytes = b64url_decode(b64url).map_err(|_| JwsError::BadPinnedKey)?;
-    Ok(BigUint::from_bytes_be(&bytes))
+    match bytes.first() {
+        None | Some(0) => Err(JwsError::BadPinnedKey),
+        Some(_) => Ok(BigUint::from_bytes_be(&bytes)),
+    }
 }
 
 /// The enclave's FIU request-signing key. Born inside the enclave, so the

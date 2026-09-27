@@ -328,13 +328,15 @@ Verification rules (enclave and sandbox-bank):
    payload segment non-empty.
 7. Pinned keys are public RSA JWK objects (`kty` `RSA`, `n`, `e`, `kid`, no
    private member `d`/`p`/`q`/`dp`/`dq`/`qi`/`oth`) with a modulus of at
-   least 2048 bits.
+   least 2048 bits. `n` and `e` are minimal-length `Base64urlUInt` (RFC 7518
+   §2: no leading zero octets).
 
 Check order (one error per case): segments (count, signature base64url,
 payload segment empty for detached / non-empty for compact) →
 header decode/parse → `alg` →
-`b64`/`crit`/embedded-key rules → `kid` lookup → signature. `alg` comes
-before `kid`, so a swapped algorithm always reports `bad_alg`.
+`b64`/`crit`/embedded-key rules → `kid` (missing → `bad_header`, not pinned →
+`unknown_kid`) → signature. `alg` comes before `kid`, so a swapped algorithm
+always reports `bad_alg`, even when `kid` is also missing or unknown.
 
 We **sign** with RS256 only. We **verify** RS256 and RS512 (Finvu's sample
 header decodes to RS512).
