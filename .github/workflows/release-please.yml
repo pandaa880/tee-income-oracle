@@ -1,0 +1,24 @@
+# Keeps one release PR open on `develop` (version bump + CHANGELOG) built from
+# Conventional Commit titles. Merging that PR tags vX.Y.Z and creates the
+# GitHub Release. Promotion to `main` is a separate develop -> main PR.
+# See CONTRIBUTING.md -> "Versioning and releases".
+name: release-please
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to a commit SHA (v5.0.0) for supply-chain safety.
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          target-branch: develop
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

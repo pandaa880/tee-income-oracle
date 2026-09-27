@@ -88,6 +88,8 @@ scope. See `AGENTS.md` for the full wording.
   No unchecked `AccountInfo` without a `/// CHECK:` comment that explains why.
 - Checked arithmetic only (`checked_add`, …). No `as` casts that can truncate.
 - One `#[error_code]` enum per program; messages say what failed.
+- Every program account starts with a `version: u8` field, so a future
+  layout change can be detected and migrated (FORMATS → Version identifiers).
 - Reading a foreign account (the SAS attestation): check the owner program id
   and discriminator before deserializing.
 - Precompile introspection: the signature, address and message
@@ -190,5 +192,7 @@ Stdlib only unless a dependency is agreed.
 
 ## 6. Git, commits and PRs
 The workflow lives in `CONTRIBUTING.md` → **Git workflow** (single source).
-In short: never commit to `main`; one `type/short-name` branch per task;
-Conventional Commits with `git commit -s`; PR with gates + review; squash-merge.
+In short: git-flow. Never commit to `main` or `develop`; one
+`type/short-name` branch per task from `develop`; Conventional Commits with
+`git commit -s`; PR into `develop` with gates + review; squash-merge.
+Releases come from release-please and are promoted `develop` → `main`.

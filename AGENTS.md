@@ -134,14 +134,17 @@ Add a line whenever an agent makes the same mistake twice.
   floats for money or scores.
 - Never commit secrets. Test keys only as `*.test-private.*` under
   `test-vectors/keys/`.
-- **Git: never commit or push to `main`.** Follow `CONTRIBUTING.md` → Git
-  workflow:
-  - Before changing files, start a branch from an up-to-date `main`
-    (`git switch -c <type>/<short-name>`, e.g. `feat/tio-core-ecdh`).
-  - Commit with `git commit -s` and Conventional Commit messages.
-  - Don't commit, push, open or merge PRs unless asked.
-  - Never force-push `main` or rewrite its history.
+- **Git: never commit or push to `main` or `develop`.** Follow
+  `CONTRIBUTING.md` → Git workflow (git-flow):
+  - Branch from an up-to-date `develop` (`git switch -c <type>/<short-name>`,
+    e.g. `feat/tio-core-ecdh`), and open PRs **into `develop`**.
+  - Commit with `git commit -s` and Conventional Commit messages; the squash
+    title drives release-please, so it must be accurate.
+  - Don't commit, push, open or merge PRs unless asked. Never force-push
+    `main`/`develop` or rewrite their history.
   - Parallel sessions each use their own worktree + branch.
+- **Breaking a wire/security contract** means bumping its protocol id
+  (`docs/FORMATS.md` → Version identifiers) and a `feat!:` PR title.
 - Keep this repo technical. Don't add business, pitch or planning material.
 - Explain crypto reasoning in comments where it isn't obvious (why a check
   exists, what it prevents), not what the code does line by line.
