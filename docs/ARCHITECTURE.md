@@ -151,15 +151,36 @@ What a hostile gateway or host can do at each hop:
 | Admin key | public registry events; anyone can re-run the verifier | the MVP weak link (G5); later multisig, then ZK-verified attestation |
 | AWS | none | accepted: "trust AWS and the code" |
 
-## 6. What we can and can't claim
+## 6. Guarantees and limitations
 
-| Say | Don't say |
-|---|---|
-| "The operator never sees the statement; the decryption key is born in the enclave." | "Trustless" / "trust nobody" |
-| "The tier came from this exact commit. Run the verifier yourself." | "We keep the data encrypted" (the AA rail already does) |
-| "The pool enforces the lender's policy on chain." | "FIP-signed data" (until real FIPs are confirmed to sign) |
-| "Simulated bank, real protocol." | "Sybil-resistant" / "replaces underwriting" |
-| "Trust AWS and the code." | "The chain verifies the enclave" (the admin does, off-chain, in the MVP) |
+**Guaranteed** (given that AWS Nitro and the published enclave code are trusted):
+- The operator, the gateway and the enclave host cannot read a borrower's
+  statement. The decryption key is created inside the enclave and never
+  leaves it.
+- Anyone can check that a tier came from a specific build of this repo. The
+  verifier ties the attested key to the image id recomputed from source.
+- A tier can't be altered, moved to another wallet, or replayed in another
+  context. The signed message covers the domain tag, program, credential,
+  schema, wallet, payload and expiry.
+- A lending pool can require a specific scoring policy, since `policy_hash`
+  is part of the signed payload.
+- Nothing personal is written on chain: only a tier, ids, hashes and
+  timestamps.
+
+**Not provided:**
+- **Trustlessness.** The trust root is AWS Nitro plus the enclave code, and
+  Marlin's base image in this deployment.
+- **On-chain verification of the enclave.** In the MVP an admin registers
+  the attested key after checking it off-chain (link G5).
+- **Encryption the AA rail doesn't already give.** AA already encrypts in
+  transit; what this adds is *blind computation* and a *verifiable result*.
+- **A bank's signature on the data, in general.** The sandbox bank signs FI
+  data. Whether real FIPs sign it, or only encrypt it inside an AA-signed
+  session, is unconfirmed.
+- **Sybil resistance.** One person with several wallets can get several
+  tiers.
+- **A replacement for underwriting.** The tier covers ability to pay, from
+  bank cash flow. It does not cover intent to pay or identity.
 
 ## 7. Where the details live
 
