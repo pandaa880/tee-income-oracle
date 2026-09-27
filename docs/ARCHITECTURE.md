@@ -139,15 +139,16 @@ What a hostile gateway or host can do at each hop:
 
 | Adversary | Defence | Residual |
 |---|---|---|
-| Hostile gateway/host reading data | keys born inside (G2); ciphertext only | metadata (timing, sizes) |
+| Hostile gateway/host reading data | keys born inside (G2); ciphertext only | metadata: timing, sizes, and which wallet ran which session |
 | Hostile gateway/host forging data or tiers | pinned keys, verify before parse (G1); attested signer (G4/G5) | censorship, delay |
-| Host lying about "today" | window from signed consent; `issued_at` checked against the Solana clock | ± skew window |
+| Host lying about "today" | window from signed consent; `issued_at` checked against the Solana clock | ± 5 min skew window (`max_skew_secs`) |
 | Borrower reusing another wallet's tier | SAS nonce = wallet; pool requires `borrower == nonce` | collusion (same as sybil) |
 | Borrower using a fresh wallet | none in the MVP | **sybil gap**: documented, never claimed solved |
 | Lender changing rules silently | `policy_hash` in the payload; pool pins it | — |
 | Replay of an enclave signature elsewhere | domain tag + program + credential + schema + wallet + expiry all signed | — |
 | Tricking the precompile check | instruction-index fields must point at the precompile itself | a classic Solana bug class; tested explicitly |
 | Bug in enclave code | small code, public source, zeroize, one session at a time | attestation proves *which* code ran, not that it's correct |
+| Admin reusing a revoked registry id | ids are append-only | — |
 | Admin key | public registry events; anyone can re-run the verifier | the MVP weak link (G5); later multisig, then ZK-verified attestation |
 | AWS | none | accepted: "trust AWS and the code" |
 
@@ -179,10 +180,33 @@ What a hostile gateway or host can do at each hop:
   session, is unconfirmed.
 - **Sybil resistance.** One person with several wallets can get several
   tiers.
+- **High availability.** One enclave instance processes sessions one at a
+  time. Its attester key changes on restart, so a restart needs
+  re-registration. Several replicas of one build aren't supported by the
+  one-attester-per-entry registry.
 - **A replacement for underwriting.** The tier covers ability to pay, from
   bank cash flow. It does not cover intent to pay or identity.
 
-## 7. Where the details live
+## 7. Swapping the TEE platform
+
+The MVP runs on Marlin Oyster. Self-hosted AWS Nitro is the likely production
+path (a longer-lived enclave, and an attester key released by AWS KMS only to
+a matching PCR0, with no extra trust party). The design keeps that swap at
+the edges:
+
+| Stays the same | Changes |
+|---|---|
+| `tio-core`, the enclave's `/v1` API, gateway, sandbox-bank, web | packaging: docker-compose → `nitro-cli` `.eif` |
+| on-chain programs, SAS schema, 83-byte payload, signed message | networking: TCP/IP → vsock bridge on the parent |
+| secp256k1 attester, so the on-chain check never changes | key source: Oyster-provided → generated in enclave or released by KMS |
+| registry format (platform-neutral `measurement` + `measurement_kind`) | measurement: image id → PCRs; verifier checks change |
+
+A swap is a new registry entry (new `measurement_id`, `proof_type` 2). Both
+run side by side, pools approve the new entry, and the old one is revoked.
+Nothing already on chain is rewritten. Platform-specific enclave code stays
+in one small module.
+
+## 8. Where the details live
 
 | Topic | File |
 |---|---|

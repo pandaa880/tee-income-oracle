@@ -2,9 +2,16 @@
 
 Anchor program. The on-chain trust anchor.
 
-- **Registry:** `EnclaveEntry[measurement_id]` maps an enclave **image id** to its
-  **secp256k1 attester address**. The admin registers or revokes entries
+- **Registry:** `EnclaveEntry[measurement_id]` holds a platform-neutral
+  `measurement: [u8; 32]`, a `measurement_kind` (Oyster image id or AWS PCR0
+  hash), the **secp256k1 attester address**, and the hash of the attestation
+  document checked at registration. The admin registers or revokes entries
   after checking the attestation off-chain with `verifier/`.
+  - **Ids are append-only.** Revoking marks an entry inactive, and its id is
+    never reassigned. Otherwise a revoked enclave's attestations would
+    silently validate against a new entry.
+  - Storing the attestation-document hash lets an auditor re-verify a build
+    after the enclave is gone.
 - **`submit_attestation`** (anyone can relay):
   - requires a secp256k1 precompile instruction in the same transaction,
     whose offsets point at that instruction itself;
