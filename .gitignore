@@ -7,6 +7,10 @@ node_modules/
 dist/
 .next/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Secrets and keys — never commit these
 .env
 .env.local
@@ -18,6 +22,15 @@ test-vectors/*.key
 
 # Nitro enclave build output
 *.eif
+
+# AI tooling — local, per-developer (AGENTS.md / CLAUDE.md stay committed)
+.claude/
+CLAUDE.local.md
+.gemini/
+.agent/
+.agents/
+.pi/
+skills-lock.json
 
 # OS
 .DS_Store

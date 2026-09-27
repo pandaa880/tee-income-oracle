@@ -1,0 +1,152 @@
+{
+  "description": "Golden vectors from rahasya forwardsecrecy V1.2 ECC path (BouncyCastle 1.64, Curve25519 in short-Weierstrass form, JCA EC/ECDH). All private keys are TEST ONLY.",
+  "image": "gsasikumar/forwardsecrecy:V1.2",
+  "generated": "2026-09-26",
+  "curve": {
+    "p_hex": "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed",
+    "a_hex": "2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa984914a144",
+    "b_hex": "7b425ed097b425ed097b425ed097b425ed097b425ed097b4260b5e9c7710c864",
+    "gx_hex": "2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaad245a",
+    "n_hex": "1000000000000000000000000000000014def9dea2f79cd65812631a5cf5d3ed",
+    "h": 8,
+    "a_over_3_hex": "2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaad2451",
+    "montgomery_A": 486662
+  },
+  "derivation": "shared=x_W(d*Q) 32B big-endian; xn=fip_nonce XOR fiu_nonce; aes_key=HKDF-SHA256(ikm=shared, salt=xn[0:20], info=empty, L=32); iv=xn[20:32]; AES-256-GCM, 16B tag appended, no AAD",
+  "vectors": [
+    {
+      "name": "basic",
+      "note": "random keys",
+      "fip": {
+        "role": "FIP (encryptor)",
+        "private_key_pem": "-----BEGIN PRIVATE KEY-----MIICRwIBADCB6gYHKoZIzj0CATCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCASCAVMwggFPAgEBBCAPCpJN7dfbtqX2ON/GuH/lFaJGPpfARMxg14HyvQ5/fqCB4TCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCKFEA0IABFTigKkMBy+atLQRo2WvVSsBWbVc1fI4D41mcrgyUowVHv27Z5llOr9N4XyidjF4KFFSYSRwPMUyvqYxR+PrhrA=-----END PRIVATE KEY-----",
+        "private_key_test_only": true,
+        "key_material": {
+          "cryptoAlg": "ECDH",
+          "curve": "curve25519",
+          "params": "",
+          "DHPublicKey": {
+            "expiry": "2026-09-27T11:33:53.170Z",
+            "Parameter": "",
+            "KeyValue": "-----BEGIN PUBLIC KEY-----MIIBMTCB6gYHKoZIzj0CATCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCANCAARU4oCpDAcvmrS0EaNlr1UrAVm1XNXyOA+NZnK4MlKMFR79u2eZZTq/TeF8onYxeChRUmEkcDzFMr6mMUfj64aw-----END PUBLIC KEY-----"
+          }
+        },
+        "scalar_d_be_hex": "0f0a924dedd7dbb6a5f638dfc6b87fe515a2463e97c044cc60d781f2bd0e7f7e",
+        "scalar_d_le_hex": "7e7f0ebdf281d760cc44c0973e46a215e57fb8c6df38f6a5b6dbd7ed4d920a0f",
+        "public_point_uncompressed_hex": "0454e280a90c072f9ab4b411a365af552b0159b55cd5f2380f8d6672b832528c151efdbb6799653abf4de17ca27631782851526124703cc532bea63147e3eb86b0",
+        "public_montgomery_u_le_hex": "c467a5870dc8bbe2648d472bb20aaf5680aa04bbf866090af0845c61fed5372a"
+      },
+      "fiu": {
+        "role": "FIU (decryptor)",
+        "private_key_pem": "-----BEGIN PRIVATE KEY-----MIICRwIBADCB6gYHKoZIzj0CATCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCASCAVMwggFPAgEBBCACzvyeIvE8ygjy240OL2qCnUU2SKIXu0/fCBvB3IyCOaCB4TCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCKFEA0IABGeaJjl8ViqgOrdiojJHE6wEVKWGxwddsbT9+cgUPv+MYQ6gDIBRo+90xUn3mKiZbHNMspmzuWlkjm65fJCgpWo=-----END PRIVATE KEY-----",
+        "private_key_test_only": true,
+        "key_material": {
+          "cryptoAlg": "ECDH",
+          "curve": "curve25519",
+          "params": "",
+          "DHPublicKey": {
+            "expiry": "2026-09-27T11:33:53.276Z",
+            "Parameter": "",
+            "KeyValue": "-----BEGIN PUBLIC KEY-----MIIBMTCB6gYHKoZIzj0CATCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCANCAARnmiY5fFYqoDq3YqIyRxOsBFSlhscHXbG0/fnIFD7/jGEOoAyAUaPvdMVJ95iomWxzTLKZs7lpZI5uuXyQoKVq-----END PUBLIC KEY-----"
+          }
+        },
+        "scalar_d_be_hex": "02cefc9e22f13cca08f2db8d0e2f6a829d453648a217bb4fdf081bc1dc8c8239",
+        "scalar_d_le_hex": "39828cdcc11b08df4fbb17a24836459d826a2f0e8ddbf208ca3cf1229efcce02",
+        "public_point_uncompressed_hex": "04679a26397c562aa03ab762a2324713ac0454a586c7075db1b4fdf9c8143eff8c610ea00c8051a3ef74c549f798a8996c734cb299b3b969648e6eb97c90a0a56a",
+        "public_montgomery_u_le_hex": "3bdb91691d4f530a07b35c1cdcfaa95901699c87f7b70c90f57fabd18e7bef3c"
+      },
+      "fip_nonce_b64": "PQX3r24FLH/4Y54jINgc2RDyhWUFcbTDBAnUSPzYsQc=",
+      "fiu_nonce_b64": "ggWiTxJAXRTMG+2pIBGcSCgHn28AJDlUZ4HgU8D0hB0=",
+      "xored_nonce_hex": "bf0055e07c45716b3478738a00c9809138f51a0a05558d976388341b3c2c351a",
+      "plaintext": "{\"type\":\"DEPOSIT\",\"Transactions\":{\"Transaction\":[{\"type\":\"CREDIT\",\"amount\":85000}]}}",
+      "encrypt_request": {
+        "base64YourNonce": "PQX3r24FLH/4Y54jINgc2RDyhWUFcbTDBAnUSPzYsQc=",
+        "base64RemoteNonce": "ggWiTxJAXRTMG+2pIBGcSCgHn28AJDlUZ4HgU8D0hB0=",
+        "ourPrivateKey": "<fip.private_key_pem>",
+        "remoteKeyMaterial": "<fiu.key_material>",
+        "base64Data": "{\"type\":\"DEPOSIT\",\"Transactions\":{\"Transaction\":[{\"type\":\"CREDIT\",\"amount\":85000}]}}"
+      },
+      "ciphertext_b64": "OxgG0z0L2YBgqlMMg0NkvkalycNB43X6qGp+5TNkYl7eymyUCmn9OgDyPS9QjEt5D5U8lUdwavy495q6dQxu31wkciXY3LyHXMKs4SKe10HSSTnWEqrakqYCuIAKobOVEhM3TQ==",
+      "decrypt_request": {
+        "base64YourNonce": "ggWiTxJAXRTMG+2pIBGcSCgHn28AJDlUZ4HgU8D0hB0=",
+        "base64RemoteNonce": "PQX3r24FLH/4Y54jINgc2RDyhWUFcbTDBAnUSPzYsQc=",
+        "ourPrivateKey": "<fiu.private_key_pem>",
+        "remoteKeyMaterial": "<fip.key_material>",
+        "base64Data": "<ciphertext_b64>"
+      },
+      "decrypt_response_base64_data": "eyJ0eXBlIjoiREVQT1NJVCIsIlRyYW5zYWN0aW9ucyI6eyJUcmFuc2FjdGlvbiI6W3sidHlwZSI6IkNSRURJVCIsImFtb3VudCI6ODUwMDB9XX19",
+      "rahasya_get_shared_key_b64": "dyxgn2Oy5KH2QAiLGPgO9tfEefPRDbcnN5xfQ1TjkQw=",
+      "shared_secret_hex": "772c609f63b2e4a1f640088b18f80ef6d7c479f3d10db727379c5f4354e3910c",
+      "shared_secret_montgomery_u_le_hex": "bb6c36aa98b4f18c7c0c632649cf192d4c644d6ee05d954bf73908b9f4b5814c",
+      "aes_key_hex": "37cb1fbe3da386819cba89a8b01bd42eedf91e83551289f04946c8f62515e600",
+      "iv_hex": "05558d976388341b3c2c351a"
+    },
+    {
+      "name": "shared_secret_leading_zero",
+      "note": "shared secret has leading 0x00 byte; BC keeps it (32 bytes). FIP key identical to basic vector.",
+      "fip": {
+        "role": "FIP (encryptor)",
+        "private_key_pem": "-----BEGIN PRIVATE KEY-----MIICRwIBADCB6gYHKoZIzj0CATCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCASCAVMwggFPAgEBBCAPCpJN7dfbtqX2ON/GuH/lFaJGPpfARMxg14HyvQ5/fqCB4TCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCKFEA0IABFTigKkMBy+atLQRo2WvVSsBWbVc1fI4D41mcrgyUowVHv27Z5llOr9N4XyidjF4KFFSYSRwPMUyvqYxR+PrhrA=-----END PRIVATE KEY-----",
+        "private_key_test_only": true,
+        "key_material": {
+          "cryptoAlg": "ECDH",
+          "curve": "curve25519",
+          "params": "",
+          "DHPublicKey": {
+            "expiry": "2026-09-27T11:33:53.170Z",
+            "Parameter": "",
+            "KeyValue": "-----BEGIN PUBLIC KEY-----MIIBMTCB6gYHKoZIzj0CATCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCANCAARU4oCpDAcvmrS0EaNlr1UrAVm1XNXyOA+NZnK4MlKMFR79u2eZZTq/TeF8onYxeChRUmEkcDzFMr6mMUfj64aw-----END PUBLIC KEY-----"
+          }
+        },
+        "scalar_d_be_hex": "0f0a924dedd7dbb6a5f638dfc6b87fe515a2463e97c044cc60d781f2bd0e7f7e",
+        "scalar_d_le_hex": "7e7f0ebdf281d760cc44c0973e46a215e57fb8c6df38f6a5b6dbd7ed4d920a0f",
+        "public_point_uncompressed_hex": "0454e280a90c072f9ab4b411a365af552b0159b55cd5f2380f8d6672b832528c151efdbb6799653abf4de17ca27631782851526124703cc532bea63147e3eb86b0",
+        "public_montgomery_u_le_hex": "c467a5870dc8bbe2648d472bb20aaf5680aa04bbf866090af0845c61fed5372a"
+      },
+      "fiu": {
+        "role": "FIU (decryptor)",
+        "private_key_pem": "-----BEGIN PRIVATE KEY-----MIICRwIBADCB6gYHKoZIzj0CATCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCASCAVMwggFPAgEBBCAPSNCVtjd+1LzLRNwn2RRFLRb07kherBToz9EKhQC1u6CB4TCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCKFEA0IABElNIzFreMEQWXEUsAFR9meKlLaP211eUOUA+pRhA+eWbYWsSlQccO6HtAsg1A+YTbXtpbmmJrBna+TP9bsbP6k=-----END PRIVATE KEY-----",
+        "private_key_test_only": true,
+        "key_material": {
+          "cryptoAlg": "ECDH",
+          "curve": "curve25519",
+          "params": "",
+          "DHPublicKey": {
+            "expiry": "2026-09-27T11:36:26.069Z",
+            "Parameter": "",
+            "KeyValue": "-----BEGIN PUBLIC KEY-----MIIBMTCB6gYHKoZIzj0CATCB3gIBATArBgcqhkjOPQEBAiB/////////////////////////////////////////7TBEBCAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqYSRShRAQge0Je0Je0Je0Je0Je0Je0Je0Je0Je0Je0JgtenHcQyGQEQQQqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq0kWiCuGaG4oIa04B7dLHdI0UySPU1+bXxhsinpxaJ+ztPZAiAQAAAAAAAAAAAAAAAAAAAAFN753qL3nNZYEmMaXPXT7QIBCANCAARJTSMxa3jBEFlxFLABUfZnipS2j9tdXlDlAPqUYQPnlm2FrEpUHHDuh7QLINQPmE217aW5piawZ2vkz/W7Gz+p-----END PUBLIC KEY-----"
+          }
+        },
+        "scalar_d_be_hex": "0f48d095b6377ed4bccb44dc27d914452d16f4ee485eac14e8cfd10a8500b5bb",
+        "scalar_d_le_hex": "bbb500850ad1cfe814ac5e48eef4162d4514d927dc44cbbcd47e37b695d0480f",
+        "public_point_uncompressed_hex": "04494d23316b78c110597114b00151f6678a94b68fdb5d5e50e500fa946103e7966d85ac4a541c70ee87b40b20d40f984db5eda5b9a626b0676be4cff5bb1b3fa9",
+        "public_montgomery_u_le_hex": "45c356b6e94f563aa6b3b230e50beadfbc4ba756056ac6ae6516cec08678a21e"
+      },
+      "fip_nonce_b64": "5ksuQn5ipCiYKgBWeVSAWlrIY88FVJyp/AB79HS0OCY=",
+      "fiu_nonce_b64": "gHuQEnad67PbrrP0HZLzetVvdy26A5g/Tl6zqq1ObSE=",
+      "xored_nonce_hex": "6630be5008ff4f9b4384b3a264c673208fa714e2bf570496b25ec85ed9fa5507",
+      "plaintext": "{\"type\":\"DEPOSIT\",\"Transactions\":{\"Transaction\":[{\"type\":\"CREDIT\",\"amount\":85000}]}}",
+      "encrypt_request": {
+        "base64YourNonce": "5ksuQn5ipCiYKgBWeVSAWlrIY88FVJyp/AB79HS0OCY=",
+        "base64RemoteNonce": "gHuQEnad67PbrrP0HZLzetVvdy26A5g/Tl6zqq1ObSE=",
+        "ourPrivateKey": "<fip.private_key_pem>",
+        "remoteKeyMaterial": "<fiu.key_material>",
+        "base64Data": "{\"type\":\"DEPOSIT\",\"Transactions\":{\"Transaction\":[{\"type\":\"CREDIT\",\"amount\":85000}]}}"
+      },
+      "ciphertext_b64": "lfV7EZKwY08l4nRBtKk6Pg/0OsANwibi1Lul04rJqc09unf32XyI8Of64jDp8v6BsDOhIVbfOWbLfMi/vsVg+sYN1f2TKr8qQ5Edlros1ndF+KvyQv2Xxwd58TSUqNsbSEclDg==",
+      "decrypt_request": {
+        "base64YourNonce": "gHuQEnad67PbrrP0HZLzetVvdy26A5g/Tl6zqq1ObSE=",
+        "base64RemoteNonce": "5ksuQn5ipCiYKgBWeVSAWlrIY88FVJyp/AB79HS0OCY=",
+        "ourPrivateKey": "<fiu.private_key_pem>",
+        "remoteKeyMaterial": "<fip.key_material>",
+        "base64Data": "<ciphertext_b64>"
+      },
+      "decrypt_response_base64_data": "eyJ0eXBlIjoiREVQT1NJVCIsIlRyYW5zYWN0aW9ucyI6eyJUcmFuc2FjdGlvbiI6W3sidHlwZSI6IkNSRURJVCIsImFtb3VudCI6ODUwMDB9XX19",
+      "rahasya_get_shared_key_b64": "ABcmInRxb56Uk6zEpCqMF28E4T3jzt8z5opQFrwJUYI=",
+      "shared_secret_hex": "0017262274716f9e9493acc4a42a8c176f04e13de3cedf33e68a5016bc095182",
+      "shared_secret_montgomery_u_le_hex": "1e2d5c116ca5df3b8934243993365ac46ce17ff91902e9e9f3c4c6c9777b6c55",
+      "aes_key_hex": "b1d8bed02f70e0644c457fac56f9e2114cafcc9ef4e3caf51f0d5f22e74ca804",
+      "iv_hex": "bf570496b25ec85ed9fa5507"
+    }
+  ]
+}
