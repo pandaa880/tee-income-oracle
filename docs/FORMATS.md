@@ -253,9 +253,10 @@ So:
   parameters equal the Curve25519 Weierstrass constants and the point is on
   the curve. Then `u = x_W − A/3`, `s = X25519(d, u)`, reject all-zero `s`,
   `shared = s + A/3` as 32 bytes **big-endian**.
-- Field arithmetic here touches only public values (points, not `d`), so it
-  doesn't need to be constant-time. The secret-dependent step is inside
-  `x25519-dalek`.
+- Parsing and encoding points touch only public values. The secret scalar
+  multiplication is in `curve25519-dalek` (`MontgomeryPoint::mul_clamped`).
+  The final `s + A/3` runs on the shared secret, using constant-time
+  `crypto-bigint` arithmetic (`tio-core/src/ecdh/wei25519.rs`).
 
 **VERIFIED 2026-09-26** against the reference Java implementation (rahasya
 Docker image `gsasikumar/forwardsecrecy:V1.2`, BouncyCastle 1.64). The checks:
@@ -498,9 +499,16 @@ string and verifies; any difference → reject.
   nothing in between can re-serialize them and break the signature.
 - Errors: `{ error: { code, message } }` with stable `code` strings
   (`session_not_found`, `session_expired`, `bad_aa_signature`,
-  `bad_fip_signature`, `bad_consent_signature`, `decrypt_failed`, …). Each
+  `bad_fip_signature`, `bad_consent_signature`, `bad_key_material`,
+  `invalid_point`, `bad_nonce`, `decrypt_failed`, …). Each
   signature layer has its own code, so a failure names the check that caught it.
   Messages never contain payload data.
+- Key-exchange codes (`tio-core`): `bad_key_material` (unknown SPKI, wrong
+  curve params, bad PEM/base64, or our key mode ≠ the peer's), `invalid_point`
+  (coordinate ≥ p, off-curve, or small-order point), `bad_nonce` (not valid
+  base64, or not 32 bytes), `decrypt_failed` (bad base64, shorter than the tag, or GCM tag
+  mismatch; deliberately one code, so a failure reveals nothing about which
+  check fired).
 
 ---
 

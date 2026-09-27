@@ -52,6 +52,8 @@ real ReBIT protocol with test keys: "simulated bank, real protocol".
 programs/oracle/      Anchor. Enclave registry (image id → attester), verifies the
                       enclave signature via secp256k1 precompile, CPIs SAS.
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
+tio-core/             Rust lib, no I/O. Key exchange, decryption (later: JWS, parsing,
+                      scoring, payload). Everything trusted that isn't HTTP.
 enclave/              Rust. Runs in the Oyster CVM. HTTP wrapper around tio-core.
                       Built with Docker + docker-compose (images pinned by digest).
 gateway/              Node/TS, untrusted orchestrator + tx relayer (formerly proxy/).
@@ -63,31 +65,29 @@ docs/                 ARCHITECTURE.md, FORMATS.md (wire formats, source of truth
                       CODING-GUIDELINES.md.
 ```
 
-Planned addition: `tio-core/` (Rust lib, no I/O), created in build step 1.
-
 ## Toolchain
 
 Rust 1.89.0 (pinned in `rust-toolchain.toml`, Anchor 1.2's toolchain) · Anchor 1.2.0 · Solana/Agave CLI 4.3.0 · pnpm 12.6.0 (corepack) ·
 Node 22+ · Docker. Chain: devnet (localnet for tests).
 
-Two build worlds: Cargo workspace (`programs/*`, later `tio-core`) and pnpm
+Two build worlds: Cargo workspace (`programs/*`, `tio-core`) and pnpm
 workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 
 ## Commands
 
-The repo is early: the Cargo workspace builds (empty program skeletons);
-most packages hold only READMEs. Update the status as each one starts working.
+The repo is early: `tio-core` has key exchange and decryption; the programs
+are empty skeletons; most other packages hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
 |---|---|---|
-| Build (Rust) | `cargo build` | works (empty skeletons) |
+| Build (Rust) | `cargo build` | works (empty program skeletons + `tio-core`) |
 | Build (programs) | `anchor build` | works (empty skeletons) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
-| Test (Rust) | `cargo test` — `tio-core` against `test-vectors/` | runs; no tests until `tio-core` |
+| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` | works (key exchange + decryption) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` — localnet | not yet |
 | Test (TS) | `pnpm -r test` | not yet |
-| Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | not yet |
+| Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
 | Lint/typecheck (TS) | `pnpm -r exec tsc --noEmit`, ESLint, Prettier | not yet |
 | Run | — | nothing runnable yet |
 
