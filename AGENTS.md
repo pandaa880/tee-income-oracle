@@ -124,6 +124,10 @@ Add a line whenever an agent makes the same mistake twice.
 
 ## Rules for AI agents
 
+- **Solana / Anchor work:** check APIs against the official Solana docs, not
+  memory (Solana Developer MCP: `https://mcp.solana.com/mcp`, if your agent
+  supports MCP). Run its Anchor `program_autofixer` on changed programs
+  before opening a PR, and never let an MCP tool move funds.
 - **Ask before installing** any dependency, CLI tool or global package.
 - **Ask before** adding a crate to `enclave/` or `tio-core` — every dependency
   is inside the trust boundary.
