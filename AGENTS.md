@@ -68,7 +68,7 @@ docs/                 ARCHITECTURE.md, FORMATS.md (wire formats, source of truth
 ## Toolchain
 
 Rust 1.89.0 (pinned in `rust-toolchain.toml`, Anchor 1.2's toolchain) · Anchor 1.2.0 · Solana/Agave CLI 4.3.0 · pnpm 12.6.0 (corepack) ·
-Node 22+ · Docker. Chain: devnet (localnet for tests).
+Node 24 LTS (`.nvmrc`; runs TS directly via type stripping) · Docker. Chain: devnet (localnet for tests).
 
 Two build worlds: Cargo workspace (`programs/*`, `tio-core`) and pnpm
 workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.

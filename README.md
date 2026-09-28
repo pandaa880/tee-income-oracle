@@ -40,7 +40,7 @@ docs/                Architecture, formats, coding guidelines.
 ## Tooling
 - Rust **1.89.0** (pinned in `rust-toolchain.toml`, the toolchain Anchor 1.2 supports)
 - Anchor 1.2.0 · Solana/Agave CLI 4.3.0
-- pnpm 12.6.0 (corepack, `packageManager` in `package.json`) · Node 22+
+- pnpm 12.6.0 (corepack, `packageManager` in `package.json`) · Node 24 LTS (`.nvmrc`)
 - Docker (enclave image) · Python 3 (test-vector tooling)
 
 Two build worlds:
