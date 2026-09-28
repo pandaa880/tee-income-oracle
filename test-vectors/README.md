@@ -32,15 +32,23 @@ golden/rahasya/   Reference vectors produced by Sahamati's reference ECDH
 golden/rfc7515/   RSA keys and the RS256 example from RFC 7515 App. A.2 and
                   RFC 7520 §3.4, extracted by script. Prove our JWS signing
                   and verification match the standard.
-keys/             (planned) TEST-ONLY FIP / AA / enclave keys
-personas/         (planned) 3 borrower statements: salaried_steady → A,
-                  trader_lumpy → B, stressed → C/Reject
-policy/           (planned) default scoring policy + its hash
-vectors/          (planned) one folder per persona: FI request, fetch response,
-                  consent, expected tier + payload
-negative/         (planned) one broken thing per case, expected error code
-manifest.json     (planned) index of all cases + generator version
+keys/             TEST-ONLY FIP / AA / FIU / rogue RSA keys (+ public JWKs) and
+                  the enclave Curve25519 + secp256k1 test scalars
+personas/         3 borrower statements: salaried_steady → A,
+                  trader_lumpy → B, stressed → C (C vs Reject: build step 2)
+policy/           default scoring policy (JCS bytes) + its hash
+vectors/          positive cases: one per persona, plus rs512_aa and
+                  x25519_mode. FI request, fetch response, consent, expected
+                  hashes (tier + payload come with scoring, build step 2)
+negative/         one broken layer per case, expected error code
+manifest.json     index of all cases + generator version
 ```
+
+Regenerate with `pnpm gen:vectors` from the repo root (generator:
+`sandbox-bank/src/vectors/`). Output is deterministic, and CI fails if a
+regenerated file differs from the committed one. Keys are made once with
+`pnpm --filter @tio/sandbox-bank gen:keys`, which refuses to overwrite.
+`tio-core/tests/vectors.rs` replays every case in Rust.
 
 ## Rules
 

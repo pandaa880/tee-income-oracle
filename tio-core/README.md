@@ -96,3 +96,7 @@ cargo test -p tio-core
 - Security model: [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
 - Reference vectors: [`test-vectors/golden/rahasya/`](../test-vectors/golden/rahasya/),
   [`test-vectors/golden/rfc7515/`](../test-vectors/golden/rfc7515/)
+- Generated vectors: [`tests/vectors.rs`](tests/vectors.rs) replays every case in
+  [`test-vectors/manifest.json`](../test-vectors/manifest.json) (made by the
+  independent TypeScript generator in `sandbox-bank`). Positive cases must pass
+  every layer; each negative must fail with exactly its expected code.

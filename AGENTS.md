@@ -75,20 +75,22 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 
 ## Commands
 
-The repo is early: `tio-core` has key exchange, decryption and JWS; the programs
-are empty skeletons; most other packages hold only READMEs. Update the status as each one starts working.
+The repo is early: `tio-core` has key exchange, decryption and JWS; `sandbox-bank`
+has the test-vector generator; the programs are empty skeletons; most other packages
+hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
 |---|---|---|
 | Build (Rust) | `cargo build` | works (empty program skeletons + `tio-core`) |
 | Build (programs) | `anchor build` | works (empty skeletons) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
-| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` | works (key exchange, decryption, JWS) |
+| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, layered negatives) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` — localnet | not yet |
-| Test (TS) | `pnpm -r test` | not yet |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm -r exec tsc --noEmit`, ESLint, Prettier | not yet |
+| Lint/typecheck (TS) | `pnpm --filter @tio/sandbox-bank typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
 | Run | — | nothing runnable yet |
 
 ## Engineering principles

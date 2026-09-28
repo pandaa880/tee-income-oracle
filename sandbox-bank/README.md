@@ -16,5 +16,23 @@ doesn't change; only the pinned keys and the base URL do.
   `test-vectors/` with fixed test keys, including the negative cases (one
   broken layer each; see `docs/FORMATS.md` §11).
 
-Not yet implemented. The generator is part of build step 1; the service is
-build step 4.
+**Status:** the generator works (build step 1c); the HTTP service is build
+step 4.
+
+```
+src/crypto/    encoding, JCS, wei25519, ECDH, AES-GCM session cipher, JWS
+               (node:crypto only; no runtime dependencies)
+src/rebit/     KeyMaterial, FI request, fetch response + FIP envelope, consent
+src/vectors/   personas, policy, test keys, case builder, TS check pipeline,
+               generator CLIs (gen-keys.ts, gen-vectors.ts)
+```
+
+```bash
+pnpm --filter @tio/sandbox-bank test          # vitest
+pnpm --filter @tio/sandbox-bank typecheck     # tsc
+pnpm --filter @tio/sandbox-bank lint          # oxlint --type-aware
+pnpm --filter @tio/sandbox-bank format:check  # oxfmt
+pnpm gen:vectors                              # rewrite test-vectors/ (deterministic)
+```
+
+Runs on Node 24 with native TypeScript type stripping (no build step).
