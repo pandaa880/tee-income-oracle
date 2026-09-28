@@ -317,9 +317,37 @@ Verification rules (enclave and sandbox-bank):
 2. `alg` ∈ {`RS256`, `RS512`}. Anything else (`none`, `HS*`, `PS*`, `ES*`) → reject.
 3. `kid` must match a pinned key. Never accept a key or `jwk`/`jku`/`x5u` from the header.
 4. Detached form: `b64` must be `false` and `crit` must be exactly `["b64"]`.
+   Compact form: neither `b64` nor `crit` may appear.
+5. The header must be a JSON object. Any of `jwk`, `jku`, `x5u`, `x5c` in
+   it → reject, even with a `null` value (a "may not appear" rule counts
+   `null` as present). Unknown other members (`typ`, `x5t`, …) are ignored.
+   A repeated member we act on (`alg`, `kid`, `b64`, `crit`, `jwk`, `jku`,
+   `x5u`, `x5c`) → reject.
+6. Segments are base64url **without padding**, decoded strictly (no `=`, no
+   non-canonical trailing bits). Detached: middle segment empty. Compact:
+   payload segment non-empty.
+7. Pinned keys are public RSA JWK objects (`kty` `RSA`, `n`, `e`, `kid`, no
+   private member `d`/`p`/`q`/`dp`/`dq`/`qi`/`oth`) with a modulus of at
+   least 2048 bits. `n` and `e` are minimal-length `Base64urlUInt` (RFC 7518
+   §2: no leading zero octets).
+
+Check order (one error per case): segments (count, signature base64url,
+payload segment empty for detached / non-empty for compact) →
+header decode/parse → `alg` →
+`b64`/`crit`/embedded-key rules → `kid` (missing → `bad_header`, not pinned →
+`unknown_kid`) → signature. `alg` comes before `kid`, so a swapped algorithm
+always reports `bad_alg`, even when `kid` is also missing or unknown.
 
 We **sign** with RS256 only. We **verify** RS256 and RS512 (Finvu's sample
 header decodes to RS512).
+
+Implementation (`tio-core::jws`): RSASSA-PKCS1-v1_5 from `rsa` 0.9
+(`Pkcs1v15Sign`), digests from `sha2`. rsa checks the signature length equals
+the modulus size and compares the padded encoding in constant time
+(`subtle`). Signing always uses rsa's blinded `sign_with_rng`. Known
+residual: RUSTSEC-2023-0071 (Marvin), private-key operations in rsa are not
+constant time. Only the per-boot FIU key signs; verification is unaffected.
+Golden vector: RFC 7515 Appendix A.2 (`test-vectors/golden/rfc7515/`).
 
 ---
 
@@ -509,6 +537,13 @@ string and verifies; any difference → reject.
   base64, or not 32 bytes), `decrypt_failed` (bad base64, shorter than the tag, or GCM tag
   mismatch; deliberately one code, so a failure reveals nothing about which
   check fired).
+- JWS codes (`tio-core`): `bad_jws` (segment count, base64url, empty or
+  non-empty payload segment for the form), `bad_header` (not a JSON object,
+  repeated member we act on, missing `kid`, `b64`/`crit` rule, `jwk`/`jku`/`x5u`/`x5c`
+  present), `bad_alg`, `unknown_kid`, `bad_signature`, `bad_pinned_key`
+  (startup: pinned JWK invalid or under 2048 bits), `sign_failed`. The
+  evaluate pipeline reports a `bad_signature` as the code of the layer that
+  failed (`bad_aa_signature`, `bad_fip_signature`, `bad_consent_signature`).
 
 ---
 

@@ -1,6 +1,9 @@
 //! Byte encodings shared by the ReBIT-facing modules.
 
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    Engine,
+};
 
 /// Error for any malformed PEM / base64 input.
 #[derive(Debug, PartialEq, Eq)]
@@ -22,6 +25,18 @@ pub(crate) fn pem_to_der(key_value: &str) -> Result<Vec<u8>, BadEncoding> {
 /// (`docs/FORMATS.md` §3).
 pub(crate) fn der_to_single_line_pem(der: &[u8]) -> String {
     format!("{BEGIN_PUBLIC_KEY}{}{END_PUBLIC_KEY}", STANDARD.encode(der))
+}
+
+/// Decodes base64url without padding (JWS segments, JWK members). Strict:
+/// rejects `=` padding and non-canonical trailing bits, so each value has
+/// exactly one accepted encoding.
+pub(crate) fn b64url_decode(s: &str) -> Result<Vec<u8>, BadEncoding> {
+    URL_SAFE_NO_PAD.decode(s).map_err(|_| BadEncoding)
+}
+
+/// Encodes base64url without padding.
+pub(crate) fn b64url_encode(bytes: &[u8]) -> String {
+    URL_SAFE_NO_PAD.encode(bytes)
 }
 
 /// Returns the base64 body of `compact` (whitespace already removed), with

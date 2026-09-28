@@ -44,15 +44,18 @@ box can unlock.
 - It is proven against real examples captured from India's official
   reference software: our code has to reproduce them byte for byte.
 
-### The signature checker (planned, build step 1b)
+### The signature checker
 
 The bank and the Account Aggregator each **sign** what they send, like a wax
-seal. The box will check that each seal comes from a signer it already knows
+seal. The box checks that each seal comes from a signer it already knows
 (their public keys are built into the box, so the server can't swap in fake
 ones), that only approved signature types are used, and that the seal is
 checked *before* the contents are read. The box also signs its own request
-to the bank, so the server can't slip in its own padlock and read the
-statement.
+to the bank with a key it made itself, so the server can't slip in its own
+padlock and read the statement.
+
+It is proven against the signature example published in the JWS standard
+itself (RFC 7515): our code reproduces it byte for byte.
 
 ### The practice exams (planned, build step 1c)
 
@@ -77,6 +80,7 @@ mistakes.
 | `ecdh` | Per-session Curve25519 key pair; parse and validate a peer key (`wei25519` BouncyCastle SPKI or RFC 7748 `x25519`); shared secret |
 | `cipher` | 32-byte nonces; `HKDF-SHA256(shared, salt = xn[0..20])`, `iv = xn[20..32]`; AES-256-GCM decrypt |
 | `key_material` | ReBIT `KeyMaterial` JSON: build ours, read a peer's |
+| `jws` | RS256/RS512 verify of detached (RFC 7797, `b64:false`) and compact JWS against pinned keys only; strict header rules; blinded RS256 signing with the enclave's FIU key |
 | `time` | Unix seconds to ReBIT ISO-8601 UTC |
 | `encoding` | PEM and base64 helpers |
 
@@ -88,6 +92,7 @@ panics in library code (enforced by clippy), stable error codes via the
 cargo test -p tio-core
 ```
 
-- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §3
+- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §3 (key exchange), §4 (JWS)
 - Security model: [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
-- Reference vectors: [`test-vectors/golden/rahasya/`](../test-vectors/golden/rahasya/)
+- Reference vectors: [`test-vectors/golden/rahasya/`](../test-vectors/golden/rahasya/),
+  [`test-vectors/golden/rfc7515/`](../test-vectors/golden/rfc7515/)

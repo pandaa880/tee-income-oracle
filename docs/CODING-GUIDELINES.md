@@ -81,6 +81,19 @@ scope. See `AGENTS.md` for the full wording.
   Clippy's `indexing_slicing` doesn't catch those.
 - No floats in scoring or money. Integers (paise, basis points, days).
 
+### Parsing untrusted input
+- **Wire JSON must be an object.** serde's derived struct visitor also
+  accepts a JSON array (fields by position), which no other implementation
+  does. Check for `{` before deserializing (`tio-core::jws::from_json_object`).
+- **"Must not appear" means present, even as `null`.** A plain `Option<T>`
+  reads `null` as absent. Use a presence-detecting `deserialize_with`
+  (`tio-core::jws::present`) with `#[serde(default)]`.
+- **Declare every member a security rule depends on.** Derived
+  `Deserialize` rejects a repeated *declared* member; undeclared ones, and
+  `#[serde(flatten)]` / `Value`, silently keep the last value.
+- **Strict decoders.** base64url for JWS/JWK is `URL_SAFE_NO_PAD`: no `=`,
+  no non-canonical trailing bits, so each value has one accepted encoding.
+
 ### Crypto hygiene
 - `#![forbid(unsafe_code)]` in `tio-core`.
 - Secrets in `Zeroizing<…>` or types deriving `ZeroizeOnDrop`.
@@ -205,6 +218,16 @@ Stdlib only unless a dependency is agreed.
   input of the correct length**, so an earlier length check can't mask it.
 - **Mutation-check security checks:** disable each check in turn; at least one
   test must fail. A check no test notices is untested.
+- **A strictness claim needs input the lenient variant would accept.** For
+  a strict decoder: correctly padded base64, and non-canonical trailing bits
+  with the signature taken over that exact text, so only the decoder can
+  reject it. Mutation-check the decoder *config*, not only hand-written `if`s.
+- **Repeated members:** every header/JWK member that a rule depends on, and
+  especially one read through `deserialize_with`, gets a duplicate-member
+  test expecting the specific error.
+- **Check order is tested.** When the docs fix an order ("`alg` before
+  `kid`"), a test combines two faults and asserts the one reported first.
+  The documented order names every early return in the code path.
 
 ## 6. Git, commits and PRs
 The workflow lives in `CONTRIBUTING.md` → **Git workflow** (single source).

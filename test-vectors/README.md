@@ -29,6 +29,9 @@ golden/rahasya/   Reference vectors produced by Sahamati's reference ECDH
                   implementation (rahasya V1.2). Prove interop with the real
                   Account Aggregator key exchange. See its README for how to
                   verify them.
+golden/rfc7515/   RSA keys and the RS256 example from RFC 7515 App. A.2 and
+                  RFC 7520 §3.4, extracted by script. Prove our JWS signing
+                  and verification match the standard.
 keys/             (planned) TEST-ONLY FIP / AA / enclave keys
 personas/         (planned) 3 borrower statements: salaried_steady → A,
                   trader_lumpy → B, stressed → C/Reject
