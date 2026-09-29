@@ -118,6 +118,12 @@ describe('buildPersonas', () => {
       }
     });
 
+    it('has amounts and balances with non-zero paise, so the money parser is exercised', () => {
+      const txns = fi.Transactions.Transaction;
+      expect(txns.some((t) => decimalPlaces(t.amount) > 0)).toBe(true);
+      expect(txns.some((t) => !t.currentBalance.endsWith('.00'))).toBe(true);
+    });
+
     it('has balances as strings with exactly 2 decimal places', () => {
       for (const txn of fi.Transactions.Transaction) {
         expect(typeof txn.currentBalance).toBe('string');
@@ -175,6 +181,11 @@ describe('buildPersonas', () => {
     for (const txn of fi.Transactions.Transaction) {
       expect(txn.narration ?? '').not.toMatch(/bounce/i);
     }
+  });
+
+  it('salaried_steady has an amount under one rupee (no rupee part)', () => {
+    const fi = asFi(required(personas[0], 'expected persona 0'));
+    expect(fi.Transactions.Transaction.some((t) => t.amount < 1)).toBe(true);
   });
 
   it('stressed has at least one negative running balance', () => {

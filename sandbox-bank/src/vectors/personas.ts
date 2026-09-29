@@ -176,6 +176,8 @@ function salariedMonth(m: number, prng: Prng): readonly TxnEvent[] {
     ev(m, 3, prng, 'DEBIT', 'UPI', 2_000_000, 'UPI-RENT-SHARMA PROPERTIES'),
     ev(m, 5, prng, 'DEBIT', 'OTHERS', 1_800_000, 'ACH-DR-HDFC HOME LOAN EMI', 'emi'),
     ev(m, prng.int(12, 18), prng, 'DEBIT', 'ATM', 500_000, 'ATM-WDL-PUNE CAMP'),
+    // UPI cashback: mostly under one rupee (e.g. 0.07), a value with no rupee part.
+    ev(m, 28, prng, 'CREDIT', 'UPI', prng.int(5, 150), 'UPI-CR-CASHBACK'),
   ];
   for (let i = prng.int(6, 10); i > 0; i--) {
     events.push(spend(m, prng, 20_000, 300_000));
@@ -189,11 +191,11 @@ function traderMonth(m: number, prng: Prng): readonly TxnEvent[] {
   ];
   for (let i = prng.int(2, 6); i > 0; i--) {
     const mode = prng.int(0, 1) === 0 ? 'UPI' : 'FT';
-    const paise = prng.int(15_000, 250_000) * 100;
+    const paise = prng.int(1_500_000, 25_000_000);
     events.push(ev(m, prng.int(1, 28), prng, 'CREDIT', mode, paise, `${mode}-CR-CUSTOMER PAYMENT`));
   }
   for (let i = prng.int(2, 5); i > 0; i--) {
-    const paise = prng.int(10_000, 150_000) * 100;
+    const paise = prng.int(1_000_000, 15_000_000);
     events.push(
       ev(m, prng.int(1, 28), prng, 'DEBIT', 'FT', paise, 'NEFT-DR-SUPPLIER', 'skip_if_short'),
     );
@@ -202,7 +204,7 @@ function traderMonth(m: number, prng: Prng): readonly TxnEvent[] {
 }
 
 function stressedMonth(m: number, prng: Prng): readonly TxnEvent[] {
-  const salary = prng.int(28_000, 34_000) * 100;
+  const salary = prng.int(2_800_000, 3_400_000);
   const events: TxnEvent[] = [
     ev(m, prng.int(5, 15), prng, 'CREDIT', 'FT', salary, 'NEFT-SAL-QUICKSERVE STAFFING'),
     ev(m, 2, prng, 'DEBIT', 'UPI', 1_400_000, 'UPI-RENT-PG ACCOMMODATION', 'skip_if_short'),
@@ -215,7 +217,9 @@ function stressedMonth(m: number, prng: Prng): readonly TxnEvent[] {
 }
 
 function spend(m: number, prng: Prng, minPaise: number, maxPaise: number): TxnEvent {
-  const paise = prng.int(minPaise / 100, maxPaise / 100) * 100;
+  // Paise-granular on purpose: real statements carry values like 149.50 and
+  // 1234.05, which the enclave's money parser must handle exactly.
+  const paise = prng.int(minPaise, maxPaise);
   return ev(m, prng.int(1, 28), prng, 'DEBIT', 'UPI', paise, 'UPI-DR-MERCHANT', 'skip_if_short');
 }
 
