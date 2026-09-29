@@ -167,7 +167,8 @@ scope. See `AGENTS.md` for the full wording.
   verified — the verify page checks on its own.
 
 ### Tooling
-- `pnpm` (workspace). ESLint + Prettier; `tsc --noEmit` in CI.
+- `pnpm` (workspace). oxlint (`--type-aware`) + oxfmt, configured in the root
+  `.oxlintrc.json` / `.oxfmtrc.json`; `tsc --noEmit` in CI.
 - Tests with `vitest`.
 
 ## 4. Python (tooling and test scripts)

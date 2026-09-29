@@ -156,5 +156,12 @@ Add a line whenever an agent makes the same mistake twice.
 - **Breaking a wire/security contract** means bumping its protocol id
   (`docs/FORMATS.md` → Version identifiers) and a `feat!:` PR title.
 - Keep this repo technical. Don't add business, pitch or planning material.
+- **Sync the docs with every change, on the same branch.** Before opening a
+  PR, grep the repo for whatever the change replaced or introduced (tool and
+  function names, versions, commands, "planned"/"not yet" lines), and update:
+  `README.md` (Status, diagrams), this file (Commands table, Toolchain,
+  Gotchas), `CONTRIBUTING.md`, `docs/CODING-GUIDELINES.md`,
+  `docs/FORMATS.md`, `docs/ARCHITECTURE.md`, the package READMEs, and
+  `.github/pull_request_template.md`. Say in the PR which docs you checked.
 - Explain crypto reasoning in comments where it isn't obvious (why a check
   exists, what it prevents), not what the code does line by line.
