@@ -1,4 +1,4 @@
-/** Default scoring policy (FORMATS §6). Threshold values are OPEN until step 2. */
+/** Default scoring policy (FORMATS §6). Threshold values are still OPEN. */
 
 import { createHash } from 'node:crypto';
 

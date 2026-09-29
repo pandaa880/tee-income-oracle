@@ -35,11 +35,11 @@ golden/rfc7515/   RSA keys and the RS256 example from RFC 7515 App. A.2 and
 keys/             TEST-ONLY FIP / AA / FIU / rogue RSA keys (+ public JWKs) and
                   the enclave Curve25519 + secp256k1 test scalars
 personas/         3 borrower statements: salaried_steady → A,
-                  trader_lumpy → B, stressed → C (C vs Reject: build step 2)
+                  trader_lumpy → B, stressed → C (C or Reject, set by the scoring policy)
 policy/           default scoring policy (JCS bytes) + its hash
 vectors/          positive cases: one per persona, plus rs512_aa and
                   x25519_mode. FI request, fetch response, consent, expected
-                  hashes (tier + payload come with scoring, build step 2)
+                  hashes (tier and payload are added once scoring exists)
 negative/         one broken layer per case, expected error code
 manifest.json     index of all cases + generator version
 ```
@@ -80,7 +80,7 @@ flowchart TD
   L2["② consent: AA signature, then status = ACTIVE"]
   L3["③ decrypt encryptedFI<br/>ECDH → HKDF → AES-256-GCM"]
   L4["④ FIP (bank) signature over the statement"]
-  OK["statement JSON → scoring (build step 2)"]
+  OK["statement JSON → scoring"]
   E1["bad_aa_signature · unknown_kid · bad_alg · bad_header"]
   E2["bad_consent_signature · consent_invalid"]
   E3["decrypt_failed"]

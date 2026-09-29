@@ -565,14 +565,14 @@ test-vectors/
     fetch_response.jws      detached, AA key
     consent.jws             compact, AA key
     expected.json           { policy_hash, consent_hash, window_from, window_to }
-                            (+ tier, features, payload_hex, msg_hex from build step 2)
+                            (+ tier, features, payload_hex, msg_hex once scoring exists)
   negative/<case>/          same files, one thing broken; expected.json = { error_code }
   manifest.json             { generator_version, cases: [{ id, kind, dir, persona_id, expected }] }
 ```
 
 `session.json`: `{ case_id, persona_id, mode, aa_alg, enclave_key, enclave_nonce_b64,
 session_id, txnid, now_unix, key_expiry_unix, fi_data_range: { from, to } }`
-(+ `wallet` from build step 2, with the §9 intent and §8 message). `enclave_key`
+(+ `wallet` once the §9 intent and §8 message are generated). `enclave_key`
 points at `keys/enclave.test-private.json`; its Curve25519 scalar is used as-is by
 `SessionKeyPair::generate` (which clamps it). Positive case ids: the three personas
 (`wei25519`, RS256), `rs512_aa` (AA signs the fetch response and consent with RS512) and

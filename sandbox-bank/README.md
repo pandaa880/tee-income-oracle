@@ -16,8 +16,8 @@ doesn't change; only the pinned keys and the base URL do.
   `test-vectors/` with fixed test keys, including the negative cases (one
   broken layer each; see `docs/FORMATS.md` §11).
 
-**Status:** the generator works (build step 1c); the HTTP service is build
-step 4.
+**Status:** the test-vector generator works; the HTTP service isn't built
+yet.
 
 It writes the cases that `tio-core` must accept or reject: see
 [how the code is tested](../README.md#how-the-code-is-tested) and the
@@ -27,7 +27,7 @@ It writes the cases that `tio-core` must accept or reject: see
 
 Dependencies point down only: `crypto/` is pure primitives (`node:crypto`,
 no runtime dependencies), `rebit/` builds the ReBIT messages on top of it, and
-`vectors/` is the test-data logic. The live service (step 4) will reuse
+`vectors/` is the test-data logic. The HTTP service will reuse
 `crypto/` and `rebit/` unchanged; only `vectors/` is test-only.
 
 ```mermaid

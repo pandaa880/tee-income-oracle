@@ -50,7 +50,7 @@ export function generateKeyFiles(): ReadonlyMap<string, string> {
     json({
       curve25519_scalar_hex: toHex(randomBytes(32)),
       // Any 32 bytes below the secp256k1 order n; a random value is below it
-      // with overwhelming probability, and step 2 validates it on load.
+      // with overwhelming probability, and code that signs with it must check the range on load.
       secp256k1_hex: toHex(randomBytes(32)),
       private_key_test_only: true,
     }),
