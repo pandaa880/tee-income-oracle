@@ -7,7 +7,8 @@
 
 ## Why
 
-<!-- The problem or task it addresses (build step, issue, review finding). -->
+<!-- The problem it solves and why this approach. Describe the change
+     itself; keep project planning (milestones, what comes next) out of it. -->
 
 ## Files worth reviewing
 
