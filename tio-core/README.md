@@ -82,6 +82,7 @@ catch each other's mistakes.
 | `cipher` | 32-byte nonces; `HKDF-SHA256(shared, salt = xn[0..20])`, `iv = xn[20..32]`; AES-256-GCM decrypt |
 | `key_material` | ReBIT `KeyMaterial` JSON: build ours, read a peer's |
 | `jws` | RS256/RS512 verify of detached (RFC 7797, `b64:false`) and compact JWS against pinned keys only; strict header rules; blinded RS256 signing with the enclave's FIU key |
+| `money` | Raw JSON money text → exact integer paise (`Paise`); any exact spelling accepted, never `f64`, never rounded |
 | `time` | Unix seconds to ReBIT ISO-8601 UTC |
 | `encoding` | PEM and base64 helpers |
 
@@ -93,7 +94,7 @@ panics in library code (enforced by clippy), stable error codes via the
 cargo test -p tio-core
 ```
 
-- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §3 (key exchange), §4 (JWS)
+- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §1 (money), §3 (key exchange), §4 (JWS)
 - Security model: [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
 - Where it fits: [system diagram](../README.md#how-it-fits-together);
   the order it runs its checks, with error codes:
