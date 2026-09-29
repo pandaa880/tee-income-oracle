@@ -216,4 +216,6 @@ pub(crate) fn sign_rs256(
 }
 
 #[cfg(test)]
+mod crosscheck_tests;
+#[cfg(test)]
 mod tests;
