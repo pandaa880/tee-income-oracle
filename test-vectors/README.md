@@ -66,3 +66,38 @@ regenerated file differs from the committed one. Keys are made once with
 - The generator is TypeScript on purpose. Two independent implementations
   agreeing catches derivation bugs that one implementation testing itself
   would miss. `golden/` adds a third, external reference.
+
+## Check order and error codes
+
+Each case is one full bank → enclave exchange, sealed in layers. The enclave
+(and `tio-core/tests/vectors.rs`) opens them from the outside in and stops at
+the first failure:
+
+```mermaid
+flowchart TD
+  IN["case folder<br/>fetch_response.body/.jws · consent.jws · session.json"]
+  L1["① AA signature over fetch_response.body"]
+  L2["② consent: AA signature, then status = ACTIVE"]
+  L3["③ decrypt encryptedFI<br/>ECDH → HKDF → AES-256-GCM"]
+  L4["④ FIP (bank) signature over the statement"]
+  OK["statement JSON → scoring (build step 2)"]
+  E1["bad_aa_signature · unknown_kid · bad_alg · bad_header"]
+  E2["bad_consent_signature · consent_invalid"]
+  E3["decrypt_failed"]
+  E4["bad_fip_signature"]
+
+  IN --> L1
+  L1 -- ok --> L2
+  L2 -- ok --> L3
+  L3 -- ok --> L4
+  L4 -- ok --> OK
+  L1 -- fail --> E1
+  L2 -- fail --> E2
+  L3 -- fail --> E3
+  L4 -- fail --> E4
+```
+
+Example: `negative/ciphertext_flipped` flips one byte of the ciphertext, then
+re-signs the fetch response with the real AA key. Layers ① and ② pass, so the
+failure can only come from ③ (`decrypt_failed`). Without the re-sign, ① would
+fail first and the decrypt check would never be tested.

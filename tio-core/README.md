@@ -57,14 +57,15 @@ padlock and read the statement.
 It is proven against the signature example published in the JWS standard
 itself (RFC 7515): our code reproduces it byte for byte.
 
-### The practice exams (planned, build step 1c)
+### The practice exams
 
-A separate generator, written in TypeScript, produces fake statements for
-three made-up borrowers, their sealed envelopes, and deliberately broken
-copies (one byte changed, wrong signer, missing seal). The box must accept
-the good ones and reject each broken one *for the right reason*. Two
-independent implementations have to agree, so they catch each other's
-mistakes.
+A separate generator, written in TypeScript (`sandbox-bank`), produces fake
+statements for three made-up borrowers, their sealed envelopes, and
+deliberately broken copies (one byte changed, wrong signer, missing seal).
+`tests/vectors.rs` feeds every one of them through the box: it must accept
+the good ones and reject each broken one *for the right reason*, with the
+exact error code. Two independent implementations have to agree, so they
+catch each other's mistakes.
 
 ### Why it is built this way
 

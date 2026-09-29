@@ -17,6 +17,59 @@ protocol with test keys: simulated bank, real protocol.
 - Git workflow and releases: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - For AI agents: [`AGENTS.md`](AGENTS.md)
 
+## How it fits together
+
+Everything between the bank and the enclave is treated as hostile. Data on
+that path is either encrypted to a key born inside the enclave or signed with
+a key pinned into the enclave image, so the network, the gateway and the
+cloud host can delay or drop it, but can't read or change it.
+
+```mermaid
+flowchart LR
+  subgraph bank["Sandbox bank · sandbox-bank/ (TS)"]
+    FIP["FIP (the bank)<br/>signs + encrypts the statement"]
+    AA["Account Aggregator<br/>signs consent + response"]
+  end
+  subgraph untrusted["Untrusted · network, gateway/, cloud host"]
+    GW["gateway<br/>carries bytes only"]
+  end
+  subgraph trusted["Trusted · AWS Nitro enclave on Marlin Oyster"]
+    CORE["enclave/ + tio-core<br/>verify · decrypt · score"]
+  end
+  SOL[("Solana<br/>oracle · SAS · demo-pool")]
+
+  CORE -- "FI request, signed by the enclave's own key" --> GW
+  GW --> FIP
+  FIP -- "encrypted + signed statement" --> GW
+  AA -- "signed consent + response" --> GW
+  GW -- "raw bytes, unchanged" --> CORE
+  CORE -- "tier + enclave signature" --> GW
+  GW -- "transaction" --> SOL
+```
+
+### How the code is tested
+
+`tio-core` is the code the enclave runs. It is checked against two
+independent sources: outside reference vectors, and a separate TypeScript
+implementation that writes a full set of good and deliberately broken cases.
+
+```mermaid
+flowchart LR
+  GOLD["test-vectors/golden/<br/>rahasya (Java reference) · RFC 7515"]
+  TS["sandbox-bank/ (TypeScript)<br/>independent implementation"]
+  TV["test-vectors/<br/>keys · personas · policy<br/>5 positive + 9 negative cases · manifest.json"]
+  RS["tio-core/ (Rust)<br/>tests/vectors.rs replays every case"]
+
+  GOLD -. "must reproduce" .-> TS
+  GOLD -. "must reproduce" .-> RS
+  TS -- "pnpm gen:vectors" --> TV
+  TV -- "cargo test" --> RS
+```
+
+Positive cases must pass every check. Each negative case breaks exactly one
+layer and must fail with exactly its error code (see
+[`test-vectors/README.md`](test-vectors/README.md)).
+
 ## Layout
 
 ```
@@ -51,11 +104,11 @@ Two build worlds:
 by digest and deployed with docker-compose on Marlin Oyster.
 
 ## Status
-Pre-alpha, under active development. The workspace builds (empty program
-skeletons). The formats are frozen, and the key exchange and encryption are
-pinned to reference golden vectors. The SAS schema has been verified on
-devnet. Next: `tio-core` (crypto core), then the programs, enclave, gateway
-and web.
+Pre-alpha, under active development. The formats are frozen and the SAS
+schema has been verified on devnet. `tio-core` has key exchange, decryption
+and JWS verification, pinned to reference golden vectors and cross-checked
+against the TypeScript test-vector generator in `sandbox-bank`. Next:
+scoring in `tio-core`, then the programs, enclave, gateway and web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

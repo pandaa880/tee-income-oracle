@@ -72,9 +72,10 @@ develop  ──●──●──●──R────●──●──●─�
 
 ### Pull requests
 1. Push the branch: `git push -u origin <branch>`.
-2. Open a PR **into `develop`**: `gh pr create --base develop --fill`. The
-   description says **what** changed, **why**, and **how it was verified**
-   (gates run, test output).
+2. Open a PR **into `develop`**: `gh pr create --base develop --fill`. Fill in
+   the template (`.github/pull_request_template.md`): **what** changed,
+   **why**, **which files are worth reviewing** (and which are generated and
+   can be skimmed), and **how it was verified** (gates run, test output).
 3. Run the gates for every language touched (see `AGENTS.md` → Commands) and
    a code review (`/code-review` or a reviewer) before merging. Fix blocking
    findings first.
