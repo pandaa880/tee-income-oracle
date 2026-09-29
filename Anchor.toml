@@ -6,11 +6,8 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-# oracle = "<program id — generated once `anchor keys sync` runs on a real program>"
-# demo_pool = "<program id — same>"
-
-[registry]
-url = "https://api.apr.dev"
+demo-pool = "DvDkXcQFJAvCvrMfoujKu2BWfWqVYRmL8WW9hpMgW8KC"
+oracle = "HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8"
 
 [provider]
 cluster = "localnet"
@@ -18,3 +15,5 @@ wallet = "~/.config/solana/tee-income-oracle.json"
 
 [scripts]
 test = "echo \"no tests yet\""
+
+[hooks]

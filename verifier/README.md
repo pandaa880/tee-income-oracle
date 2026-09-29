@@ -1,20 +1,19 @@
 # verifier
 
-Node/TS service, off-chain. Independently checks the Nitro Enclave's remote
-attestation document — the proof that the enclave ran the exact code it
-claims to.
+TS library + CLI, off-chain. Lets anyone check, without trusting us, that the
+enclave ran the published code:
 
-- Parses the COSE_Sign1-signed attestation document.
-- Verifies the PCR measurements and the certificate chain up to AWS's own
-  Nitro root.
-- Confirms the enclave's public key (embedded in the document) is bound to
-  the expected PCR0 code measurement.
-- Prints PASS / FAIL. This is shown live on stage — "it's in a TEE" is a
-  claim until this runs; after, it's proof.
+1. Fetch the Nitro attestation document from the enclave (Oyster attestation
+   server).
+2. Verify the COSE_Sign1 signature (ES384) and the certificate chain up to the
+   **pinned AWS Nitro root**. Check freshness.
+3. Recompute the **image id** from this repo's `enclave/docker-compose.yml`
+   and compare it with the attested one.
+4. Derive the eth address from the document's `public_key` and compare it with
+   the attester registered on chain for that image id.
+5. Print PASS/FAIL per check. The web verify page runs the same library.
 
-Later: the one-command public verifier (`npx @project/verify <wallet>`) is
-a small standalone package in this spirit — reads devnet, derives the PDA,
-checks the signer, prints the result, with no backend of ours involved.
+Marlin's `oyster-cvm verify` covers steps 1–2 as a cross-check, not a
+replacement. Verify against AWS's root, never against a re-signed summary.
 
-Not yet scaffolded — no `package.json` or source yet. This README is a
-placeholder.
+Not yet implemented. Build step 5.

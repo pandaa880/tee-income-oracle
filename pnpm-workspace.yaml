@@ -1,4 +1,5 @@
 packages:
-  - "proxy"
+  - "gateway"
+  - "sandbox-bank"
   - "verifier"
   - "web"

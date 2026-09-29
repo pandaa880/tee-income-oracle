@@ -1,0 +1,55 @@
+[package]
+name = "tio-core"
+version = "0.1.0"
+description = "Trusted core of TEE Income Oracle: key exchange, decryption, verification and scoring. No I/O."
+edition.workspace = true
+rust-version.workspace = true
+license = "Apache-2.0"
+publish = false
+
+# Every dependency here runs inside the enclave's trust boundary.
+# Ask before adding one (AGENTS.md). Versions: stable RustCrypto generation
+# (rand_core 0.6), chosen to match rsa 0.9 used for JWS.
+[dependencies]
+aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "alloc", "zeroize"] }
+# aes, ghash, polyval: direct deps only to switch on `zeroize` in the crates
+# that hold the AES key schedule and the GHASH key H. aes-gcm's own `zeroize`
+# feature doesn't reach them. Known residual: on x86_64 polyval 0.6 wraps its
+# backend in `ManuallyDrop` with no `Drop`, so H is NOT wiped unless the
+# enclave is built with `RUSTFLAGS="--cfg polyval_force_soft"` (constant-time
+# soft backend, which zeroizes). The AES key schedule is wiped either way.
+aes = { version = "0.8.4", default-features = false, features = ["zeroize"] }
+base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
+ghash = { version = "0.5.1", default-features = false, features = ["zeroize"] }
+crypto-bigint = { version = "0.5.5", default-features = false }
+curve25519-dalek = { version = "4.1.3", default-features = false, features = ["alloc", "zeroize"] }
+polyval = { version = "0.6.2", default-features = false, features = ["zeroize"] }
+hkdf = { version = "0.12.4", default-features = false }
+rand_core = { version = "0.6.4", default-features = false }
+# JWS (RS256/RS512, PKCS#1 v1.5). Known residual: RUSTSEC-2023-0071 (Marvin),
+# unpatched in every rsa release: private-key operations are not constant
+# time. Verification uses only public data and is unaffected. The only
+# private-key operation is signing FI requests with the per-boot FIU key, and
+# it always goes through rsa's blinded `sign_with_rng`, which reduces but
+# does not remove what a host timing the enclave can learn.
+rsa = { version = "0.9.10", default-features = false, features = ["u64_digit"] }
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }
+# `oid`: rsa's pkcs1v15 keys need the DigestInfo OID of the hash.
+sha2 = { version = "0.10.9", default-features = false, features = ["oid"] }
+subtle = { version = "2.6.1", default-features = false }
+thiserror = { version = "2", default-features = false }
+zeroize = { version = "1.8", default-features = false, features = ["alloc", "zeroize_derive"] }
+
+[dev-dependencies]
+hex = "0.4.3"
+rand_chacha = "0.3.1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"

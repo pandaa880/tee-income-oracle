@@ -1,0 +1,16 @@
+{
+  "case_id": "rs512_aa",
+  "persona_id": "salaried_steady",
+  "mode": "wei25519",
+  "aa_alg": "RS512",
+  "enclave_key": "keys/enclave.test-private.json",
+  "enclave_nonce_b64": "Uezz5NmoSOihhKA824fyH3dlPO//XycY7/RX4YyFabs=",
+  "session_id": "9582da7b-b981-4659-b9d2-3d828e9bea46",
+  "txnid": "112a1602-7b84-4376-9fa8-42592676fe07",
+  "now_unix": 1790416800,
+  "key_expiry_unix": 1790503200,
+  "fi_data_range": {
+    "from": "2025-09-26T00:00:00.000Z",
+    "to": "2026-09-26T00:00:00.000Z"
+  }
+}

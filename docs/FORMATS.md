@@ -29,6 +29,26 @@ step that needs it).
 
 ---
 
+## 0.1 Version identifiers — FROZEN
+
+Each contract below carries its own version. Bump it **only** on a breaking
+change to that contract. Bumping one is a breaking change for the repo too,
+so the PR title is `feat!:` (see CONTRIBUTING → Versioning and releases). The
+same PR updates this file, both implementations and the regenerated vectors.
+
+| Contract | Id today | Bump when |
+|---|---|---|
+| Enclave signed message (§8) | domain tag `TIO-ATTEST-v1` | any change to the signed bytes or their order |
+| Enclave HTTP API (§10) | path prefix `/v1/` | a breaking request/response change (adding optional fields isn't breaking) |
+| Scoring policy (§6) | `"v": 1` | a policy schema change |
+| Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
+| `proof_type` values (§7) | `1 = tee_nitro_oyster`; `2 = tee_nitro_aws` reserved | append-only; never reuse or renumber |
+| Enclave build | platform measurement (Oyster image id, or AWS PCR0 hash) + on-chain `measurement_id` | every enclave change (automatic); the release notes list it. **`measurement_id`s are append-only: an id is never reused, even after revoke** |
+| Anchor programs | program id + IDL; every account starts with `version: u8` | an account layout change → migration path |
+| Test vectors (§11) | `manifest.json` generator version | a vector file-format change |
+
+---
+
 ## 1. Persona file and FI data (DEPOSIT) — FROZEN
 
 `test-vectors/personas/<persona_id>.json`. Plaintext input to the generator;
@@ -123,6 +143,9 @@ more than 20,000 transactions.
 |---|---|---|
 | FIP signing key (test) | RSA-2048 JWK, `kid` UUIDv4 | private: `test-vectors/keys/fip.test-private.jwk.json` |
 | AA signing key (test) | RSA-2048 JWK, `kid` UUIDv4 | private: `test-vectors/keys/aa.test-private.jwk.json` |
+| FIU request key (test) | RSA-2048 JWK, `kid` UUIDv4; stands in for the enclave's per-boot key | private: `test-vectors/keys/fiu.test-private.jwk.json` |
+| Rogue key (test) | RSA-2048 JWK, `kid` UUIDv4; never pinned (builds the `unknown_kid` case) | private: `test-vectors/keys/rogue.test-private.jwk.json` |
+| Public halves (test) | RSA public JWK (`kty`,`n`,`e`,`kid`) of each key above | `test-vectors/keys/<name>.public.jwk.json` |
 | Pinned public keys | RSA public JWK (`kty`,`n`,`e`,`kid`) | `enclave/pinned/*.jwk.json`, compiled in with `include_bytes!` |
 | FIU request key | RSA-2048, generated in the enclave at boot | public JWK exposed by `GET /v1/info` |
 | Enclave attester key | secp256k1, provided by Oyster at `/app/ecdsa.sec` | eth address exposed by `GET /v1/info` |
@@ -233,9 +256,10 @@ So:
   parameters equal the Curve25519 Weierstrass constants and the point is on
   the curve. Then `u = x_W − A/3`, `s = X25519(d, u)`, reject all-zero `s`,
   `shared = s + A/3` as 32 bytes **big-endian**.
-- Field arithmetic here touches only public values (points, not `d`), so it
-  doesn't need to be constant-time. The secret-dependent step is inside
-  `x25519-dalek`.
+- Parsing and encoding points touch only public values. The secret scalar
+  multiplication is in `curve25519-dalek` (`MontgomeryPoint::mul_clamped`).
+  The final `s + A/3` runs on the shared secret, using constant-time
+  `crypto-bigint` arithmetic (`tio-core/src/ecdh/wei25519.rs`).
 
 **VERIFIED 2026-09-26** against the reference Java implementation (rahasya
 Docker image `gsasikumar/forwardsecrecy:V1.2`, BouncyCastle 1.64). The checks:
@@ -296,9 +320,37 @@ Verification rules (enclave and sandbox-bank):
 2. `alg` ∈ {`RS256`, `RS512`}. Anything else (`none`, `HS*`, `PS*`, `ES*`) → reject.
 3. `kid` must match a pinned key. Never accept a key or `jwk`/`jku`/`x5u` from the header.
 4. Detached form: `b64` must be `false` and `crit` must be exactly `["b64"]`.
+   Compact form: neither `b64` nor `crit` may appear.
+5. The header must be a JSON object. Any of `jwk`, `jku`, `x5u`, `x5c` in
+   it → reject, even with a `null` value (a "may not appear" rule counts
+   `null` as present). Unknown other members (`typ`, `x5t`, …) are ignored.
+   A repeated member we act on (`alg`, `kid`, `b64`, `crit`, `jwk`, `jku`,
+   `x5u`, `x5c`) → reject.
+6. Segments are base64url **without padding**, decoded strictly (no `=`, no
+   non-canonical trailing bits). Detached: middle segment empty. Compact:
+   payload segment non-empty.
+7. Pinned keys are public RSA JWK objects (`kty` `RSA`, `n`, `e`, `kid`, no
+   private member `d`/`p`/`q`/`dp`/`dq`/`qi`/`oth`) with a modulus of at
+   least 2048 bits. `n` and `e` are minimal-length `Base64urlUInt` (RFC 7518
+   §2: no leading zero octets).
+
+Check order (one error per case): segments (count, signature base64url,
+payload segment empty for detached / non-empty for compact) →
+header decode/parse → `alg` →
+`b64`/`crit`/embedded-key rules → `kid` (missing → `bad_header`, not pinned →
+`unknown_kid`) → signature. `alg` comes before `kid`, so a swapped algorithm
+always reports `bad_alg`, even when `kid` is also missing or unknown.
 
 We **sign** with RS256 only. We **verify** RS256 and RS512 (Finvu's sample
 header decodes to RS512).
+
+Implementation (`tio-core::jws`): RSASSA-PKCS1-v1_5 from `rsa` 0.9
+(`Pkcs1v15Sign`), digests from `sha2`. rsa checks the signature length equals
+the modulus size and compares the padded encoding in constant time
+(`subtle`). Signing always uses rsa's blinded `sign_with_rng`. Known
+residual: RUSTSEC-2023-0071 (Marvin), private-key operations in rsa are not
+constant time. Only the per-boot FIU key signs; verification is unaffected.
+Golden vector: RFC 7515 Appendix A.2 (`test-vectors/golden/rfc7515/`).
 
 ---
 
@@ -396,8 +448,8 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 | Offset | Size | Field | Type | Values |
 |---|---|---|---|---|
 | 0 | 1 | `tier` | u8 | 1=A, 2=B, 3=C. Reject is never written |
-| 1 | 1 | `proof_type` | u8 | 1 = `tee_nitro_oyster` |
-| 2 | 1 | `measurement_id` | u8 | index into the oracle registry |
+| 1 | 1 | `proof_type` | u8 | 1 = `tee_nitro_oyster`; 2 = `tee_nitro_aws` (reserved) |
+| 2 | 1 | `measurement_id` | u8 | index into the oracle registry. Append-only: never reused, even after revoke, so revoking an id permanently invalidates its attestations |
 | 3 | 32 | `policy_hash` | bytes | section 6 |
 | 35 | 32 | `consent_hash` | bytes | section 5.3 |
 | 67 | 8 | `issued_at` | i64 | unix seconds, enclave clock (checked on-chain) |
@@ -411,6 +463,23 @@ consent_hash_lo, consent_hash_hi, issued_at, window_from, window_to`.
 The raw bytes are the same either way; `_lo` = bytes 0..16 of the hash.
 
 SAS attestation account total: 256 bytes.
+
+**Verified on devnet 2026-09-27** (throwaway spike, `sas-lib` 1.0.10, SAS
+`22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG`):
+- The schema layout above is accepted and stored as `0,0,0,4,4,4,4,8,2,2`.
+- An 83-byte payload is stored byte-for-byte. The account is exactly **256
+  bytes**, and `deserializeAttestationData` decodes it with this schema.
+- Rent for 256 bytes is **1,950,720 lamports (≈ 0.00195 SOL)**, below the
+  2,672,640 we had estimated from the older rent rate.
+- SAS enforces the rules the oracle relies on:
+  - signer not in the credential's authorized signers → error `0x5`;
+  - data length that doesn't match the layout (82 bytes) → error `0x6`;
+  - a second attestation for the same (credential, schema, nonce) → the
+    system program's "account already in use". **Refreshing a borrower's
+    attestation needs `close_attestation` first.**
+- The attestation address equals `["attestation", credential, schema, nonce]`
+  as derived by `deriveAttestationPda`, and the stored `nonce` is the borrower
+  wallet.
 
 ---
 
@@ -461,9 +530,23 @@ string and verifies; any difference → reject.
   nothing in between can re-serialize them and break the signature.
 - Errors: `{ error: { code, message } }` with stable `code` strings
   (`session_not_found`, `session_expired`, `bad_aa_signature`,
-  `bad_fip_signature`, `bad_consent_signature`, `decrypt_failed`, …). Each
+  `bad_fip_signature`, `bad_consent_signature`, `bad_key_material`,
+  `invalid_point`, `bad_nonce`, `decrypt_failed`, …). Each
   signature layer has its own code, so a failure names the check that caught it.
   Messages never contain payload data.
+- Key-exchange codes (`tio-core`): `bad_key_material` (unknown SPKI, wrong
+  curve params, bad PEM/base64, or our key mode ≠ the peer's), `invalid_point`
+  (coordinate ≥ p, off-curve, or small-order point), `bad_nonce` (not valid
+  base64, or not 32 bytes), `decrypt_failed` (bad base64, shorter than the tag, or GCM tag
+  mismatch; deliberately one code, so a failure reveals nothing about which
+  check fired).
+- JWS codes (`tio-core`): `bad_jws` (segment count, base64url, empty or
+  non-empty payload segment for the form), `bad_header` (not a JSON object,
+  repeated member we act on, missing `kid`, `b64`/`crit` rule, `jwk`/`jku`/`x5u`/`x5c`
+  present), `bad_alg`, `unknown_kid`, `bad_signature`, `bad_pinned_key`
+  (startup: pinned JWK invalid or under 2048 bits), `sign_failed`. The
+  evaluate pipeline reports a `bad_signature` as the code of the layer that
+  failed (`bad_aa_signature`, `bad_fip_signature`, `bad_consent_signature`).
 
 ---
 
@@ -471,20 +554,34 @@ string and verifies; any difference → reject.
 
 ```
 test-vectors/
-  keys/                     *.test-private.* — TEST ONLY
+  keys/                     *.test-private.* — TEST ONLY (+ *.public.jwk.json)
   personas/<persona_id>.json
-  policy/default.json       + default.hash (hex)
-  vectors/<persona_id>/
-    session.json            fixed enclave X25519 key ref, nonce, session_id, wallet, timestamps
+  policy/default.json       JCS bytes; + default.hash (hex sha256)
+  vectors/<case_id>/
+    session.json            see below
     fi_request.body         exact bytes
-    fi_request.jws
+    fi_request.jws          detached, FIU test key
     fetch_response.body     exact bytes
-    fetch_response.jws
-    consent.jws
-    expected.json           { tier, features, policy_hash, payload_hex, msg_hex }
+    fetch_response.jws      detached, AA key
+    consent.jws             compact, AA key
+    expected.json           { policy_hash, consent_hash, window_from, window_to }
+                            (+ tier, features, payload_hex, msg_hex once scoring exists)
   negative/<case>/          same files, one thing broken; expected.json = { error_code }
-  manifest.json             list of all cases + generator version
+  manifest.json             { generator_version, cases: [{ id, kind, dir, persona_id, expected }] }
 ```
+
+`session.json`: `{ case_id, persona_id, mode, aa_alg, enclave_key, enclave_nonce_b64,
+session_id, txnid, now_unix, key_expiry_unix, fi_data_range: { from, to } }`
+(+ `wallet` once the §9 intent and §8 message are generated). `enclave_key`
+points at `keys/enclave.test-private.json`; its Curve25519 scalar is used as-is by
+`SessionKeyPair::generate` (which clamps it). Positive case ids: the three personas
+(`wei25519`, RS256), `rs512_aa` (AA signs the fetch response and consent with RS512) and
+`x25519_mode` (§3 second mode), both on `salaried_steady`.
+
+**Generated, deterministic.** `pnpm --filter @tio/sandbox-bank gen:keys` makes the RSA keys
+once (it refuses to overwrite). `gen:vectors` is a pure function of the keys: nonces,
+scalars, ids and persona data come from `sha256("tio-vectors/v1/<case>/<label>")`, and the
+clock is fixed at `2026-09-26T10:00:00.000Z`. CI regenerates and fails on any diff.
 
 **Layering rule.** The enclave checks layers from the outside in: AA
 signature → consent → decrypt (AES-GCM tag) → FIP signature. A negative case
@@ -494,18 +591,18 @@ Without this, an outer check fires first, and the inner check is never tested.
 
 Required negative cases:
 
-| Case | How the generator builds it | Expected code |
+| Case (`negative/<id>`) | How the generator builds it | Expected code |
 |---|---|---|
-| Fetch response byte flipped | flip a byte of `fetch_response.body`, **don't** re-sign | `bad_aa_signature` |
-| Ciphertext byte flipped | flip a byte of `encryptedFI`, then **re-sign the fetch response with the AA key** | `decrypt_failed` |
-| FI plaintext changed | change the FI JSON, keep the old FIP JWS, **re-encrypt and re-sign** the fetch response | `bad_fip_signature` |
-| Consent tampered | flip a byte of the consent payload, don't re-sign | `bad_consent_signature` |
-| Consent not ACTIVE | validly signed consent with `status` ≠ `ACTIVE` | `consent_invalid` |
-| Unpinned key | fetch response validly signed by a key whose `kid` isn't pinned | `unknown_kid` |
-| `alg: none` / `alg: HS256` | header algorithm swapped | `bad_alg` |
-| Detached JWS without `crit` | `crit` removed from the header | `bad_header` |
+| `fetch_response_flipped` | flip a byte of `fetch_response.body`, **don't** re-sign | `bad_aa_signature` |
+| `ciphertext_flipped` | flip a byte of `encryptedFI`, then **re-sign the fetch response with the AA key** | `decrypt_failed` |
+| `fi_plaintext_changed` | change the FI JSON, keep the old FIP JWS, **re-encrypt and re-sign** the fetch response | `bad_fip_signature` |
+| `consent_tampered` | flip a byte of the consent payload, don't re-sign | `bad_consent_signature` |
+| `consent_not_active` | validly signed consent with `status` = `REVOKED` | `consent_invalid` |
+| `unpinned_aa_key` | fetch response validly signed by the rogue key (`kid` not pinned) | `unknown_kid` |
+| `alg_none` / `alg_hs256` | fetch-response header algorithm swapped | `bad_alg` |
+| `detached_no_crit` | `crit` removed from the fetch-response header, re-signed | `bad_header` |
 
-Plus one positive RS512 case.
+Plus the positive RS512 case `rs512_aa`.
 
 The generator (TypeScript) is independent of the enclave (Rust) on purpose:
 two implementations that agree byte-for-byte catch derivation bugs that one

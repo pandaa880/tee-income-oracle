@@ -29,15 +29,26 @@ golden/rahasya/   Reference vectors produced by Sahamati's reference ECDH
                   implementation (rahasya V1.2). Prove interop with the real
                   Account Aggregator key exchange. See its README for how to
                   verify them.
-keys/             (planned) TEST-ONLY FIP / AA / enclave keys
-personas/         (planned) 3 borrower statements: salaried_steady → A,
-                  trader_lumpy → B, stressed → C/Reject
-policy/           (planned) default scoring policy + its hash
-vectors/          (planned) one folder per persona: FI request, fetch response,
-                  consent, expected tier + payload
-negative/         (planned) one broken thing per case, expected error code
-manifest.json     (planned) index of all cases + generator version
+golden/rfc7515/   RSA keys and the RS256 example from RFC 7515 App. A.2 and
+                  RFC 7520 §3.4, extracted by script. Prove our JWS signing
+                  and verification match the standard.
+keys/             TEST-ONLY FIP / AA / FIU / rogue RSA keys (+ public JWKs) and
+                  the enclave Curve25519 + secp256k1 test scalars
+personas/         3 borrower statements: salaried_steady → A,
+                  trader_lumpy → B, stressed → C (C or Reject, set by the scoring policy)
+policy/           default scoring policy (JCS bytes) + its hash
+vectors/          positive cases: one per persona, plus rs512_aa and
+                  x25519_mode. FI request, fetch response, consent, expected
+                  hashes (tier and payload are added once scoring exists)
+negative/         one broken layer per case, expected error code
+manifest.json     index of all cases + generator version
 ```
+
+Regenerate with `pnpm gen:vectors` from the repo root (generator:
+`sandbox-bank/src/vectors/`). Output is deterministic, and CI fails if a
+regenerated file differs from the committed one. Keys are made once with
+`pnpm --filter @tio/sandbox-bank gen:keys`, which refuses to overwrite.
+`tio-core/tests/vectors.rs` replays every case in Rust.
 
 ## Rules
 
@@ -55,3 +66,38 @@ manifest.json     (planned) index of all cases + generator version
 - The generator is TypeScript on purpose. Two independent implementations
   agreeing catches derivation bugs that one implementation testing itself
   would miss. `golden/` adds a third, external reference.
+
+## Check order and error codes
+
+Each case is one full bank → enclave exchange, sealed in layers. The enclave
+(and `tio-core/tests/vectors.rs`) opens them from the outside in and stops at
+the first failure:
+
+```mermaid
+flowchart TD
+  IN["case folder<br/>fetch_response.body/.jws · consent.jws · session.json"]
+  L1["① AA signature over fetch_response.body"]
+  L2["② consent: AA signature, then status = ACTIVE"]
+  L3["③ decrypt encryptedFI<br/>ECDH → HKDF → AES-256-GCM"]
+  L4["④ FIP (bank) signature over the statement"]
+  OK["statement JSON → scoring"]
+  E1["bad_aa_signature · unknown_kid · bad_alg · bad_header"]
+  E2["bad_consent_signature · consent_invalid"]
+  E3["decrypt_failed"]
+  E4["bad_fip_signature"]
+
+  IN --> L1
+  L1 -- ok --> L2
+  L2 -- ok --> L3
+  L3 -- ok --> L4
+  L4 -- ok --> OK
+  L1 -- fail --> E1
+  L2 -- fail --> E2
+  L3 -- fail --> E3
+  L4 -- fail --> E4
+```
+
+Example: `negative/ciphertext_flipped` flips one byte of the ciphertext, then
+re-signs the fetch response with the real AA key. Layers ① and ② pass, so the
+failure can only come from ③ (`decrypt_failed`). Without the re-sign, ① would
+fail first and the decrypt check would never be tested.

@@ -1,0 +1,5 @@
+{
+  "curve25519_scalar_hex": "d403262e7d1abb1b5bf5d7c9535d8bdfd5e84e326b5f91fc80ccc7195ad02575",
+  "secp256k1_hex": "120f47823255df5de04d68af2069b47ac4512e1ee04539f6e936848446d15123",
+  "private_key_test_only": true
+}

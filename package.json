@@ -2,5 +2,11 @@
   "name": "tee-income-oracle",
   "private": true,
   "packageManager": "pnpm@12.6.0",
-  "scripts": {}
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "pnpm -r test",
+    "gen:vectors": "pnpm --filter @tio/sandbox-bank gen:vectors"
+  }
 }

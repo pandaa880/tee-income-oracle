@@ -1,0 +1,16 @@
+{
+  "case_id": "trader_lumpy",
+  "persona_id": "trader_lumpy",
+  "mode": "wei25519",
+  "aa_alg": "RS256",
+  "enclave_key": "keys/enclave.test-private.json",
+  "enclave_nonce_b64": "0C2gduU69p7iKPspq2WRfNSZBo1419jMuwa4Bc4IU5g=",
+  "session_id": "a0349294-c7ae-47c4-a7be-6d77baaa838c",
+  "txnid": "72478d7a-ef33-426b-add4-3d6520c9c461",
+  "now_unix": 1790416800,
+  "key_expiry_unix": 1790503200,
+  "fi_data_range": {
+    "from": "2025-09-26T00:00:00.000Z",
+    "to": "2026-09-26T00:00:00.000Z"
+  }
+}

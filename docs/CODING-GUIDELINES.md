@@ -30,7 +30,9 @@ scope. See `AGENTS.md` for the full wording.
    yourself (`subtle` in Rust, `crypto.timingSafeEqual` in Node).
 9. **Log ids, not data.** `session_id`, `txnid`, stage, error code.
 10. **Formats live in `docs/FORMATS.md`.** Change the doc in the same commit
-    as the code.
+    as the code. Crypto text there names the exact crate that does each
+    secret-dependent step, and error-variant docs in code match the FORMATS
+    error-code list.
 
 ## 2. Rust
 
@@ -74,13 +76,36 @@ scope. See `AGENTS.md` for the full wording.
   HTTP error codes in one place.
 - **No `unwrap()` / `expect()` / `panic!` / indexing that can panic** outside
   tests and `main` startup. Use `get()`, `checked_*`, `?`.
+- **Panic-free slicing:** `split_at_checked`, `split_first_chunk`, `get(..)`,
+  `try_into()` — not `split_at` / `copy_from_slice` behind a length check.
+  Clippy's `indexing_slicing` doesn't catch those.
 - No floats in scoring or money. Integers (paise, basis points, days).
+
+### Parsing untrusted input
+- **Wire JSON must be an object.** serde's derived struct visitor also
+  accepts a JSON array (fields by position), which no other implementation
+  does. Check for `{` before deserializing (`tio-core::jws::from_json_object`).
+- **"Must not appear" means present, even as `null`.** A plain `Option<T>`
+  reads `null` as absent. Use a presence-detecting `deserialize_with`
+  (`tio-core::jws::present`) with `#[serde(default)]`.
+- **Declare every member a security rule depends on.** Derived
+  `Deserialize` rejects a repeated *declared* member; undeclared ones, and
+  `#[serde(flatten)]` / `Value`, silently keep the last value.
+- **Strict decoders.** base64url for JWS/JWK is `URL_SAFE_NO_PAD`: no `=`,
+  no non-canonical trailing bits, so each value has one accepted encoding.
 
 ### Crypto hygiene
 - `#![forbid(unsafe_code)]` in `tio-core`.
 - Secrets in `Zeroizing<…>` or types deriving `ZeroizeOnDrop`.
-- Use audited crates (RustCrypto: `x25519-dalek`, `hkdf`, `aes-gcm`, `sha2`,
-  `k256`, `rsa`; `josekit` raw verifier). No hand-rolled primitives.
+- **Zeroize reaches the crate that holds the key.** A `zeroize` feature on an
+  umbrella crate (e.g. `aes-gcm`) doesn't turn it on in the inner crates
+  (`aes`, `ghash`/`polyval`, `crypto-bigint`). Check
+  `cargo tree -p tio-core -e features -i zeroize`, and confirm the wiping
+  `Drop` actually runs on the enclave target (x86_64), not only on the dev
+  machine: autodetect backends can skip it. Residuals that can't be wiped get
+  a `Known residual:` comment.
+- Use audited crates (RustCrypto: `curve25519-dalek`, `crypto-bigint`, `hkdf`,
+  `aes-gcm`, `sha2`, `k256`, `rsa`). No hand-rolled primitives.
 - Randomness from `OsRng` only.
 
 ### Anchor programs
@@ -88,6 +113,8 @@ scope. See `AGENTS.md` for the full wording.
   No unchecked `AccountInfo` without a `/// CHECK:` comment that explains why.
 - Checked arithmetic only (`checked_add`, …). No `as` casts that can truncate.
 - One `#[error_code]` enum per program; messages say what failed.
+- Every program account starts with a `version: u8` field, so a future
+  layout change can be detected and migrated (FORMATS → Version identifiers).
 - Reading a foreign account (the SAS attestation): check the owner program id
   and discriminator before deserializing.
 - Precompile introspection: the signature, address and message
@@ -118,7 +145,7 @@ scope. See `AGENTS.md` for the full wording.
   casing). Don't rename at the boundary.
 
 ### Language
-- `"strict": true`, plus `noUncheckedIndexedAccess`. ESM only. Node 22 LTS or later.
+- `"strict": true`, plus `noUncheckedIndexedAccess`. ESM only. Node 24 LTS (`.nvmrc`); scripts run `.ts` directly via Node type stripping, so only erasable syntax (`erasableSyntaxOnly`).
 - No `any`. Use `unknown` at boundaries and narrow it.
 - **Validate every external input with `zod`** (HTTP bodies, env vars, RPC
   data) before use.
@@ -187,8 +214,24 @@ Stdlib only unless a dependency is agreed.
   passes, then that the tampered input fails *for the expected reason*.
 - **A parsed but unused field usually means a missing check.** If you decode
   it, validate it or delete it.
+- **Every prefix, template or OID check gets its own negative test with an
+  input of the correct length**, so an earlier length check can't mask it.
+- **Mutation-check security checks:** disable each check in turn; at least one
+  test must fail. A check no test notices is untested.
+- **A strictness claim needs input the lenient variant would accept.** For
+  a strict decoder: correctly padded base64, and non-canonical trailing bits
+  with the signature taken over that exact text, so only the decoder can
+  reject it. Mutation-check the decoder *config*, not only hand-written `if`s.
+- **Repeated members:** every header/JWK member that a rule depends on, and
+  especially one read through `deserialize_with`, gets a duplicate-member
+  test expecting the specific error.
+- **Check order is tested.** When the docs fix an order ("`alg` before
+  `kid`"), a test combines two faults and asserts the one reported first.
+  The documented order names every early return in the code path.
 
 ## 6. Git, commits and PRs
 The workflow lives in `CONTRIBUTING.md` → **Git workflow** (single source).
-In short: never commit to `main`; one `type/short-name` branch per task;
-Conventional Commits with `git commit -s`; PR with gates + review; squash-merge.
+In short: git-flow. Never commit to `main` or `develop`; one
+`type/short-name` branch per task from `develop`; Conventional Commits with
+`git commit -s`; PR into `develop` with gates + review; squash-merge.
+Releases come from release-please and are promoted `develop` → `main`.
