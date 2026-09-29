@@ -95,6 +95,9 @@ cargo test -p tio-core
 
 - Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §3 (key exchange), §4 (JWS)
 - Security model: [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
+- Where it fits: [system diagram](../README.md#how-it-fits-together);
+  the order it runs its checks, with error codes:
+  [check order](../test-vectors/README.md#check-order-and-error-codes)
 - Reference vectors: [`test-vectors/golden/rahasya/`](../test-vectors/golden/rahasya/),
   [`test-vectors/golden/rfc7515/`](../test-vectors/golden/rfc7515/)
 - Generated vectors: [`tests/vectors.rs`](tests/vectors.rs) replays every case in

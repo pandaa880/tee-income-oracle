@@ -19,6 +19,10 @@ doesn't change; only the pinned keys and the base URL do.
 **Status:** the generator works (build step 1c); the HTTP service is build
 step 4.
 
+It writes the cases that `tio-core` must accept or reject: see
+[how the code is tested](../README.md#how-the-code-is-tested) and the
+[check order](../test-vectors/README.md#check-order-and-error-codes).
+
 ```
 src/crypto/    encoding, JCS, wei25519, ECDH, AES-GCM session cipher, JWS
                (node:crypto only; no runtime dependencies)
