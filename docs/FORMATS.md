@@ -129,7 +129,17 @@ correctness, not security. Accept:
 - `Holder` and `Transaction` as object **or** array;
 - `type` case-insensitive (`DEPOSIT` / `deposit`);
 - money as JSON number **or** string. Parse from the raw JSON text into
-  integer **paise** (`i64`); never through `f64`. More than 2 decimals → reject.
+  integer **paise** (`i64`); never through `f64`, never rounded. ReBIT types
+  `amount` as `xs:float` and balances as `xs:string` with no pattern, so any
+  spelling of an **exact whole number of paise** is accepted: grammar
+  `[+|-] (digits ['.' [digits]] | '.' digits) [(e|E) [+|-] digits]`, ASCII
+  digits, e.g. `1.2E7`, `85000.0`, `1234.050`, `0012.5`, `.5`. Strings: no `\`
+  escapes; surrounding spaces are trimmed. Reject: anything else (`NaN`,
+  `INF`, `1,234.00`, `12.50 Dr`), a value that isn't whole paise
+  (`1234.567`), an exponent beyond ±30, a magnitude above `i64::MAX` paise
+  (the range is ±`i64::MAX`), and a negative `amount` (balances may be
+  negative; `-0` is zero). When several apply, the first in this order wins:
+  bad grammar, exponent range, not whole paise, magnitude, negative.
 
 Reject: unknown enum values, missing required fields the scorer uses
 (`type`, `mode`, `amount`, `currentBalance`, `transactionTimestamp`),
@@ -547,6 +557,9 @@ string and verifies; any difference → reject.
   (startup: pinned JWK invalid or under 2048 bits), `sign_failed`. The
   evaluate pipeline reports a `bad_signature` as the code of the layer that
   failed (`bad_aa_signature`, `bad_fip_signature`, `bad_consent_signature`).
+- FI data codes (`tio-core`): `bad_fi_data` (decrypted FI violates §1; for
+  now: a money value that isn't an exact, in-range, correctly signed paise
+  amount).
 
 ---
 
