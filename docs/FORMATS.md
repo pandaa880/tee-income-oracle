@@ -123,11 +123,17 @@ number with at most 2 decimals, balances/limits as strings (as Finvu does).
 ### Parse rules (enclave) — lenient on shape, strict on meaning
 The data is signature-checked before parsing, so leniency here only affects
 correctness, not security. Accept:
-- an optional root wrapper `Account` / `account`;
-- element keys in any case (`Transactions` / `transactions`) — Setu-style
+- an optional root wrapper `Account` / `account` (a root with `account` and
+  no `type`);
+- member names in any case (`Transactions` / `transactions`) — Setu-style
   lowercase JSON exists in the ecosystem;
-- `Holder` and `Transaction` as object **or** array;
-- `type` case-insensitive (`DEPOSIT` / `deposit`);
+- `Transaction` as object **or** array, or absent (no transactions);
+- enum values in any ASCII case: FI `type` (`DEPOSIT` / `deposit`),
+  transaction `type`, `mode`;
+- `startDate` / `endDate` as `xs:date` or as a full timestamp, whose written
+  date part is used;
+- members the scorer doesn't use, in any shape. `Profile` (holder PII),
+  `Summary`, ids, `reference` and `valueDate` are never read;
 - money as JSON number **or** string. Parse from the raw JSON text into
   integer **paise** (`i64`); never through `f64`, never rounded. ReBIT types
   `amount` as `xs:float` and balances as `xs:string` with no pattern, so any
@@ -141,9 +147,35 @@ correctness, not security. Accept:
   negative; `-0` is zero). When several apply, the first in this order wins:
   bad grammar, exponent range, not whole paise, magnitude, negative.
 
-Reject: unknown enum values, missing required fields the scorer uses
-(`type`, `mode`, `amount`, `currentBalance`, `transactionTimestamp`),
-more than 20,000 transactions.
+Narration is optional and is reduced to two flags, then wiped: split it on
+every non-ASCII-alphanumeric character and compare whole tokens ignoring
+ASCII case. `bounce` = any of `RTN RETURN RETURNED BOUNCE INSUFF`;
+`emi_word` = any of `EMI LOAN NACH ECS` (so `SECS` is not `ECS`).
+
+Reject with `bad_fi_data` unless noted. Checks run **top-down, one object
+at a time**; the first failing check wins:
+1. one leading UTF-8 byte-order mark is skipped; then XML (first non-space
+   byte `<`) → `unsupported_fi_format`;
+2. invalid JSON or UTF-8 anywhere in the document;
+3. the root: not an object, or two members whose names differ only by
+   case; then the `Account` wrapper, likewise;
+4. FI `type`: missing, not a string, or not DEPOSIT;
+5. `Transactions`: missing, not an object, or a repeated member; then
+   `startDate`, then `endDate` (missing, not a string, invalid), then
+   `startDate` after `endDate`;
+6. `Transaction`: not an object or array (`null` included); more than
+   20,000 items (counted before any is parsed);
+7. each transaction in input order: not an object or a repeated member;
+   then `type` (CREDIT|DEBIT), `mode` (CASH|ATM|CARD|UPI|FT|OTHERS),
+   `amount`, `currentBalance`, `transactionTimestamp`, `narration`, each
+   missing (except `narration`), an unknown enum value, a bad money value, or
+   a bad timestamp. For `type`, `mode`, `transactionTimestamp` and
+   `narration` a value of the wrong JSON type (`null` included) is a shape
+   error; for `amount` and `currentBalance` any value that isn't a number or
+   numeric string (`null` included) is a bad money value.
+
+So a problem inside a transaction is reported only after the statement-level
+checks pass, and an earlier transaction's error wins over a later one's.
 
 ---
 
@@ -557,9 +589,10 @@ string and verifies; any difference → reject.
   (startup: pinned JWK invalid or under 2048 bits), `sign_failed`. The
   evaluate pipeline reports a `bad_signature` as the code of the layer that
   failed (`bad_aa_signature`, `bad_fip_signature`, `bad_consent_signature`).
-- FI data codes (`tio-core`): `bad_fi_data` (decrypted FI violates §1; for
-  now: a money value that isn't an exact, in-range, correctly signed paise
-  amount).
+- FI data codes (`tio-core`): `unsupported_fi_format` (the decrypted FI is
+  XML, not JSON), `bad_fi_data` (any other §1 parse-rule violation: shape,
+  repeated member, not DEPOSIT, missing or invalid member, bad money or
+  timestamp, too many transactions). The order is §1's reject list.
 
 ---
 
@@ -633,7 +666,7 @@ form above and **accept** these variants:
 | `KeyMaterial` labels | `cryptoAlg: null, curve: "ECDH", params: "Curve25519"` | Ignore labels; detect by `KeyValue` OID |
 | `KeyValue` PEM | Armour and base64 with no newlines | Strip armour and whitespace, then base64-decode |
 | Request `timestamp` | epoch-millis number (`1586430349059`) in one sample, ISO string elsewhere | Emit ISO string; accept both on input |
-| Response timestamps | `2020-04-09T11:05:49.059+0000` | Accept `+0000` |
+| Response timestamps | `2020-04-09T11:05:49.059+0000` | Accept `+0000`. FI timestamps: `YYYY-MM-DD'T'HH:MM:SS[.1–9 digits][Z\|±HH:MM\|±HHMM]`, uppercase `T`/`Z`; an offset such as `+05:30` is converted to UTC; no zone = UTC; the fraction is truncated |
 | `FIDataRange.from/to` | `2018-10-31T04:10:12.898` (no zone) | **OPEN:** UTC or IST? Treat as UTC until Finvu confirms; we emit `Z` |
 | `valueDate` | full datetime in Finvu sample, `xs:date` in XSD | Accept both; use the date part |
 | FI `type` | `DEPOSIT` (XSD fixes `deposit`) | Case-insensitive |
