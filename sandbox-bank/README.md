@@ -23,13 +23,58 @@ It writes the cases that `tio-core` must accept or reject: see
 [how the code is tested](../README.md#how-the-code-is-tested) and the
 [check order](../test-vectors/README.md#check-order-and-error-codes).
 
+## Modules
+
+Dependencies point down only: `crypto/` is pure primitives (`node:crypto`,
+no runtime dependencies), `rebit/` builds the ReBIT messages on top of it, and
+`vectors/` is the test-data logic. The live service (step 4) will reuse
+`crypto/` and `rebit/` unchanged; only `vectors/` is test-only.
+
+```mermaid
+flowchart TD
+  subgraph cli["CLIs"]
+    GK["gen-keys.ts<br/>make test keys once"]
+    GV["gen-vectors.ts<br/>write test-vectors/"]
+  end
+  subgraph vectors["src/vectors/ · test data"]
+    GEN["generate.ts<br/>all cases + manifest"]
+    CASES["cases.ts<br/>one case; one-layer break for negatives"]
+    CHECK["check-case.ts<br/>TS mirror of the enclave check order"]
+    PER["personas.ts + prng.ts<br/>3 seeded borrowers"]
+    POL["policy.ts<br/>rules + hash"]
+    KEYS["keys.ts<br/>load test keys, enforce test-only flag"]
+  end
+  subgraph rebit["src/rebit/ · ReBIT messages (FORMATS §3, §5)"]
+    MSG["key-material · fi-request<br/>fetch-response · consent"]
+  end
+  subgraph crypto["src/crypto/ · primitives (node:crypto only)"]
+    ECDH["ecdh + wei25519<br/>key exchange"]
+    CIPH["cipher<br/>HKDF + AES-256-GCM"]
+    JWS["jws<br/>RS256/RS512 sign + verify"]
+    UTIL["jcs · encoding"]
+  end
+  OUT[("test-vectors/")]
+
+  GK --> KEYS
+  GV --> GEN
+  GV --> KEYS
+  GEN --> CASES
+  GEN --> PER
+  GEN --> POL
+  GEN --> OUT
+  CASES --> MSG
+  CASES --> PER
+  CASES --> ECDH
+  CASES --> CIPH
+  CASES --> JWS
+  CHECK --> ECDH
+  CHECK --> CIPH
+  CHECK --> JWS
+  MSG --> UTIL
+  POL --> UTIL
 ```
-src/crypto/    encoding, JCS, wei25519, ECDH, AES-GCM session cipher, JWS
-               (node:crypto only; no runtime dependencies)
-src/rebit/     KeyMaterial, FI request, fetch response + FIP envelope, consent
-src/vectors/   personas, policy, test keys, case builder, TS check pipeline,
-               generator CLIs (gen-keys.ts, gen-vectors.ts)
-```
+
+## Commands
 
 ```bash
 pnpm --filter @tio/sandbox-bank test          # vitest
