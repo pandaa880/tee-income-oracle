@@ -35,6 +35,7 @@
 
 ## Checklist
 
+- [ ] Docs synced: grepped for what this change replaced; README, `AGENTS.md`, `CONTRIBUTING.md`, guidelines and package READMEs updated or checked (AGENTS.md → "Sync the docs")
 - [ ] A changed wire or data format updates `docs/FORMATS.md`, both implementations and the regenerated vectors in this PR
 - [ ] No secrets committed; test keys only under `test-vectors/keys/*.test-private.*`
 - [ ] Security checks and tests are not weakened or skipped
