@@ -1,0 +1,9 @@
+# Output of `pnpm gen:vectors`: collapsed in GitHub diffs and left out of
+# language stats. CI regenerates them and fails on any diff, so review the
+# generator, not these files. test-vectors/keys/ stays visible on purpose
+# (key hygiene is reviewed by hand).
+test-vectors/personas/** linguist-generated=true
+test-vectors/policy/** linguist-generated=true
+test-vectors/vectors/** linguist-generated=true
+test-vectors/negative/** linguist-generated=true
+test-vectors/manifest.json linguist-generated=true

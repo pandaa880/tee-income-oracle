@@ -145,7 +145,7 @@ scope. See `AGENTS.md` for the full wording.
   casing). Don't rename at the boundary.
 
 ### Language
-- `"strict": true`, plus `noUncheckedIndexedAccess`. ESM only. Node 22 LTS or later.
+- `"strict": true`, plus `noUncheckedIndexedAccess`. ESM only. Node 24 LTS (`.nvmrc`); scripts run `.ts` directly via Node type stripping, so only erasable syntax (`erasableSyntaxOnly`).
 - No `any`. Use `unknown` at boundaries and narrow it.
 - **Validate every external input with `zod`** (HTTP bodies, env vars, RPC
   data) before use.

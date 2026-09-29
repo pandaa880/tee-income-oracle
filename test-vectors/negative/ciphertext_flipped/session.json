@@ -1,0 +1,16 @@
+{
+  "case_id": "ciphertext_flipped",
+  "persona_id": "salaried_steady",
+  "mode": "wei25519",
+  "aa_alg": "RS256",
+  "enclave_key": "keys/enclave.test-private.json",
+  "enclave_nonce_b64": "UNIw8vSHxpLwKH8lxUtUL4OALwEa8d5VsHnFfFAs0tE=",
+  "session_id": "358db3d8-401f-4c78-84be-b6e16b8d8912",
+  "txnid": "cd5522a3-f667-4faa-bf84-0c50e1e37833",
+  "now_unix": 1790416800,
+  "key_expiry_unix": 1790503200,
+  "fi_data_range": {
+    "from": "2025-09-26T00:00:00.000Z",
+    "to": "2026-09-26T00:00:00.000Z"
+  }
+}

@@ -143,6 +143,9 @@ more than 20,000 transactions.
 |---|---|---|
 | FIP signing key (test) | RSA-2048 JWK, `kid` UUIDv4 | private: `test-vectors/keys/fip.test-private.jwk.json` |
 | AA signing key (test) | RSA-2048 JWK, `kid` UUIDv4 | private: `test-vectors/keys/aa.test-private.jwk.json` |
+| FIU request key (test) | RSA-2048 JWK, `kid` UUIDv4; stands in for the enclave's per-boot key | private: `test-vectors/keys/fiu.test-private.jwk.json` |
+| Rogue key (test) | RSA-2048 JWK, `kid` UUIDv4; never pinned (builds the `unknown_kid` case) | private: `test-vectors/keys/rogue.test-private.jwk.json` |
+| Public halves (test) | RSA public JWK (`kty`,`n`,`e`,`kid`) of each key above | `test-vectors/keys/<name>.public.jwk.json` |
 | Pinned public keys | RSA public JWK (`kty`,`n`,`e`,`kid`) | `enclave/pinned/*.jwk.json`, compiled in with `include_bytes!` |
 | FIU request key | RSA-2048, generated in the enclave at boot | public JWK exposed by `GET /v1/info` |
 | Enclave attester key | secp256k1, provided by Oyster at `/app/ecdsa.sec` | eth address exposed by `GET /v1/info` |
@@ -551,20 +554,34 @@ string and verifies; any difference → reject.
 
 ```
 test-vectors/
-  keys/                     *.test-private.* — TEST ONLY
+  keys/                     *.test-private.* — TEST ONLY (+ *.public.jwk.json)
   personas/<persona_id>.json
-  policy/default.json       + default.hash (hex)
-  vectors/<persona_id>/
-    session.json            fixed enclave X25519 key ref, nonce, session_id, wallet, timestamps
+  policy/default.json       JCS bytes; + default.hash (hex sha256)
+  vectors/<case_id>/
+    session.json            see below
     fi_request.body         exact bytes
-    fi_request.jws
+    fi_request.jws          detached, FIU test key
     fetch_response.body     exact bytes
-    fetch_response.jws
-    consent.jws
-    expected.json           { tier, features, policy_hash, payload_hex, msg_hex }
+    fetch_response.jws      detached, AA key
+    consent.jws             compact, AA key
+    expected.json           { policy_hash, consent_hash, window_from, window_to }
+                            (+ tier, features, payload_hex, msg_hex once scoring exists)
   negative/<case>/          same files, one thing broken; expected.json = { error_code }
-  manifest.json             list of all cases + generator version
+  manifest.json             { generator_version, cases: [{ id, kind, dir, persona_id, expected }] }
 ```
+
+`session.json`: `{ case_id, persona_id, mode, aa_alg, enclave_key, enclave_nonce_b64,
+session_id, txnid, now_unix, key_expiry_unix, fi_data_range: { from, to } }`
+(+ `wallet` once the §9 intent and §8 message are generated). `enclave_key`
+points at `keys/enclave.test-private.json`; its Curve25519 scalar is used as-is by
+`SessionKeyPair::generate` (which clamps it). Positive case ids: the three personas
+(`wei25519`, RS256), `rs512_aa` (AA signs the fetch response and consent with RS512) and
+`x25519_mode` (§3 second mode), both on `salaried_steady`.
+
+**Generated, deterministic.** `pnpm --filter @tio/sandbox-bank gen:keys` makes the RSA keys
+once (it refuses to overwrite). `gen:vectors` is a pure function of the keys: nonces,
+scalars, ids and persona data come from `sha256("tio-vectors/v1/<case>/<label>")`, and the
+clock is fixed at `2026-09-26T10:00:00.000Z`. CI regenerates and fails on any diff.
 
 **Layering rule.** The enclave checks layers from the outside in: AA
 signature → consent → decrypt (AES-GCM tag) → FIP signature. A negative case
@@ -574,18 +591,18 @@ Without this, an outer check fires first, and the inner check is never tested.
 
 Required negative cases:
 
-| Case | How the generator builds it | Expected code |
+| Case (`negative/<id>`) | How the generator builds it | Expected code |
 |---|---|---|
-| Fetch response byte flipped | flip a byte of `fetch_response.body`, **don't** re-sign | `bad_aa_signature` |
-| Ciphertext byte flipped | flip a byte of `encryptedFI`, then **re-sign the fetch response with the AA key** | `decrypt_failed` |
-| FI plaintext changed | change the FI JSON, keep the old FIP JWS, **re-encrypt and re-sign** the fetch response | `bad_fip_signature` |
-| Consent tampered | flip a byte of the consent payload, don't re-sign | `bad_consent_signature` |
-| Consent not ACTIVE | validly signed consent with `status` ≠ `ACTIVE` | `consent_invalid` |
-| Unpinned key | fetch response validly signed by a key whose `kid` isn't pinned | `unknown_kid` |
-| `alg: none` / `alg: HS256` | header algorithm swapped | `bad_alg` |
-| Detached JWS without `crit` | `crit` removed from the header | `bad_header` |
+| `fetch_response_flipped` | flip a byte of `fetch_response.body`, **don't** re-sign | `bad_aa_signature` |
+| `ciphertext_flipped` | flip a byte of `encryptedFI`, then **re-sign the fetch response with the AA key** | `decrypt_failed` |
+| `fi_plaintext_changed` | change the FI JSON, keep the old FIP JWS, **re-encrypt and re-sign** the fetch response | `bad_fip_signature` |
+| `consent_tampered` | flip a byte of the consent payload, don't re-sign | `bad_consent_signature` |
+| `consent_not_active` | validly signed consent with `status` = `REVOKED` | `consent_invalid` |
+| `unpinned_aa_key` | fetch response validly signed by the rogue key (`kid` not pinned) | `unknown_kid` |
+| `alg_none` / `alg_hs256` | fetch-response header algorithm swapped | `bad_alg` |
+| `detached_no_crit` | `crit` removed from the fetch-response header, re-signed | `bad_header` |
 
-Plus one positive RS512 case.
+Plus the positive RS512 case `rs512_aa`.
 
 The generator (TypeScript) is independent of the enclave (Rust) on purpose:
 two implementations that agree byte-for-byte catch derivation bugs that one

@@ -57,14 +57,15 @@ padlock and read the statement.
 It is proven against the signature example published in the JWS standard
 itself (RFC 7515): our code reproduces it byte for byte.
 
-### The practice exams (planned, build step 1c)
+### The practice exams
 
-A separate generator, written in TypeScript, produces fake statements for
-three made-up borrowers, their sealed envelopes, and deliberately broken
-copies (one byte changed, wrong signer, missing seal). The box must accept
-the good ones and reject each broken one *for the right reason*. Two
-independent implementations have to agree, so they catch each other's
-mistakes.
+A separate generator, written in TypeScript (`sandbox-bank`), produces fake
+statements for three made-up borrowers, their sealed envelopes, and
+deliberately broken copies (one byte changed, wrong signer, missing seal).
+`tests/vectors.rs` feeds every one of them through the box: it must accept
+the good ones and reject each broken one *for the right reason*, with the
+exact error code. Two independent implementations have to agree, so they
+catch each other's mistakes.
 
 ### Why it is built this way
 
@@ -94,5 +95,12 @@ cargo test -p tio-core
 
 - Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §3 (key exchange), §4 (JWS)
 - Security model: [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
+- Where it fits: [system diagram](../README.md#how-it-fits-together);
+  the order it runs its checks, with error codes:
+  [check order](../test-vectors/README.md#check-order-and-error-codes)
 - Reference vectors: [`test-vectors/golden/rahasya/`](../test-vectors/golden/rahasya/),
   [`test-vectors/golden/rfc7515/`](../test-vectors/golden/rfc7515/)
+- Generated vectors: [`tests/vectors.rs`](tests/vectors.rs) replays every case in
+  [`test-vectors/manifest.json`](../test-vectors/manifest.json) (made by the
+  independent TypeScript generator in `sandbox-bank`). Positive cases must pass
+  every layer; each negative must fail with exactly its expected code.

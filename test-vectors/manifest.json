@@ -1,0 +1,146 @@
+{
+  "generator_version": 1,
+  "cases": [
+    {
+      "id": "salaried_steady",
+      "kind": "positive",
+      "dir": "vectors/salaried_steady",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "consent_hash": "fa007acefc7ed7fe390e57095b786eb7d762054fb92e973f3699e6db573b942d",
+        "window_from": 1758844800,
+        "window_to": 1790380800
+      }
+    },
+    {
+      "id": "trader_lumpy",
+      "kind": "positive",
+      "dir": "vectors/trader_lumpy",
+      "persona_id": "trader_lumpy",
+      "expected": {
+        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "consent_hash": "d2f8850e24ef8982af5cc02dcb3e2c0ffae3e6edbee7e936482daa4f6ccd24fa",
+        "window_from": 1758844800,
+        "window_to": 1790380800
+      }
+    },
+    {
+      "id": "stressed",
+      "kind": "positive",
+      "dir": "vectors/stressed",
+      "persona_id": "stressed",
+      "expected": {
+        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "consent_hash": "d64c0caf332794602a29e676f436c109cf94383768bb415f9e405a276cd6ab8f",
+        "window_from": 1758844800,
+        "window_to": 1790380800
+      }
+    },
+    {
+      "id": "rs512_aa",
+      "kind": "positive",
+      "dir": "vectors/rs512_aa",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "consent_hash": "df15691c46c3d5c50cd3c60b5eae93cafc29a38cc91007b71e2916068148822a",
+        "window_from": 1758844800,
+        "window_to": 1790380800
+      }
+    },
+    {
+      "id": "x25519_mode",
+      "kind": "positive",
+      "dir": "vectors/x25519_mode",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "consent_hash": "ae9819888e9d2a3458b19b69f5f6c8f5104f951eacf9a3734d527286c9ef19a2",
+        "window_from": 1758844800,
+        "window_to": 1790380800
+      }
+    },
+    {
+      "id": "fetch_response_flipped",
+      "kind": "negative",
+      "dir": "negative/fetch_response_flipped",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_aa_signature"
+      }
+    },
+    {
+      "id": "ciphertext_flipped",
+      "kind": "negative",
+      "dir": "negative/ciphertext_flipped",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "decrypt_failed"
+      }
+    },
+    {
+      "id": "fi_plaintext_changed",
+      "kind": "negative",
+      "dir": "negative/fi_plaintext_changed",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_fip_signature"
+      }
+    },
+    {
+      "id": "consent_tampered",
+      "kind": "negative",
+      "dir": "negative/consent_tampered",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_consent_signature"
+      }
+    },
+    {
+      "id": "consent_not_active",
+      "kind": "negative",
+      "dir": "negative/consent_not_active",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "consent_invalid"
+      }
+    },
+    {
+      "id": "unpinned_aa_key",
+      "kind": "negative",
+      "dir": "negative/unpinned_aa_key",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "unknown_kid"
+      }
+    },
+    {
+      "id": "alg_none",
+      "kind": "negative",
+      "dir": "negative/alg_none",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_alg"
+      }
+    },
+    {
+      "id": "alg_hs256",
+      "kind": "negative",
+      "dir": "negative/alg_hs256",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_alg"
+      }
+    },
+    {
+      "id": "detached_no_crit",
+      "kind": "negative",
+      "dir": "negative/detached_no_crit",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_header"
+      }
+    }
+  ]
+}

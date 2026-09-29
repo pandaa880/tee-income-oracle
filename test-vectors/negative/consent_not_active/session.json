@@ -1,0 +1,16 @@
+{
+  "case_id": "consent_not_active",
+  "persona_id": "salaried_steady",
+  "mode": "wei25519",
+  "aa_alg": "RS256",
+  "enclave_key": "keys/enclave.test-private.json",
+  "enclave_nonce_b64": "TmCCbbB4ElI+2ksF/euDqLm48itoAelRYwC7JXpNfjU=",
+  "session_id": "28a14920-1486-4554-bc44-80475ee34ffd",
+  "txnid": "91b80464-77e5-4820-b1eb-862f793d027d",
+  "now_unix": 1790416800,
+  "key_expiry_unix": 1790503200,
+  "fi_data_range": {
+    "from": "2025-09-26T00:00:00.000Z",
+    "to": "2026-09-26T00:00:00.000Z"
+  }
+}
