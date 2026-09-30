@@ -7,7 +7,7 @@
       "dir": "vectors/salaried_steady",
       "persona_id": "salaried_steady",
       "expected": {
-        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "policy_hash": "93794d5602241cd6c487a0a0dac57028b050c65af7865c8e7ce8d293b00aa6e4",
         "consent_hash": "fa007acefc7ed7fe390e57095b786eb7d762054fb92e973f3699e6db573b942d",
         "window_from": 1758844800,
         "window_to": 1790380800
@@ -19,7 +19,7 @@
       "dir": "vectors/trader_lumpy",
       "persona_id": "trader_lumpy",
       "expected": {
-        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "policy_hash": "93794d5602241cd6c487a0a0dac57028b050c65af7865c8e7ce8d293b00aa6e4",
         "consent_hash": "d2f8850e24ef8982af5cc02dcb3e2c0ffae3e6edbee7e936482daa4f6ccd24fa",
         "window_from": 1758844800,
         "window_to": 1790380800
@@ -31,7 +31,7 @@
       "dir": "vectors/stressed",
       "persona_id": "stressed",
       "expected": {
-        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "policy_hash": "93794d5602241cd6c487a0a0dac57028b050c65af7865c8e7ce8d293b00aa6e4",
         "consent_hash": "d64c0caf332794602a29e676f436c109cf94383768bb415f9e405a276cd6ab8f",
         "window_from": 1758844800,
         "window_to": 1790380800
@@ -43,7 +43,7 @@
       "dir": "vectors/rs512_aa",
       "persona_id": "salaried_steady",
       "expected": {
-        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "policy_hash": "93794d5602241cd6c487a0a0dac57028b050c65af7865c8e7ce8d293b00aa6e4",
         "consent_hash": "df15691c46c3d5c50cd3c60b5eae93cafc29a38cc91007b71e2916068148822a",
         "window_from": 1758844800,
         "window_to": 1790380800
@@ -55,7 +55,7 @@
       "dir": "vectors/x25519_mode",
       "persona_id": "salaried_steady",
       "expected": {
-        "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+        "policy_hash": "93794d5602241cd6c487a0a0dac57028b050c65af7865c8e7ce8d293b00aa6e4",
         "consent_hash": "ae9819888e9d2a3458b19b69f5f6c8f5104f951eacf9a3734d527286c9ef19a2",
         "window_from": 1758844800,
         "window_to": 1790380800

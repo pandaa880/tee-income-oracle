@@ -21,22 +21,24 @@ describe('canonicalize', () => {
 
   it('reproduces the FORMATS §6 policy example canonical bytes', () => {
     const policy = {
-      v: 1,
+      v: 2,
       recurrence: { amount_tol_bps: 1000, day_tol: 5, min_occurrences: 3 },
+      recent_months: 3,
+      window: { min_days: 180, max_age_days: 7 },
       tiers: [
         { tier: 'A', foir_max_bps: 4000, cv_max_bps: 1500, bounces_max: 0 },
-        { tier: 'B', foir_max_bps: 5500, cv_max_bps: 3000, bounces_max: 1 },
-        { tier: 'C', foir_max_bps: 7000, cv_max_bps: 3000, bounces_max: 3 },
+        { tier: 'B', foir_max_bps: 5500, cv_max_bps: 5000, bounces_max: 1 },
+        { tier: 'C', foir_max_bps: 7000, cv_max_bps: 6000, bounces_max: 3 },
       ],
       reject_if: { od_days_min: 30 },
     };
     expect(canonicalize(policy)).toBe(
-      '{"recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":3},' +
+      '{"recent_months":3,"recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":3},' +
         '"reject_if":{"od_days_min":30},' +
         '"tiers":[{"bounces_max":0,"cv_max_bps":1500,"foir_max_bps":4000,"tier":"A"},' +
-        '{"bounces_max":1,"cv_max_bps":3000,"foir_max_bps":5500,"tier":"B"},' +
-        '{"bounces_max":3,"cv_max_bps":3000,"foir_max_bps":7000,"tier":"C"}],' +
-        '"v":1}',
+        '{"bounces_max":1,"cv_max_bps":5000,"foir_max_bps":5500,"tier":"B"},' +
+        '{"bounces_max":3,"cv_max_bps":6000,"foir_max_bps":7000,"tier":"C"}],' +
+        '"v":2,"window":{"max_age_days":7,"min_days":180}}',
     );
   });
 

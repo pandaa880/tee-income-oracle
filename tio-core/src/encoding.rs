@@ -55,5 +55,15 @@ fn strip_armour(compact: &str) -> Option<&str> {
     rest.get(..footer)
 }
 
+/// Deserializes `bytes` only if the JSON value is an object. serde's derived
+/// struct visitor also accepts an array (members by position), which no other
+/// implementation does: an input only we accept is a parser differential.
+pub(crate) fn from_json_object<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Option<T> {
+    if bytes.trim_ascii_start().first() != Some(&b'{') {
+        return None;
+    }
+    serde_json::from_slice(bytes).ok()
+}
+
 #[cfg(test)]
 mod tests;
