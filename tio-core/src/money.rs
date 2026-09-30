@@ -7,11 +7,13 @@
 //! goes through `f64`: a float can't hold most rupee values exactly, and two
 //! scorers summing floats in a different order can disagree on a tier.
 
+use zeroize::Zeroize;
+
 use crate::ErrorCode;
 
 /// Money in integer paise (₹1 = 100 paise). The only money type in
 /// `tio-core`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Zeroize)]
 pub struct Paise(i64);
 
 impl Paise {
