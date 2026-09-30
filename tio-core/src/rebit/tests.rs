@@ -318,11 +318,85 @@ fn never_reads_holder_when_it_is_garbage() {
 }
 
 #[test]
-fn never_reads_profile_or_summary_even_when_they_are_not_objects() {
+fn never_reads_profile_even_when_it_is_not_an_object() {
     let mut fi = valid_fi();
     root_mut(&mut fi).insert("Profile".to_owned(), json!("garbage"));
-    root_mut(&mut fi).insert("Summary".to_owned(), json!(42));
     assert_eq!(parse(&fi).unwrap(), parse(&valid_fi()).unwrap());
+}
+
+// --- Currency (Summary.currency, optional in ReBIT; MVP scores INR only) ---
+
+#[test]
+fn accepts_inr_in_any_case_and_a_missing_summary_or_currency() {
+    let mut with_inr = valid_fi();
+    root_mut(&mut with_inr).insert("Summary".to_owned(), json!({ "currency": "inr" }));
+    let mut without_currency = valid_fi();
+    root_mut(&mut without_currency).insert("Summary".to_owned(), json!({ "type": "SAVINGS" }));
+    let baseline = parse(&valid_fi()).unwrap();
+    assert_eq!(parse(&with_inr).unwrap(), baseline);
+    assert_eq!(parse(&without_currency).unwrap(), baseline);
+}
+
+#[test]
+fn rejects_a_non_inr_currency() {
+    for currency in ["USD", "usd", "EUR", "", "INR ", "₹"] {
+        let mut fi = valid_fi();
+        root_mut(&mut fi).insert("Summary".to_owned(), json!({ "currency": currency }));
+        assert_eq!(
+            parse(&fi),
+            Err(FiError::UnsupportedCurrency),
+            "currency {currency:?}"
+        );
+    }
+}
+
+#[test]
+fn rejects_a_summary_or_currency_of_the_wrong_shape() {
+    for summary in [
+        json!(42),
+        json!("INR"),
+        json!({ "currency": 356 }),
+        json!({ "currency": null }),
+    ] {
+        let mut fi = valid_fi();
+        root_mut(&mut fi).insert("Summary".to_owned(), summary.clone());
+        assert_eq!(parse(&fi), Err(FiError::BadShape), "Summary {summary}");
+    }
+}
+
+#[test]
+fn rejects_a_repeated_currency_member() {
+    let text = br#"{"type":"DEPOSIT","Summary":{"currency":"INR","Currency":"USD"},
+        "Transactions":{"startDate":"2026-03-26","endDate":"2026-09-26"}}"#;
+    assert_eq!(parse_deposit_fi(text), Err(FiError::DuplicateKey));
+}
+
+#[test]
+fn currency_is_checked_before_transactions() {
+    let mut fi = valid_fi();
+    root_mut(&mut fi).insert("Summary".to_owned(), json!({ "currency": "USD" }));
+    root_mut(&mut fi).remove("Transactions");
+    assert_eq!(parse(&fi), Err(FiError::UnsupportedCurrency));
+}
+
+#[test]
+fn deposit_type_is_checked_before_currency() {
+    let mut fi = valid_fi();
+    root_mut(&mut fi).insert("type".to_owned(), json!("LOAN"));
+    root_mut(&mut fi).insert("Summary".to_owned(), json!({ "currency": "USD" }));
+    assert_eq!(parse(&fi), Err(FiError::NotDeposit));
+}
+
+#[test]
+fn currency_is_found_under_any_key_case() {
+    let mut fi = valid_fi();
+    root_mut(&mut fi).insert("SUMMARY".to_owned(), json!({ "Currency": "USD" }));
+    assert_eq!(parse(&fi), Err(FiError::UnsupportedCurrency));
+}
+
+#[test]
+fn unsupported_currency_has_its_own_code() {
+    assert_eq!(FiError::UnsupportedCurrency.code(), "unsupported_currency");
 }
 
 #[test]
@@ -492,8 +566,14 @@ fn rejects_duplicate_key_even_when_values_are_identical() {
 
 #[test]
 fn rejects_duplicate_key_spelled_with_a_json_escape() {
-    // "type" decodes to "type": names are compared after decoding.
-    let text = br#"{"type":"DEPOSIT","type":"DEPOSIT"}"#;
+    // The second name is the JSON escape for `t` followed by "ype": it
+    // decodes to "type", and names are compared after decoding.
+    let text = br#"{"type":"DEPOSIT","\u0074ype":"DEPOSIT"}"#;
+    // Guard against a tool decoding the escape in this source file.
+    assert!(
+        text.windows(6).any(|w| w == b"\\u0074"),
+        "fixture must contain a literal JSON escape"
+    );
     assert_eq!(parse_deposit_fi(text), Err(FiError::DuplicateKey));
 }
 

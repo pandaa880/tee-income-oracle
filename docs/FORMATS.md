@@ -130,10 +130,12 @@ correctness, not security. Accept:
 - `Transaction` as object **or** array, or absent (no transactions);
 - enum values in any ASCII case: FI `type` (`DEPOSIT` / `deposit`),
   transaction `type`, `mode`;
-- `startDate` / `endDate` as `xs:date` or as a full timestamp, whose written
-  date part is used;
-- members the scorer doesn't use, in any shape. `Profile` (holder PII),
-  `Summary`, ids, `reference` and `valueDate` are never read;
+- `startDate` / `endDate` as `xs:date` (optionally with a zone: `Z`,
+  `±HH:MM`, `±HHMM`) or as a full timestamp; the written date is used and a
+  zone never shifts it;
+- members the scorer doesn't use, in any shape. `Profile` (holder PII), ids,
+  `reference` and `valueDate` are never read. `Summary` is read only for
+  `currency`: absent `Summary` or `currency` means INR;
 - money as JSON number **or** string. Parse from the raw JSON text into
   integer **paise** (`i64`); never through `f64`, never rounded. ReBIT types
   `amount` as `xs:float` and balances as `xs:string` with no pattern, so any
@@ -160,12 +162,18 @@ at a time**; the first failing check wins:
 3. the root: not an object, or two members whose names differ only by
    case; then the `Account` wrapper, likewise;
 4. FI `type`: missing, not a string, or not DEPOSIT;
-5. `Transactions`: missing, not an object, or a repeated member; then
+5. `Summary` present but not an object or with a repeated member, or
+   `currency` not a string (shape errors); `currency` present and not `INR`
+   (any ASCII case) → `unsupported_currency`. Amounts become paise, so a
+   foreign-currency DEPOSIT account (EEFC or RFC current/savings) can't be
+   scored. An absent `currency` is read as INR: an accepted MVP risk for a
+   foreign-currency statement that omits it;
+6. `Transactions`: missing, not an object, or a repeated member; then
    `startDate`, then `endDate` (missing, not a string, invalid), then
    `startDate` after `endDate`;
-6. `Transaction`: not an object or array (`null` included); more than
+7. `Transaction`: not an object or array (`null` included); more than
    20,000 items (counted before any is parsed);
-7. each transaction in input order: not an object or a repeated member;
+8. each transaction in input order: not an object or a repeated member;
    then `type` (CREDIT|DEBIT), `mode` (CASH|ATM|CARD|UPI|FT|OTHERS),
    `amount`, `currentBalance`, `transactionTimestamp`, `narration`, each
    missing (except `narration`), an unknown enum value, a bad money value, or
@@ -590,7 +598,8 @@ string and verifies; any difference → reject.
   evaluate pipeline reports a `bad_signature` as the code of the layer that
   failed (`bad_aa_signature`, `bad_fip_signature`, `bad_consent_signature`).
 - FI data codes (`tio-core`): `unsupported_fi_format` (the decrypted FI is
-  XML, not JSON), `bad_fi_data` (any other §1 parse-rule violation: shape,
+  XML, not JSON), `unsupported_currency` (`Summary.currency` is not INR),
+  `bad_fi_data` (any other §1 parse-rule violation: shape,
   repeated member, not DEPOSIT, missing or invalid member, bad money or
   timestamp, too many transactions). The order is §1's reject list.
 

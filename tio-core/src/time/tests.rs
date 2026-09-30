@@ -190,9 +190,35 @@ fn parse_date_rejects_invalid_dates_and_invalid_datetime_tails() {
         "2026-02-30T12:00:00Z",
         "\u{0662}\u{0660}\u{0662}\u{0666}-03-26",
         "",
+        // Zone suffixes on a plain xs:date must themselves be valid.
+        "2026-03-26z",
+        "2026-03-26ZZ",
+        "2026-03-26+5:30",
+        "2026-03-26+24:00",
+        "2026-03-26+05:60",
+        "2026-03-26+05",
+        "2026-03-26 +05:30",
+        "2026-02-30Z",
     ];
     for input in cases {
         assert_eq!(parse_date(input), Err(TimeError), "input {input:?}");
+    }
+}
+
+#[test]
+fn parse_date_accepts_an_xs_date_zone_and_keeps_the_written_date() {
+    // xs:date allows an optional zone (XML Schema 1.1 Part 2, 3.3.9). The
+    // written date is used, as for datetimes: 2026-03-26 is day 20_538.
+    let cases = [
+        "2026-03-26Z",
+        "2026-03-26+05:30",
+        "2026-03-26-08:00",
+        "2026-03-26+0530",
+        "2026-03-26+00:00",
+        "2026-03-26-00:00",
+    ];
+    for input in cases {
+        assert_eq!(parse_date(input), Ok(20_538), "input {input:?}");
     }
 }
 

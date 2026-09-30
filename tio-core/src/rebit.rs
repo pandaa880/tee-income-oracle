@@ -4,8 +4,9 @@
 //! The bytes arrive decrypted and FIP-signature-verified, so leniency here
 //! affects correctness, not security: shape is accepted leniently (wrapper,
 //! key case, object-or-array), meaning is checked strictly (enums, money,
-//! timestamps). Only what scoring uses is read. `Profile`, `Summary` and ids
-//! are never parsed, and narration is reduced to two flags, so after parsing
+//! timestamps). Only what scoring uses is read. `Profile` and ids are never
+//! parsed, `Summary` is read only for `currency` (INR required), and
+//! narration is reduced to two flags, so after parsing
 //! the only bank data left in memory is integers and booleans.
 //!
 //! Wiping rule: free text that can hold personal data (narration) is decoded
@@ -85,6 +86,11 @@ pub enum FiError {
     /// The FI `type` is not DEPOSIT.
     #[error("FI data is not a DEPOSIT account")]
     NotDeposit,
+    /// `Summary.currency` is present and is not INR. Paise are INR, so a
+    /// foreign-currency DEPOSIT account (an EEFC or RFC current/savings
+    /// account) can't be scored.
+    #[error("FI data is not in INR")]
+    UnsupportedCurrency,
     /// A money value failed [`crate::money::parse_paise`].
     #[error("FI data has a bad money value: {0}")]
     BadMoney(MoneyError),
@@ -100,6 +106,7 @@ impl ErrorCode for FiError {
     fn code(&self) -> &'static str {
         match self {
             Self::UnsupportedFormat => "unsupported_fi_format",
+            Self::UnsupportedCurrency => "unsupported_currency",
             _ => "bad_fi_data",
         }
     }
@@ -109,8 +116,9 @@ impl ErrorCode for FiError {
 ///
 /// # Errors
 /// [`FiError`]. Checks run top-down, one object at a time
-/// (`docs/FORMATS.md` §1): format, root, wrapper, `type`, `Transactions`,
-/// its dates, the transaction count, then each transaction in input order.
+/// (`docs/FORMATS.md` §1): format, root, wrapper, `type`, `Summary.currency`,
+/// `Transactions`, its dates, the transaction count, then each transaction in
+/// input order.
 pub fn parse_deposit_fi(fi_bytes: &[u8]) -> Result<DepositFi, FiError> {
     // XML exports often start with a UTF-8 byte-order mark; skip one.
     let fi_bytes = fi_bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(fi_bytes);
@@ -122,6 +130,7 @@ pub fn parse_deposit_fi(fi_bytes: &[u8]) -> Result<DepositFi, FiError> {
     if !string(account.require("type")?)?.eq_ignore_ascii_case("DEPOSIT") {
         return Err(FiError::NotDeposit);
     }
+    check_currency(&account)?;
     let statement = CiObject::parse(account.require("Transactions")?)?;
     let start_day = date_member(&statement, "startDate")?;
     let end_day = date_member(&statement, "endDate")?;
@@ -141,6 +150,25 @@ pub fn parse_deposit_fi(fi_bytes: &[u8]) -> Result<DepositFi, FiError> {
         fi.transactions.push(parse_txn(item)?);
     }
     Ok(fi)
+}
+
+/// Rejects a `Summary.currency` other than INR (ASCII case ignored). Amounts
+/// become paise, so accepting a foreign currency would silently score $100
+/// as ₹100. Both `Summary` and `currency` are optional in ReBIT; absent
+/// means INR. Accepted MVP risk: a foreign-currency (EEFC/RFC) statement
+/// that omits `currency` would be read as INR.
+fn check_currency(account: &CiObject<'_>) -> Result<(), FiError> {
+    let Some(summary) = account.get("Summary") else {
+        return Ok(());
+    };
+    let Some(currency) = CiObject::parse(summary)?.get("currency") else {
+        return Ok(());
+    };
+    if string(currency)?.eq_ignore_ascii_case("INR") {
+        Ok(())
+    } else {
+        Err(FiError::UnsupportedCurrency)
+    }
 }
 
 /// Descends into an optional `Account` wrapper: a root with `account` and no

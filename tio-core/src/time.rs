@@ -24,20 +24,37 @@ pub fn parse_rebit_timestamp(s: &str) -> Result<i64, TimeError> {
     Ok(days * SECS_PER_DAY + secs_of_day - offset_secs)
 }
 
-/// Parses a date, `YYYY-MM-DD`, or a full timestamp whose **written** date
-/// part is used (Finvu sends datetimes where the XSD says `xs:date`), into
-/// days since 1970-01-01.
+/// Parses a date into days since 1970-01-01: an `xs:date`, `YYYY-MM-DD` with
+/// an optional zone (`Z`, `±HH:MM`, `±HHMM`), or a full timestamp (Finvu sends
+/// datetimes where the XSD says `xs:date`). The **written** date is used; a
+/// zone is validated but never shifts the day.
 ///
 /// # Errors
 /// [`TimeError`] for any other text or a day that doesn't exist.
 pub fn parse_date(s: &str) -> Result<i64, TimeError> {
     match s.split_once('T') {
-        None => parse_ymd(s),
+        None => {
+            let (date, zone) = s.split_at_checked(10).ok_or(TimeError)?;
+            check_date_zone(zone)?;
+            parse_ymd(date)
+        }
         Some((date, _)) => {
             parse_rebit_timestamp(s)?;
             parse_ymd(date)
         }
     }
+}
+
+/// The optional zone after an `xs:date`: nothing, `Z`, or a valid offset.
+fn check_date_zone(zone: &str) -> Result<(), TimeError> {
+    if zone.is_empty() || zone == "Z" {
+        return Ok(());
+    }
+    let digits = zone
+        .strip_prefix('+')
+        .or_else(|| zone.strip_prefix('-'))
+        .ok_or(TimeError)?;
+    parse_offset(digits).map(|_| ())
 }
 
 /// `YYYY-MM-DD` with a day that exists → days since 1970-01-01.
