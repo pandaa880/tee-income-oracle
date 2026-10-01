@@ -66,7 +66,7 @@ never seen by the enclave directly.
 Four personas, fixed, in this order: `salaried_steady` → A, `trader_lumpy` → B,
 `declining` → C (steady salary, then lower gig income in the recent months and one
 EMI bounce: full window B, recent window C), `stressed` → `"REJECT"` (weeks of
-overdraft, EMI bounces with no measurable loan). 6–12 months of transactions each.
+overdraft and more bounces than any tier allows; its loan is measured). 6–12 months of transactions each.
 `expected_tier` is `"A"`, `"B"`, `"C"` or `"REJECT"`; the generator fails if its
 independent scorer (§6.1) disagrees.
 
@@ -480,7 +480,7 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 ```json
 {
   "v": 2,
-  "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 3 },
+  "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 2 },
   "recent_months": 3,
   "window": { "min_days": 180, "max_age_days": 7 },
   "tiers": [
@@ -528,13 +528,14 @@ UTC. Transaction order = (`transactionTimestamp`, input index).
 
 0. **Bounds.** A transaction whose day is outside `[startDate, endDate]` → `window_mismatch`.
 1. **Classify.** DEBIT + bounce token → *bounce* (an *EMI bounce* if it also has an EMI token);
-   DEBIT + EMI token → *EMI candidate*; CREDIT without a bounce token → *income*; anything else is
-   ignored (a credit with a bounce token, e.g. a reversal, is not income). Tokens: §1 parse rules.
+   DEBIT + EMI token with an amount > 0 → *EMI candidate*; CREDIT without a bounce token → *income*;
+   anything else is ignored (a credit with a bounce token, e.g. a reversal, is not income; a ₹0 EMI
+   line is not a payment). Tokens: §1 parse rules.
 2. **Loans.** Walk EMI candidates in order. Each unassigned candidate `c` anchors a cluster; a later
    unassigned candidate `d` joins iff no member is in `d`'s month yet, `|d − c| × 10000 ≤ c × amount_tol_bps`
    and `|dom(d) − dom(c)| ≤ day_tol`. A cluster with ≥ `min_occurrences` members (= months) is a **loan**:
-   `scheduled` = median member amount, `first_day` = day of its first payment. Two equal EMIs in the same
-   months are two loans.
+   `scheduled` = median member amount, `first_day` = day of its first payment, `due_dom` = that
+   payment's day of month. Two equal EMIs in the same months are two loans.
 3. **Complete months** = calendar months wholly inside `[startDate, endDate]`. *Full* set = all of them;
    *recent* set = the last `min(recent_months, count)`.
 4. **Monthly sums** per complete month: income = sum of income amounts; obligation = sum of `scheduled`
@@ -549,10 +550,13 @@ UTC. Transaction order = (`transactionTimestamp`, input index).
      `cv_bps = floor(isqrt(10⁸ · D) / Σx)`, 0 if `Σx = 0`. Scaling before the root keeps it the exact floor
      of `10⁴ · √D / Σx` (`[1,1,2]` → 3535, not 2500).
    - `loans` = loans with `first_day ≤` S's last day; `bounces` = bounces on S's days.
-   - `unmatched_emi_bounces` = over each month `m` with EMI bounces on S's days:
-     `max(0, emi_bounces(m) − missed(m))`, where `missed(m)` = loans started by the end of `m` with no
-     payment in `m`. A bounce counts as explained only if a known loan actually missed that month, so a
-     small loan paid on time can't hide a bounced unknown one.
+   - `unmatched_emi_bounces` = EMI bounces on S's days that no known loan explains. Bounces are taken in
+     order; a bounce is explained by the first loan, not yet used for another bounce that month, that
+     (a) started by the end of the bounce's month, (b) has no payment in that month, and (c) is due
+     within `day_tol` days of the bounce: `|due_dom − dom(bounce)| ≤ day_tol`. A NACH bounce posts on
+     the instalment's due day, so the due day is the evidence that ties a bounce to a loan (the bounce
+     line's amount is usually the return charge, not the EMI). A small loan paid on time, or a loan
+     due on another day, can't hide a bounced unknown one.
    - `od_days` = days of S whose end-of-day balance (the last transaction on or before that day) is
      negative; days before the first transaction don't count.
    - S's days: full = `[startDate, endDate]`, even with no complete months; recent = first to last
@@ -569,6 +573,9 @@ UTC. Transaction order = (`transactionTimestamp`, input index).
 - An EMI bounce before a loan's first payment in the statement (e.g. the window's first instalment
   bounced) is unmatched → Reject.
 - A bank that posts two bounce lines per miss (e.g. return charge + GST, both with EMI words) double-counts.
+- A bounce posted more than `day_tol` days after the due day (late re-presentation) is unmatched → Reject.
+- A loan with fewer than `min_occurrences` payments in the statement (default 2: a single payment) is
+  not seen.
 - Income = every non-bounce credit, so self-transfers, loan proceeds and refunds count. FIP signatures prove
   where the data came from, not that a credit is income.
 - `day_tol` has no month-end wrap (the 31st and the 1st are 30 days apart).

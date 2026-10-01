@@ -971,6 +971,50 @@ fn a_bounce_in_a_month_a_known_loan_missed_is_explained() {
     assert_eq!(s.outcome, Outcome::Tier(Tier::B));
 }
 
+/// Loan due on the 5th, paid Jan-Mar; one EMI bounce in April on `day`.
+fn april_bounce_on(day: &str) -> Scores {
+    let mut all = incomes(&["2026-01", "2026-02", "2026-03", "2026-04"]);
+    all.extend(emis(&Q1, "05", EMI));
+    all.push(emi_bounce(&format!("2026-04-{day}"), EMI));
+    scores("2026-01-01", "2026-04-30", all)
+}
+
+#[test]
+fn a_bounce_far_from_the_missed_loans_due_day_is_unmatched() {
+    // Review of #17: the loan missed April, but a bounce on the 20th is not
+    // its instalment (due on the 5th), so it can't explain it.
+    let s = april_bounce_on("20");
+    assert_eq!(s.full.unmatched_emi_bounces, 1);
+    assert_eq!(s.outcome, Outcome::Reject);
+}
+
+#[test]
+fn a_bounce_exactly_day_tol_from_the_due_day_is_explained() {
+    assert_eq!(april_bounce_on("10").full.unmatched_emi_bounces, 0);
+    assert_eq!(april_bounce_on("11").full.unmatched_emi_bounces, 1);
+}
+
+#[test]
+fn a_bounce_on_the_due_day_of_a_loan_paid_that_month_is_unmatched() {
+    // Right day, but the loan paid March: only the missed-month part fails.
+    let mut extra = emis(&Q1, "05", EMI);
+    extra.push(emi_bounce("2026-03-05", EMI));
+    assert_eq!(q1(extra).full.unmatched_emi_bounces, 1);
+}
+
+#[test]
+fn zero_amount_emi_debits_are_not_a_loan() {
+    // Review of #17: three ₹0 EMI lines formed a loan that added no
+    // obligation yet explained the bounce.
+    let mut all = incomes(&["2026-01", "2026-02", "2026-03", "2026-04"]);
+    all.extend(emis(&Q1, "05", 0));
+    all.push(emi_bounce("2026-04-05", EMI));
+    let s = scores("2026-01-01", "2026-04-30", all);
+    assert_eq!(s.full.loans, 0);
+    assert_eq!(s.full.unmatched_emi_bounces, 1);
+    assert_eq!(s.outcome, Outcome::Reject);
+}
+
 #[test]
 fn a_bounce_in_a_month_every_known_loan_paid_is_unmatched() {
     let mut extra = emis(&Q1, "05", EMI);

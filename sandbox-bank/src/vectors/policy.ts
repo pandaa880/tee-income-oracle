@@ -7,7 +7,7 @@ import { canonicalize, type JsonValue } from '../crypto/jcs.ts';
 
 export const DEFAULT_POLICY = {
   v: 2,
-  recurrence: { amount_tol_bps: 1000, day_tol: 5, min_occurrences: 3 },
+  recurrence: { amount_tol_bps: 1000, day_tol: 5, min_occurrences: 2 },
   recent_months: 3,
   window: { min_days: 180, max_age_days: 7 },
   tiers: [

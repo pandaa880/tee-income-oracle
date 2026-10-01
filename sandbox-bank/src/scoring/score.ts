@@ -77,6 +77,8 @@ interface Entry {
 interface Loan {
   readonly scheduled: bigint;
   readonly firstDay: number;
+  /** Day of month of the first payment: the due day a bounce must match. */
+  readonly dueDom: number;
   readonly paidMonths: ReadonlySet<number>;
 }
 
@@ -95,8 +97,10 @@ export function score(fi: MiniFi, policy: PolicyV2): Scores {
   const loans = findLoans(entries, policy.recurrence);
   const months = completeMonths(fi.startDay, fi.endDay);
   const recentMonths = months.slice(Math.max(0, months.length - policy.recent_months));
-  const full = features(entries, loans, months, { first: fi.startDay, last: fi.endDay });
-  const recent = features(entries, loans, recentMonths, spanOf(recentMonths));
+  const dayTol = policy.recurrence.day_tol;
+  const statement = { first: fi.startDay, last: fi.endDay };
+  const full = features(entries, loans, months, statement, dayTol);
+  const recent = features(entries, loans, recentMonths, spanOf(recentMonths), dayTol);
   const worse = Math.max(
     OUTCOME_ORDER.indexOf(outcomeOf(full, policy)),
     OUTCOME_ORDER.indexOf(outcomeOf(recent, policy)),
@@ -126,7 +130,8 @@ function kindOf(t: MiniTxn): Kind {
     return t.emiWord ? 'emi_bounce' : 'bounce';
   }
   if (!t.credit && t.emiWord) {
-    return 'candidate';
+    // A zero-amount debit is never a loan payment.
+    return t.amount > 0n ? 'candidate' : 'ignored';
   }
   return t.credit && !t.bounce ? 'income' : 'ignored';
 }
@@ -156,6 +161,7 @@ function findLoans(entries: readonly Entry[], rec: PolicyV2['recurrence']): Loan
       loans.push({
         scheduled: median(members.map((m) => m.txn.amount)),
         firstDay: anchor.day,
+        dueDom: anchor.dom,
         paidMonths: new Set(members.map((m) => m.month)),
       });
     }
@@ -208,6 +214,7 @@ function features(
   loans: readonly Loan[],
   months: readonly Month[],
   span: Span | undefined,
+  dayTol: number,
 ): Features {
   const incomes = months.map((m) =>
     checkedSum(
@@ -237,6 +244,7 @@ function features(
     unmatched_emi_bounces: unmatchedEmiBounces(
       entries.filter((e) => inSpan(e) && kindOf(e.txn) === 'emi_bounce'),
       loans,
+      dayTol,
     ),
     od_days: span === undefined ? 0 : odDays(entries, span),
   };
@@ -253,17 +261,35 @@ function checkedSum<T>(items: readonly T[], value: (item: T) => bigint): bigint 
   return sum;
 }
 
-/** EMI bounces per month beyond the known loans that missed that month. */
-function unmatchedEmiBounces(emiBounces: readonly Entry[], loans: readonly Loan[]): number {
-  const perMonth = new Map<number, number>();
-  for (const e of emiBounces) {
-    perMonth.set(e.month, (perMonth.get(e.month) ?? 0) + 1);
-  }
+/**
+ * EMI bounces no known loan explains. A loan explains a bounce if it started
+ * by the end of the bounce's month, has no payment that month, and is due
+ * within `dayTol` days of the bounce's day of month; each loan explains at
+ * most one bounce per month (first unclaimed loan, bounces in time order).
+ */
+function unmatchedEmiBounces(
+  emiBounces: readonly Entry[],
+  loans: readonly Loan[],
+  dayTol: number,
+): number {
+  const claimed = new Map<number, Set<Loan>>(); // month key → loans already used
   let unmatched = 0;
-  for (const [key, count] of perMonth) {
-    const last = monthSpan(key).last;
-    const missed = loans.filter((l) => l.firstDay <= last && !l.paidMonths.has(key)).length;
-    unmatched += Math.max(0, count - missed);
+  for (const b of emiBounces) {
+    const used = claimed.get(b.month) ?? new Set<Loan>();
+    claimed.set(b.month, used);
+    const monthEnd = monthSpan(b.month).last;
+    const loan = loans.find(
+      (l) =>
+        !used.has(l) &&
+        l.firstDay <= monthEnd &&
+        !l.paidMonths.has(b.month) &&
+        Math.abs(l.dueDom - b.dom) <= dayTol,
+    );
+    if (loan === undefined) {
+      unmatched += 1;
+    } else {
+      used.add(loan);
+    }
   }
   return unmatched;
 }

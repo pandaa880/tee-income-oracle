@@ -151,6 +151,8 @@ struct Loan {
     scheduled: Paise,
     /// India day of the first payment.
     first_day: i64,
+    /// Day of month of the first payment: the due day a bounce must match.
+    due_dom: i64,
     /// Month keys with a payment.
     paid_months: Vec<i64>,
 }
@@ -175,8 +177,15 @@ pub fn score(fi: &DepositFi, policy: &Policy) -> Result<Scores, ScoreError> {
         .len()
         .min(usize::try_from(rules.recent_months).unwrap_or(usize::MAX));
     let recent_months = months.get(months.len() - recent_len..).unwrap_or(&[]);
-    let full = features(&entries, &loans, &months, Some(statement))?;
-    let recent = features(&entries, &loans, recent_months, span_of(recent_months))?;
+    let day_tol = rules.recurrence.day_tol;
+    let full = features(&entries, &loans, &months, Some(statement), day_tol)?;
+    let recent = features(
+        &entries,
+        &loans,
+        recent_months,
+        span_of(recent_months),
+        day_tol,
+    )?;
     let outcome = outcome(&full, rules).max(outcome(&recent, rules));
     Ok(Scores {
         outcome,
@@ -225,7 +234,9 @@ fn india_day(at: i64) -> i64 {
 fn classify(txn: &Txn) -> Class {
     match (txn.credit, txn.bounce, txn.emi_word) {
         (false, true, emi) => Class::Bounce { emi },
-        (false, false, true) => Class::Candidate,
+        // A zero-amount debit is never a loan payment: it would make a loan
+        // that adds no obligation yet explains bounces.
+        (false, false, true) if txn.amount > Paise::ZERO => Class::Candidate,
         (true, false, _) => Class::Income,
         _ => Class::Ignored,
     }
@@ -300,6 +311,7 @@ fn loan_from(members: &[Entry]) -> Loan {
     Loan {
         scheduled: Paise::new(median(&mut amounts)),
         first_day: members.first().map_or(0, |m| m.day),
+        due_dom: members.first().map_or(0, |m| m.dom),
         paid_months: members.iter().map(|m| m.month).collect(),
     }
 }
@@ -348,6 +360,7 @@ fn features(
     loans: &[Loan],
     months: &[Month],
     span: Option<DaySpan>,
+    day_tol: u32,
 ) -> Result<Features, ScoreError> {
     let (mut incomes, mut obligations) = monthly_sums(entries, loans, months)?;
     let cv = cv_bps(&incomes)?;
@@ -370,7 +383,7 @@ fn features(
         cv_bps: cv,
         loans: count(active_loans)?,
         bounces: count(bounces)?,
-        unmatched_emi_bounces: unmatched_emi_bounces(entries, loans, span)?,
+        unmatched_emi_bounces: unmatched_emi_bounces(entries, loans, span, day_tol)?,
         od_days: od_days(entries, span)?,
     })
 }
@@ -415,40 +428,59 @@ fn obligation_in(loans: &[Loan], month: &Month) -> Result<i64, ScoreError> {
         })
 }
 
-/// EMI bounces on `span`'s days that no known loan's missed month explains.
-/// Entries are in time order, so each month's bounces form one run: count
-/// runs in place instead of building a map of bank data.
+/// EMI bounces on `span`'s days that no known loan explains. A bounce is
+/// explained by a loan that missed the bounce's month and is due within
+/// `day_tol` days of the bounce's day of month; each loan explains at most
+/// one bounce a month. Entries are in time order, so a month's bounces are
+/// consecutive and the claims reset when the month changes.
 fn unmatched_emi_bounces(
     entries: &[Entry],
     loans: &[Loan],
     span: Option<DaySpan>,
+    day_tol: u32,
 ) -> Result<u32, ScoreError> {
     let Some(span) = span else {
         return Ok(0);
     };
-    let mut emi_bounces = entries
+    let emi_bounces = entries
         .iter()
-        .filter(|e| span.contains(e.day) && classify(&e.txn) == Class::Bounce { emi: true })
-        .peekable();
+        .filter(|e| span.contains(e.day) && classify(&e.txn) == Class::Bounce { emi: true });
+    let mut claimed = Zeroizing::new(vec![false; loans.len()]);
+    let mut month = None;
     let mut unmatched = 0_usize;
-    while let Some(first) = emi_bounces.next() {
-        let mut bounces = 1_usize;
-        while emi_bounces.next_if(|e| e.month == first.month).is_some() {
-            bounces += 1;
+    for bounce in emi_bounces {
+        if month != Some(bounce.month) {
+            claimed.fill(false);
+            month = Some(bounce.month);
         }
-        unmatched += bounces.saturating_sub(missed(loans, first.month));
+        if !claim_missed_loan(loans, &mut claimed, bounce, day_tol) {
+            unmatched += 1;
+        }
     }
     count(unmatched)
 }
 
-/// Known loans that had started by the end of month `key` but have no
-/// payment in it.
-fn missed(loans: &[Loan], key: i64) -> usize {
-    let last = month_span(key).last;
-    loans
+/// Marks the first unclaimed loan that explains `bounce` (started by the end
+/// of its month, no payment that month, due day within `day_tol`); false if
+/// there is none.
+fn claim_missed_loan(loans: &[Loan], claimed: &mut [bool], bounce: &Entry, day_tol: u32) -> bool {
+    let month_end = month_span(bounce.month).last;
+    let explains = |loan: &Loan| {
+        loan.first_day <= month_end
+            && !loan.paid_months.contains(&bounce.month)
+            && (loan.due_dom - bounce.dom).abs() <= i64::from(day_tol)
+    };
+    let slot = loans
         .iter()
-        .filter(|l| l.first_day <= last && !l.paid_months.contains(&key))
-        .count()
+        .zip(claimed.iter_mut())
+        .find(|(loan, taken)| !**taken && explains(loan));
+    match slot {
+        Some((_, taken)) => {
+            *taken = true;
+            true
+        }
+        None => false,
+    }
 }
 
 /// Days of `span` whose end-of-day balance is negative. A day's balance is

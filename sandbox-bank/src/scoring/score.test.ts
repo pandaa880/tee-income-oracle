@@ -480,8 +480,44 @@ describe('loan recurrence', () => {
 
 // -------------------------------------------------- UnmeasuredDebt guard
 
+const JAN_APR = ['2026-01', '2026-02', '2026-03', '2026-04'];
+
+/** Loan due on the 5th, paid Jan-Mar; one EMI bounce in April on `day`. */
+const aprilBounceOn = (day: string): Scores =>
+  scores('2026-01-01', '2026-04-30', [
+    ...incomes(JAN_APR),
+    ...emis(Q1, '05'),
+    emiBounce(`2026-04-${day}`),
+  ]);
+
 describe('unmatched EMI bounces', () => {
-  const april = ['2026-01', '2026-02', '2026-03', '2026-04'];
+  const april = JAN_APR;
+
+  it('does not explain a bounce far from the missed loan due day (review of #17)', () => {
+    const s = aprilBounceOn('20');
+    expect(s.full.unmatched_emi_bounces).toBe(1);
+    expect(s.outcome).toBe('REJECT');
+  });
+
+  it('explains a bounce exactly day_tol from the due day, not one day more', () => {
+    expect(aprilBounceOn('10').full.unmatched_emi_bounces).toBe(0);
+    expect(aprilBounceOn('11').full.unmatched_emi_bounces).toBe(1);
+  });
+
+  it('does not explain a bounce on the due day of a loan paid that month', () => {
+    expect(q1([...emis(Q1, '05'), emiBounce('2026-03-05')]).full.unmatched_emi_bounces).toBe(1);
+  });
+
+  it('never forms a loan from zero-amount EMI debits (review of #17)', () => {
+    const s = scores('2026-01-01', '2026-04-30', [
+      ...incomes(april),
+      ...emis(Q1, '05', 0n),
+      emiBounce('2026-04-05'),
+    ]);
+    expect(s.full.loans).toBe(0);
+    expect(s.full.unmatched_emi_bounces).toBe(1);
+    expect(s.outcome).toBe('REJECT');
+  });
 
   it('explains a bounce by a known loan that missed that month', () => {
     const s = scores('2026-01-01', '2026-04-30', [

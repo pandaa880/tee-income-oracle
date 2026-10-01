@@ -13,7 +13,7 @@ use super::*;
 /// FORMATS §6 v2 default, hand-written JCS (keys sorted, no whitespace).
 /// Same literal as `sandbox-bank/src/vectors/policy.test.ts`.
 const CANONICAL: &str = concat!(
-    r#"{"recent_months":3,"recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":3},"#,
+    r#"{"recent_months":3,"recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":2},"#,
     r#""reject_if":{"od_days_min":30},"#,
     r#""tiers":[{"bounces_max":0,"cv_max_bps":1500,"foir_max_bps":4000,"tier":"A"},"#,
     r#"{"bounces_max":1,"cv_max_bps":5000,"foir_max_bps":5500,"tier":"B"},"#,
@@ -24,7 +24,7 @@ const CANONICAL: &str = concat!(
 fn default_value() -> Value {
     json!({
         "v": 2,
-        "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 3 },
+        "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 2 },
         "recent_months": 3,
         "window": { "min_days": 180, "max_age_days": 7 },
         "tiers": [
@@ -147,7 +147,7 @@ fn default_policy_rules_have_the_expected_values() {
     assert_eq!(rules.recent_months, 3);
     assert_eq!(rules.recurrence.amount_tol_bps, 1000);
     assert_eq!(rules.recurrence.day_tol, 5);
-    assert_eq!(rules.recurrence.min_occurrences, 3);
+    assert_eq!(rules.recurrence.min_occurrences, 2);
     assert_eq!(rules.window.min_days, 180);
     assert_eq!(rules.window.max_age_days, 7);
     assert_eq!(rules.reject_if.od_days_min, 30);
@@ -191,7 +191,7 @@ fn reordered_keys_normalize() {
         r#""tiers":[{"tier":"A","foir_max_bps":4000,"cv_max_bps":1500,"bounces_max":0},"#,
         r#"{"tier":"B","foir_max_bps":5500,"cv_max_bps":5000,"bounces_max":1},"#,
         r#"{"tier":"C","foir_max_bps":7000,"cv_max_bps":6000,"bounces_max":3}],"#,
-        r#""reject_if":{"od_days_min":30},"recurrence":{"min_occurrences":3,"day_tol":5,"amount_tol_bps":1000},"#,
+        r#""reject_if":{"od_days_min":30},"recurrence":{"min_occurrences":2,"day_tol":5,"amount_tol_bps":1000},"#,
         r#""recent_months":3}"#,
     );
     assert_eq!(canonical_of(reordered), CANONICAL.as_bytes());
@@ -304,7 +304,7 @@ fn array_shaped_policy_is_malformed() {
     // Positional array of the struct fields in declaration order. Serde's
     // derived visitor would accept it, but its JCS would differ from the input.
     let positional = concat!(
-        r#"[3,{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":3},{"od_days_min":30},"#,
+        r#"[3,{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":2},{"od_days_min":30},"#,
         r#"[{"bounces_max":0,"cv_max_bps":1500,"foir_max_bps":4000,"tier":"A"}],2,"#,
         r#"{"max_age_days":7,"min_days":180}]"#,
     );
@@ -407,7 +407,7 @@ fn bad_integer_spellings_are_malformed_for_every_integer_field() {
         r#""recent_months":3"#,
         r#""amount_tol_bps":1000"#,
         r#""day_tol":5"#,
-        r#""min_occurrences":3"#,
+        r#""min_occurrences":2"#,
         r#""min_days":180"#,
         r#""max_age_days":7"#,
         r#""od_days_min":30"#,
@@ -842,8 +842,8 @@ fn tier_deserializes_only_its_letters() {
 fn nested_positional_arrays_and_object_tiers_are_malformed() {
     let cases = [
         edit(
-            r#""recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":3}"#,
-            r#""recurrence":[1000,5,3]"#,
+            r#""recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":2}"#,
+            r#""recurrence":[1000,5,2]"#,
         ),
         edit(
             r#""window":{"max_age_days":7,"min_days":180}"#,
@@ -859,7 +859,7 @@ fn nested_positional_arrays_and_object_tiers_are_malformed() {
         assert_err(&raw, PolicyError::Malformed);
     }
     let tiers_object = concat!(
-        r#"{"recent_months":3,"recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":3},"#,
+        r#"{"recent_months":3,"recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":2},"#,
         r#""reject_if":{"od_days_min":30},"tiers":{},"#,
         r#""v":2,"window":{"max_age_days":7,"min_days":180}}"#,
     );

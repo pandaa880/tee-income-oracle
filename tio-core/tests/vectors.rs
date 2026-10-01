@@ -380,14 +380,15 @@ fn trader_lumpy_scores_b() {
 }
 
 #[test]
-fn stressed_is_rejected_for_unmeasured_debt() {
+fn stressed_is_rejected_for_overdraft_with_its_loan_measured() {
     assert_persona_tier("stressed", "REJECT");
     let (_, got) = persona_scores("stressed");
-    assert!(
-        got.full.unmatched_emi_bounces > 0,
-        "EMI bounces with no known loan: {:?}",
-        got.full
-    );
+    // Two paid EMIs make a loan (min_occurrences 2), so its bounces are
+    // explained and the debt counts; weeks of overdraft still reject.
+    assert_eq!(got.full.loans, 1, "{:?}", got.full);
+    assert_eq!(got.full.unmatched_emi_bounces, 0, "{:?}", got.full);
+    assert!(got.full.od_days >= 30, "{:?}", got.full);
+    assert!(got.full.bounces > 3, "{:?}", got.full);
 }
 
 #[test]
