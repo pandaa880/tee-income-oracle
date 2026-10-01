@@ -53,7 +53,8 @@ programs/oracle/      Anchor. Enclave registry (image id → attester), verifies
                       enclave signature via secp256k1 precompile, CPIs SAS.
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
 tio-core/             Rust lib, no I/O. Key exchange, decryption, JWS, money and FI (DEPOSIT)
-                      parsing (later: scoring, payload). Everything trusted that isn't HTTP.
+                      parsing, scoring policy (later: scoring, payload). Everything
+                      trusted that isn't HTTP.
 enclave/              Rust. Runs in the Oyster CVM. HTTP wrapper around tio-core.
                       Built with Docker + docker-compose (images pinned by digest).
 gateway/              Node/TS, untrusted orchestrator + tx relayer (formerly proxy/).
@@ -75,7 +76,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 
 ## Commands
 
-The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser and the DEPOSIT FI parser; `sandbox-bank`
+The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser and the scoring policy (v2, canonical JSON hash); `sandbox-bank`
 has the test-vector generator; the programs are empty skeletons; most other packages
 hold only READMEs. Update the status as each one starts working.
 
@@ -84,7 +85,7 @@ hold only READMEs. Update the status as each one starts working.
 | Build (Rust) | `cargo build` | works (empty program skeletons + `tio-core`) |
 | Build (programs) | `anchor build` | works (empty skeletons) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
-| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, layered negatives) |
+| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, layered negatives) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` — localnet | not yet |
 | Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, also in CI) |

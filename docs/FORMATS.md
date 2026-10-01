@@ -40,7 +40,7 @@ same PR updates this file, both implementations and the regenerated vectors.
 |---|---|---|
 | Enclave signed message (§8) | domain tag `TIO-ATTEST-v1` | any change to the signed bytes or their order |
 | Enclave HTTP API (§10) | path prefix `/v1/` | a breaking request/response change (adding optional fields isn't breaking) |
-| Scoring policy (§6) | `"v": 1` | a policy schema change |
+| Scoring policy (§6) | `"v": 2` | a policy schema change |
 | Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
 | `proof_type` values (§7) | `1 = tee_nitro_oyster`; `2 = tee_nitro_aws` reserved | append-only; never reuse or renumber |
 | Enclave build | platform measurement (Oyster image id, or AWS PCR0 hash) + on-chain `measurement_id` | every enclave change (automatic); the release notes list it. **`measurement_id`s are append-only: an id is never reused, even after revoke** |
@@ -476,18 +476,38 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 
 ```json
 {
-  "v": 1,
+  "v": 2,
   "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 3 },
+  "recent_months": 3,
+  "window": { "min_days": 180, "max_age_days": 7 },
   "tiers": [
     { "tier": "A", "foir_max_bps": 4000, "cv_max_bps": 1500, "bounces_max": 0 },
-    { "tier": "B", "foir_max_bps": 5500, "cv_max_bps": 3000, "bounces_max": 1 },
-    { "tier": "C", "foir_max_bps": 7000, "cv_max_bps": 3000, "bounces_max": 3 }
+    { "tier": "B", "foir_max_bps": 5500, "cv_max_bps": 5000, "bounces_max": 1 },
+    { "tier": "C", "foir_max_bps": 7000, "cv_max_bps": 6000, "bounces_max": 3 }
   ],
   "reject_if": { "od_days_min": 30 }
 }
 ```
-- Integers only (basis points, days, counts). Tiers are evaluated in order; first match wins; else Reject.
-- Unknown keys → reject the policy (no silent ignore).
+
+| Key | Meaning |
+|---|---|
+| `v` | schema version, must be `2` |
+| `recurrence.amount_tol_bps`, `.day_tol` | a debit joins a recurring-obligation cluster if its amount is within ±bps and its day of month within ±days of the cluster's first debit |
+| `recurrence.min_occurrences` | cluster size that counts as a recurring obligation (≥ 1) |
+| `recent_months` | the last N complete months are also scored alone; the worse tier wins (≥ 1) |
+| `window.min_days` | shortest consent window accepted |
+| `window.max_age_days` | how old the window's end may be when evaluated |
+| `tiers[]` | `tier` (`"A"`, `"B"`, `"C"`) + maxima `foir_max_bps`, `cv_max_bps`, `bounces_max` (a feature passes if ≤ its maximum) |
+| `reject_if.od_days_min` | this many overdraft days or more → Reject (≥ 1) |
+
+- Integers only (basis points, days, counts), each `0 ≤ n ≤ 2^32 − 1`. Tiers are evaluated in order; first match wins; else Reject.
+- **Strict parse** (any failure → `bad_policy`): at most 4096 bytes; the policy, `recurrence`, `window`,
+  `reject_if` and each `tiers[]` entry are JSON objects and `tiers` is an array (a positional array in place
+  of an object is rejected); unknown, repeated or missing keys; non-integer spellings
+  (`3.0`, `3e0`, `"3"`); `v ≠ 2`; `tiers` empty or not strictly ordered A, B, C (no repeats);
+  `recent_months`, `min_occurrences` or `od_days_min` equal to 0 (scoring would be undefined or reject everyone).
+- **Hash input.** Any JSON spelling of a valid policy is accepted (whitespace, key order, string escapes).
+  The hash is over the JCS bytes of the *parsed* policy, so every spelling gives the same `policy_hash`.
 
 ---
 
@@ -602,6 +622,7 @@ string and verifies; any difference → reject.
   `bad_fi_data` (any other §1 parse-rule violation: shape,
   repeated member, not DEPOSIT, missing or invalid member, bad money or
   timestamp, too many transactions). The order is §1's reject list.
+- Policy code (`tio-core`): `bad_policy` (any §6 strict-parse rule).
 
 ---
 

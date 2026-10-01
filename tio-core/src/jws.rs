@@ -9,13 +9,10 @@ mod key;
 
 pub use key::{FiuSigningKey, PinnedKey};
 
-use serde::{
-    de::{DeserializeOwned, IgnoredAny},
-    Deserialize, Deserializer, Serialize,
-};
+use serde::{de::IgnoredAny, Deserialize, Deserializer, Serialize};
 
 use crate::{
-    encoding::{b64url_decode, b64url_encode},
+    encoding::{b64url_decode, b64url_encode, from_json_object},
     ErrorCode,
 };
 use key::{verify_signature, Alg};
@@ -96,16 +93,6 @@ where
     T: Deserialize<'de>,
 {
     T::deserialize(deserializer).map(Some)
-}
-
-/// Deserializes `bytes` only if the JSON value is an object. serde's derived
-/// struct visitor also accepts an array (members by position), which no JOSE
-/// implementation does: a header only we accept is a parser differential.
-fn from_json_object<T: DeserializeOwned>(bytes: &[u8]) -> Option<T> {
-    if bytes.trim_ascii_start().first() != Some(&b'{') {
-        return None;
-    }
-    serde_json::from_slice(bytes).ok()
 }
 
 /// The header we emit for detached signatures. Field order is the byte

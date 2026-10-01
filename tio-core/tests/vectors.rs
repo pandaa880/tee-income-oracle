@@ -20,7 +20,7 @@ use std::{collections::BTreeSet, fs};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tio_core::{verify_detached, KeyMaterial, Nonce};
+use tio_core::{verify_detached, KeyMaterial, Nonce, Policy};
 
 use common::{enclave_key_pair, key_mode, load_json, pinned_key, run_case, test_vectors_dir};
 
@@ -149,7 +149,17 @@ fn all_positive_cases_pass() {
 
         let policy_bytes = fs::read(test_vectors_dir().join("policy").join("default.json"))
             .expect("read test-vectors/policy/default.json");
-        let policy_hash = hex::encode(Sha256::digest(&policy_bytes));
+        // The generator's policy bytes must parse, and be exactly the JCS
+        // bytes tio-core would produce itself (two independent canonicalizers).
+        let policy = Policy::from_json(&policy_bytes)
+            .unwrap_or_else(|e| panic!("case {}: default policy must parse: {e:?}", case_id(case)));
+        assert_eq!(
+            policy.canonical_json(),
+            policy_bytes.as_slice(),
+            "case {}: policy/default.json is not the JCS of the parsed policy",
+            case_id(case)
+        );
+        let policy_hash = hex::encode(policy.hash().as_bytes());
         assert_eq!(
             policy_hash,
             expected

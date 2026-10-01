@@ -84,6 +84,7 @@ catch each other's mistakes.
 | `jws` | RS256/RS512 verify of detached (RFC 7797, `b64:false`) and compact JWS against pinned keys only; strict header rules; blinded RS256 signing with the enclave's FIU key |
 | `money` | Raw JSON money text → exact integer paise (`Paise`); any exact spelling accepted, never `f64`, never rounded |
 | `rebit` | Decrypted ReBIT DEPOSIT FI → `DepositFi` (integers + bounce/EMI flags); lenient shape, strict meaning; PII never read |
+| `policy` | Scoring policy JSON → validated `Policy`; strict parse, canonical JCS bytes, `policy_hash` |
 | `time` | Unix seconds ↔ ReBIT ISO-8601: format ours; parse FI timestamps (offsets converted) and dates |
 | `encoding` | PEM and base64 helpers |
 
@@ -95,7 +96,7 @@ panics in library code (enforced by clippy), stable error codes via the
 cargo test -p tio-core
 ```
 
-- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §1 (money, FI data), §3 (key exchange), §4 (JWS), §12 (interop)
+- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §1 (money, FI data), §3 (key exchange), §4 (JWS), §6 (policy), §12 (interop)
 - Security model: [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
 - Where it fits: [system diagram](../README.md#how-it-fits-together);
   the order it runs its checks, with error codes:
