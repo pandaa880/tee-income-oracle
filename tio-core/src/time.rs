@@ -2,7 +2,7 @@
 //! (`docs/FORMATS.md` §0, §12). tio-core has no clock: callers pass unix
 //! seconds in.
 
-const SECS_PER_DAY: i64 = 86_400;
+pub(crate) const SECS_PER_DAY: i64 = 86_400;
 
 /// India Standard Time, UTC+05:30, in seconds. India has no daylight saving.
 pub(crate) const IST_OFFSET: i64 = 19_800;

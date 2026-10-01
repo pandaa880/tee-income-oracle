@@ -10,9 +10,11 @@
 //! leak anything about the statement.
 //!
 //! Plaintext hygiene (invariant 1): the decrypted envelope stays in the
-//! `Zeroizing` buffer `decrypt` returned, its fields are borrowed from it,
-//! and the decoded statement goes into a `Zeroizing` buffer sized up front,
-//! so no unwiped copy is left on the heap. Errors carry no data.
+//! `Zeroizing` buffer `decrypt` returned, its fields are borrowed from it
+//! (an envelope containing a backslash is refused, because an escaped string
+//! can't be borrowed and serde_json would copy it into an unwiped scratch
+//! buffer), and the decoded statement goes into a `Zeroizing` buffer sized up
+//! front, so no unwiped copy is left on the heap. Errors carry no data.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Deserialize;
@@ -31,11 +33,9 @@ use crate::{
     policy::{Policy, PolicyHash},
     rebit::{parse_deposit_fi, DepositFi, FiError},
     score::{score, Outcome, ScoreError, Scores},
-    time::{india_day, parse_rebit_timestamp},
+    time::{india_day, parse_rebit_timestamp, SECS_PER_DAY},
     ErrorCode,
 };
-
-const SECS_PER_DAY: i64 = 86_400;
 
 /// The FI data range the enclave asked for. `0 <= from < to <= u32::MAX`
 /// (unix seconds), so its day-floored ends always fit the payload's `u32`s.
@@ -109,7 +109,8 @@ pub struct EvaluateInput<'a> {
 pub struct Clock {
     /// Current unix time.
     pub now: i64,
-    /// Expiry written into the signed message (§8).
+    /// Expiry written into the signed message (§8). The caller (the enclave)
+    /// sets it after `now`; it is not checked here.
     pub expiry: i64,
 }
 
@@ -207,7 +208,10 @@ impl ErrorCode for EvaluateError {
 // Owned serde structs, read object-only (`object` / `objects` /
 // `from_json_object`): serde's derived struct visitor would also take an
 // array, which no other implementation does. A repeated declared member is
-// an error; members we don't read are ignored.
+// an error; members we don't read are ignored. `KeyMaterial` itself is read
+// object-only, but its nested `DHPublicKey` is a plain derived struct, which
+// would also take an array. That is a known looseness: it sits inside the
+// AA-signed bytes, and no vector uses it.
 
 #[derive(Deserialize)]
 struct FetchResponse {
@@ -251,8 +255,9 @@ struct RawConsentRange {
     to: String,
 }
 
-/// The decrypted envelope (§5.2). Borrowed: an escaped string can't be
-/// borrowed, so it fails to parse, and no `String` copy of plaintext exists.
+/// The decrypted envelope (§5.2). Borrowed from the plaintext buffer, so no
+/// `String` copy of it exists. `open_envelope` refuses any `\` first, so the
+/// members are never escaped and never copied by the parser.
 #[derive(Deserialize)]
 struct Envelope<'a> {
     fi: &'a str,
@@ -353,9 +358,18 @@ fn floor_window(range: FiDataRange) -> Result<Window, EvaluateError> {
     })
 }
 
-/// Steps 9 and 10: long enough, and recent enough. i64 holds every product
-/// (`u32 * 86400`), and the age uses checked math.
-fn check_window_policy(window: Window, policy: &Policy, now: i64) -> Result<(), EvaluateError> {
+/// Steps 9 and 10: long enough, recent enough, and not ending after `now`.
+/// i64 holds every product (`u32 * 86400`), and the age uses checked math.
+///
+/// The future check uses the raw requested end: a window can't end after the
+/// moment it is evaluated, or the payload would attest days that haven't
+/// happened yet.
+fn check_window_policy(
+    window: Window,
+    range: FiDataRange,
+    policy: &Policy,
+    now: i64,
+) -> Result<(), EvaluateError> {
     let rule = &policy.rules.window;
     let length = i64::from(window.to) - i64::from(window.from);
     if length < i64::from(rule.min_days) * SECS_PER_DAY {
@@ -363,9 +377,13 @@ fn check_window_policy(window: Window, policy: &Policy, now: i64) -> Result<(), 
     }
     let age = now.checked_sub(i64::from(window.to));
     match age {
-        Some(age) if age <= i64::from(rule.max_age_days) * SECS_PER_DAY => Ok(()),
-        _ => Err(EvaluateError::WindowStale),
+        Some(age) if age <= i64::from(rule.max_age_days) * SECS_PER_DAY => {}
+        _ => return Err(EvaluateError::WindowStale),
     }
+    if range.to() > now {
+        return Err(EvaluateError::WindowMismatch);
+    }
+    Ok(())
 }
 
 /// Step 11: ECDH, session key, AES-GCM.
@@ -393,6 +411,13 @@ fn open_envelope(plaintext: &[u8]) -> Result<(Zeroizing<Vec<u8>>, &str), Evaluat
     if plaintext.trim_ascii_start().first() != Some(&b'{') {
         return Err(EvaluateError::BadFipEnvelope);
     }
+    // Refuse escapes up front. Given a borrowed `&str` with an escape,
+    // serde_json copies the string into its internal scratch `Vec`, which is
+    // freed unwiped. Base64 and compact JWS never need escapes, so refusing
+    // them keeps every plaintext byte in the `Zeroizing` buffer.
+    if plaintext.contains(&b'\\') {
+        return Err(EvaluateError::BadFipEnvelope);
+    }
     let envelope: Envelope<'_> =
         serde_json::from_slice(plaintext).map_err(|_| EvaluateError::BadFipEnvelope)?;
     // Pre-sized so decoding never reallocates (a grown `Vec` would free an
@@ -405,14 +430,26 @@ fn open_envelope(plaintext: &[u8]) -> Result<(Zeroizing<Vec<u8>>, &str), Evaluat
     Ok((fi, envelope.jws))
 }
 
-/// Step 15: the statement lies inside the requested window, by India day.
-fn check_statement_window(fi: &DepositFi, window: Window) -> Result<(), EvaluateError> {
-    if india_day(i64::from(window.from)) <= fi.start_day
-        && fi.end_day <= india_day(i64::from(window.to))
-    {
-        Ok(())
-    } else {
-        Err(EvaluateError::WindowMismatch)
+/// Step 15: the statement lies inside the requested window, by India day, and
+/// itself spans at least `min_days` (inclusive day count): a short statement
+/// under a long request would make the payload claim a window it doesn't cover.
+fn check_statement_window(
+    fi: &DepositFi,
+    window: Window,
+    policy: &Policy,
+) -> Result<(), EvaluateError> {
+    let inside = india_day(i64::from(window.from)) <= fi.start_day
+        && fi.end_day <= india_day(i64::from(window.to));
+    if !inside {
+        return Err(EvaluateError::WindowMismatch);
+    }
+    let span_days = fi
+        .end_day
+        .checked_sub(fi.start_day)
+        .and_then(|d| d.checked_add(1));
+    match span_days {
+        Some(days) if days >= i64::from(policy.rules.window.min_days) => Ok(()),
+        _ => Err(EvaluateError::WindowTooShort),
     }
 }
 
@@ -428,24 +465,48 @@ fn score_statement(
     let (fi_bytes, jws) = open_envelope(&plaintext)?;
     verify_detached(jws, &fi_bytes, keys.fip).map_err(EvaluateError::FipSignature)?;
     let fi = parse_deposit_fi(&fi_bytes).map_err(EvaluateError::Fi)?;
-    check_statement_window(&fi, window)?;
+    check_statement_window(&fi, window, session.policy)?;
     score(&fi, session.policy).map_err(EvaluateError::Score)
 }
 
-/// Step 17: a tier becomes the payload and message; a reject has none.
-fn attest(
-    outcome: Outcome,
-    fields: impl FnOnce(crate::Tier) -> PayloadFields,
+/// Step 17: hashes, and for a tier the payload and message (a reject has
+/// none).
+fn finish(
+    session: &Session<'_>,
     ctx: &AttestContext,
-    wallet: &[u8; 32],
-    expiry: i64,
-) -> Option<Attestation> {
-    let Outcome::Tier(tier) = outcome else {
-        return None;
+    clock: Clock,
+    consent_jws: &str,
+    window: Window,
+    scores: Scores,
+) -> Evaluation {
+    let consent_hash: [u8; 32] = Sha256::digest(consent_jws.as_bytes()).into();
+    let policy_hash = session.policy.hash();
+    let attestation = match scores.outcome {
+        Outcome::Tier(tier) => {
+            let payload = build_payload(&PayloadFields {
+                tier,
+                proof_type: ctx.proof_type,
+                measurement_id: ctx.measurement_id,
+                policy_hash,
+                consent_hash,
+                issued_at: clock.now,
+                window_from: window.from,
+                window_to: window.to,
+            });
+            let message = build_message(ctx, &session.wallet, &payload, clock.expiry);
+            Some(Attestation { payload, message })
+        }
+        Outcome::Reject => None,
     };
-    let payload = build_payload(&fields(tier));
-    let message = build_message(ctx, wallet, &payload, expiry);
-    Some(Attestation { payload, message })
+    Evaluation {
+        outcome: scores.outcome,
+        scores,
+        policy_hash,
+        consent_hash,
+        window_from: window.from,
+        window_to: window.to,
+        attestation,
+    }
 }
 
 /// Runs the whole pipeline (§10.1). See the module docs for the order.
@@ -476,32 +537,17 @@ pub fn evaluate(
     check_consent_active(&consent, clock.now)?;
     check_within_consent(session.range, &consent)?;
     let window = floor_window(session.range)?;
-    check_window_policy(window, session.policy, clock.now)?;
+    check_window_policy(window, session.range, session.policy, clock.now)?;
 
     let scores = score_statement(session, keys, &key_material, &encrypted_fi, window)?;
-
-    let consent_hash: [u8; 32] = Sha256::digest(input.consent_jws.as_bytes()).into();
-    let policy_hash = session.policy.hash();
-    let fields = |tier| PayloadFields {
-        tier,
-        proof_type: ctx.proof_type,
-        measurement_id: ctx.measurement_id,
-        policy_hash,
-        consent_hash,
-        issued_at: clock.now,
-        window_from: window.from,
-        window_to: window.to,
-    };
-    let attestation = attest(scores.outcome, fields, ctx, &session.wallet, clock.expiry);
-    Ok(Evaluation {
-        outcome: scores.outcome,
+    Ok(finish(
+        session,
+        ctx,
+        clock,
+        input.consent_jws,
+        window,
         scores,
-        policy_hash,
-        consent_hash,
-        window_from: window.from,
-        window_to: window.to,
-        attestation,
-    })
+    ))
 }
 
 #[cfg(test)]

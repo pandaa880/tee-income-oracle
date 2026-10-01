@@ -486,7 +486,10 @@ Payload (subset we rely on):
   Using the request, not the consent, stops a short request under a long
   consent from claiming the long window. The policy window checks (§6) run on
   these same floored values, so what the enclave checked is what the pool
-  reads.
+  reads. The statement itself must also span at least `min_days` days
+  (`endDate − startDate + 1`, §10.1 check 15), so a short statement can't
+  stand behind a long requested window. The requested `to` may not be after
+  `now` (§10.1 check 10).
 - `consent_hash = sha256(ASCII bytes of the whole compact JWS string)`.
 
 ---
@@ -730,8 +733,11 @@ string and verifies; any difference → reject.
 - Evaluate codes (`tio-core`, §10.1): `bad_fetch_response` (not an object, or not exactly one
   `FI[]` with exactly one `data[]`, §5.2), `session_mismatch` (`txnid` or `consentId` differs from
   the session's), `consent_invalid`, `window_mismatch` (requested range not inside the consent's,
-  or statement not inside the requested range), `window_too_short`, `window_stale`,
-  `bad_fip_envelope` (decrypted plaintext is not `{fi, jws}` with string members and base64 `fi`),
+  statement not inside the requested range, or the requested end after `now`),
+  `window_too_short` (the requested window, or the statement itself, is shorter than
+  `window.min_days`), `window_stale`,
+  `bad_fip_envelope` (decrypted plaintext is not `{fi, jws}` with unescaped string members and
+  base64 `fi`; any backslash in it is refused),
   `bad_fi_data_range` (session range not `0 ≤ from < to ≤ 2³² − 1`).
 
 ### 10.1 Evaluate check order — FROZEN
@@ -743,7 +749,7 @@ a valid result never touches plaintext.
 | # | Check | Code |
 |---|---|---|
 | 1 | AA detached JWS over the exact fetch-response bytes | JWS codes; a bad signature → `bad_aa_signature` |
-| 2 | Fetch-response shape (§5.2: one `FI[]`, one `data[]`) | `bad_fetch_response` |
+| 2 | Fetch-response shape (§5.2: one `FI[]`, one `data[]`; structural `KeyMaterial` errors: a missing member or a wrong type) | `bad_fetch_response` |
 | 3 | `txnid` = session's | `session_mismatch` |
 | 4 | Consent compact JWS | JWS codes; a bad signature → `bad_consent_signature` |
 | 5 | Consent payload parses (§5.3 members, timestamps, `from < to`) | `consent_invalid` |
@@ -752,11 +758,13 @@ a valid result never touches plaintext.
 | 8 | Requested range inside the consent's `FIDataRange` | `window_mismatch` |
 | 9 | `window_to − window_from < window.min_days` days (floored, §5.3) | `window_too_short` |
 | 10 | `now − window_to > window.max_age_days` days | `window_stale` |
-| 11 | `KeyMaterial`, key exchange, decryption (§3) | key-exchange codes |
-| 12 | FIP envelope `{fi, jws}` (§5.2) | `bad_fip_envelope` |
+| 10b | The requested `to` (raw, not floored) is after `now` | `window_mismatch` |
+| 11 | `KeyMaterial` values, key exchange, decryption (§3) | key-exchange codes |
+| 12 | FIP envelope `{fi, jws}` (§5.2): string members, base64 `fi`, no escapes in the plaintext | `bad_fip_envelope` |
 | 13 | FIP detached JWS over the decoded `fi` bytes | JWS codes; a bad signature → `bad_fip_signature` |
 | 14 | FI parse (§1) | FI data codes |
 | 15 | Statement inside the requested range by India day: `startDate ≥ day(window_from)`, `endDate ≤ day(window_to)` (§6.1 time basis) | `window_mismatch` |
+| 15b | Statement long enough: `endDate − startDate + 1 ≥ window.min_days` days (checked after 15's inside-window part) | `window_too_short` |
 | 16 | Score (§6.1) | scoring codes |
 
 A tier yields the §7 payload (`issued_at` = the enclave's `now`) and the §8
@@ -840,6 +848,7 @@ Required negative cases:
 | `window_too_short` | requested and consent range 179 days | `window_too_short` |
 | `window_stale` | range ends 8 days before `now` | `window_stale` |
 | `statement_outside_window` | FI `startDate` one day before the requested `from`, FIP-signed | `window_mismatch` |
+| `statement_too_short` | FI `Transactions.startDate` = `endDate` − 29 days (a 30-day statement under a full-year request; transactions kept, as check 15 runs before scoring), FIP-signed | `window_too_short` |
 | `multi_fip_response` | two `FI[]` entries | `bad_fetch_response` |
 | `multi_account_response` | one `FI[]` with two `data[]` items (shared `KeyMaterial`) | `bad_fetch_response` |
 | `fip_envelope_malformed` | envelope `fi` not base64, re-encrypted and re-signed | `bad_fip_envelope` |

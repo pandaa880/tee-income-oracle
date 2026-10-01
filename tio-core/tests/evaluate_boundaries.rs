@@ -29,7 +29,7 @@ mod common;
 
 use tio_core::{Clock, ErrorCode, FiDataRange, Outcome};
 
-use common::{test_vectors_dir, CaseFixture, Overrides};
+use common::{load_json, test_vectors_dir, CaseFixture, Overrides};
 
 const DAY: i64 = 86_400;
 
@@ -107,13 +107,16 @@ fn now_one_second_before_consent_expiry_passes_the_consent_check() {
     assert_eq!(code(&fx, &at(&fx, expiry - 1)), Err("window_stale"));
 }
 
-// now = consentStart. Staleness: now - to is negative (to = 2026-09-26T00:00,
-// start = 2026-09-25T10:00), so only the consent check is in play.
+// now = consentStart. Check 7 passes (a consent-time failure would be
+// consent_invalid), and the window then ends in the future: to =
+// 2026-09-26T00:00 is after start = 2026-09-25T10:00, so check 10 rejects it
+// as window_mismatch. The consent boundary itself is therefore only
+// observable through the failure code of the next check.
 #[test]
-fn now_equal_to_consent_start_is_ok() {
+fn now_equal_to_consent_start_passes_the_consent_check_then_fails_future_window() {
     let fx = salaried();
     let (start, _) = fx.consent_times();
-    assert!(fx.evaluate_with(&at(&fx, start)).is_ok());
+    assert_eq!(code(&fx, &at(&fx, start)), Err("window_mismatch"));
 }
 
 #[test]
@@ -139,6 +142,49 @@ fn staleness_one_second_past_max_age_is_window_stale() {
     let fx = salaried();
     let now = fx.range.to() + 7 * DAY + 1;
     assert_eq!(code(&fx, &at(&fx, now)), Err("window_stale"));
+}
+
+// --- future window end: to > now ---------------------------------------------
+
+// now = to exactly: the window ends at the moment it is evaluated, which is
+// allowed. The consent window (start 2026-09-25T10:00 <= to) and staleness
+// (age 0) are fine.
+#[test]
+fn now_equal_to_window_end_is_ok() {
+    let fx = salaried();
+    assert!(fx.evaluate_with(&at(&fx, fx.range.to())).is_ok());
+}
+
+#[test]
+fn now_one_second_before_window_end_is_window_mismatch() {
+    let fx = salaried();
+    assert_eq!(
+        code(&fx, &at(&fx, fx.range.to() - 1)),
+        Err("window_mismatch")
+    );
+}
+
+// --- statement vs window ----------------------------------------------------
+
+// The statement ends on 2026-09-26; a window ending a day earlier leaves its
+// last day outside (check 15, end-day half).
+#[test]
+fn window_ending_a_day_before_the_statement_end_is_window_mismatch() {
+    let fx = salaried();
+    let overrides = with_range(fx.range.from(), fx.range.to() - DAY);
+    assert_eq!(code(&fx, &overrides), Err("window_mismatch"));
+}
+
+// --- flooring ------------------------------------------------------------------
+
+// An unaligned start is floored to its UTC day in the payload.
+#[test]
+fn unaligned_window_start_is_floored_in_the_evaluation() {
+    let fx = salaried();
+    let overrides = with_range(fx.range.from() + 3600, fx.range.to());
+    let evaluation = fx.evaluate_with(&overrides).unwrap();
+    assert_eq!(i64::from(evaluation.window_from), fx.range.from());
+    assert_eq!(i64::from(evaluation.window_to), fx.range.to());
 }
 
 // --- session binding ------------------------------------------------------
@@ -223,10 +269,13 @@ fn requested_range_of_exactly_180_days_passes_the_length_check() {
 #[test]
 fn issued_at_in_the_payload_is_the_clock_now() {
     let fx = salaried();
-    let (start, _) = fx.consent_times();
-    let evaluation = fx.evaluate_with(&at(&fx, start)).unwrap();
+    // now = the window end: the earliest `now` that is not before the window
+    // ends (a `now` before it is window_mismatch) and differs from the vector's.
+    let now = fx.range.to();
+    assert_ne!(now, fx.clock.now);
+    let evaluation = fx.evaluate_with(&at(&fx, now)).unwrap();
     let attestation = evaluation.attestation.unwrap();
-    assert_eq!(&attestation.payload[67..75], &start.to_le_bytes());
+    assert_eq!(&attestation.payload[67..75], &now.to_le_bytes());
 }
 
 #[test]
@@ -278,4 +327,18 @@ fn stressed_vector_still_reports_window_and_hashes() {
     let evaluation = fx.evaluate().unwrap();
     assert_eq!(i64::from(evaluation.window_from), fx.range.from());
     assert_eq!(i64::from(evaluation.window_to), fx.range.to());
+    let expected = load_json(
+        &test_vectors_dir()
+            .join("vectors")
+            .join("stressed")
+            .join("expected.json"),
+    );
+    assert_eq!(
+        hex::encode(evaluation.policy_hash.as_bytes()),
+        expected["policy_hash"].as_str().unwrap()
+    );
+    assert_eq!(
+        hex::encode(evaluation.consent_hash),
+        expected["consent_hash"].as_str().unwrap()
+    );
 }

@@ -3,9 +3,10 @@
  * encrypted with the test keys (FORMATS §5, §11).
  *
  * Layering rule: the enclave checks AA signature → fetch shape → session
- * ids → consent → window → decrypt → FIP signature → FI (FORMATS §10.1). A negative case breaks exactly one layer; every layer outside
- * it is then built normally (re-encrypted, re-signed), so the broken layer
- * is the one that fails.
+ * ids → consent → window → decrypt → FIP signature → FI (FORMATS §10.1).
+ * A negative case breaks exactly one layer; every layer outside it is then
+ * built normally (re-encrypted, re-signed), so the broken layer is the one
+ * that fails.
  */
 
 import { createHash, createHmac } from 'node:crypto';
@@ -62,6 +63,7 @@ export type NegativeId =
   | 'window_too_short'
   | 'window_stale'
   | 'statement_outside_window'
+  | 'statement_too_short'
   | 'multi_fip_response'
   | 'multi_account_response'
   | 'fip_envelope_malformed'
@@ -108,6 +110,7 @@ export const NEGATIVE_CASES: readonly { readonly id: NegativeId; readonly errorC
     { id: 'window_too_short', errorCode: 'window_too_short' },
     { id: 'window_stale', errorCode: 'window_stale' },
     { id: 'statement_outside_window', errorCode: 'window_mismatch' },
+    { id: 'statement_too_short', errorCode: 'window_too_short' },
     { id: 'multi_fip_response', errorCode: 'bad_fetch_response' },
     { id: 'multi_account_response', errorCode: 'bad_fetch_response' },
     { id: 'fip_envelope_malformed', errorCode: 'bad_fip_envelope' },
@@ -155,6 +158,13 @@ const CONSENT_TIMES: Partial<
 const FI_MUTATIONS: Partial<Record<NegativeId, (ctx: Context) => Uint8Array>> = {
   statement_outside_window: (ctx) => {
     const day = isoUtc(ctx.windowFrom - DAY).slice(0, 10);
+    return utf8(personaFiText(ctx).replace(/"startDate":"[^"]*"/, `"startDate":"${day}"`));
+  },
+  // A 30-day statement (endDate − 29 days .. endDate) under the full-year request. The
+  // transactions before the new startDate are kept: check 15 fires before scoring, so the
+  // enclave never looks at them.
+  statement_too_short: (ctx) => {
+    const day = isoUtc(NOW_UNIX - 29 * DAY).slice(0, 10);
     return utf8(personaFiText(ctx).replace(/"startDate":"[^"]*"/, `"startDate":"${day}"`));
   },
   amount_three_decimals: (ctx) => withFirstAmount(personaFiText(ctx), '1234.567'),
@@ -353,6 +363,7 @@ function signFetchResponse(ctx: Context, body: Uint8Array): string {
     case 'window_too_short':
     case 'window_stale':
     case 'statement_outside_window':
+    case 'statement_too_short':
     case 'multi_fip_response':
     case 'multi_account_response':
     case 'fip_envelope_malformed':

@@ -28,6 +28,7 @@ const EVALUATE_NEGATIVES = [
   ['window_too_short', 'window_too_short'],
   ['window_stale', 'window_stale'],
   ['statement_outside_window', 'window_mismatch'],
+  ['statement_too_short', 'window_too_short'],
   ['multi_fip_response', 'bad_fetch_response'],
   ['multi_account_response', 'bad_fetch_response'],
   ['fip_envelope_malformed', 'bad_fip_envelope'],
@@ -98,7 +99,7 @@ function salariedSteady(): Persona {
 }
 
 describe('NEGATIVE_CASES', () => {
-  it('covers exactly the 25 negative ids (9 original + 16 from slice 2e)', () => {
+  it('covers exactly the 26 negative ids (9 original + 17 from slice 2e)', () => {
     expect(NEGATIVE_CASES.map((c) => c.id).toSorted()).toEqual(
       [...EXPECTED_NEGATIVE_IDS].toSorted(),
     );
@@ -495,6 +496,20 @@ describe('slice 2e negatives: only the intended layer is broken', () => {
     const dayBefore = new Date((session.from - DAY) * 1000).toISOString().slice(0, 10);
     expect(startDate).toBe(dayBefore);
     expect(startDate).not.toBe(fromDay);
+  });
+
+  it('statement_too_short: FIP-signed FI spans 30 days, under a full-year request', () => {
+    const files = build('statement_too_short');
+    const session = sessionOf(files);
+    expect(fipSignatureVerifies(files, keys)).toBe(true);
+    const text = fiText(files, keys);
+    const start = required(
+      /"startDate":"(\d{4}-\d{2}-\d{2})/.exec(text)?.[1],
+      'FI has a startDate',
+    );
+    const end = required(/"endDate":"(\d{4}-\d{2}-\d{2})/.exec(text)?.[1], 'FI has an endDate');
+    expect((Date.parse(end) - Date.parse(start)) / (DAY * 1000) + 1).toBe(30);
+    expect(session.to - session.from).toBeGreaterThanOrEqual(180 * DAY);
   });
 
   it('multi_fip_response: two FI[] entries, AA-signed', () => {

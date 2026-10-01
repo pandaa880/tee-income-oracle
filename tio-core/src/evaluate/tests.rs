@@ -224,3 +224,134 @@ fn score_errors_pass_their_own_codes() {
         "bad_fi_data"
     );
 }
+
+// --- parse_consent -----------------------------------------------------------
+
+const FROM: &str = "2025-09-26T00:00:00.000Z";
+const TO: &str = "2026-09-26T00:00:00.000Z";
+
+fn consent_json(status: &str, fi_types: &str, from: &str, to: &str) -> String {
+    format!(
+        r#"{{"consentId":"c1","status":"{status}","consentStart":"2026-09-25T10:00:00.000Z","consentExpiry":"2027-09-26T10:00:00.000Z","fiTypes":{fi_types},"FIDataRange":{{"from":"{from}","to":"{to}"}}}}"#
+    )
+}
+
+fn consent_of(status: &str, fi_types: &str) -> Consent {
+    let json = consent_json(status, fi_types, FROM, TO);
+    parse_consent(json.as_bytes()).unwrap()
+}
+
+fn is_consent_invalid(result: Result<Consent, EvaluateError>) -> bool {
+    matches!(result, Err(EvaluateError::ConsentInvalid))
+}
+
+#[test]
+fn parse_consent_reads_a_valid_payload() {
+    let consent = consent_of("ACTIVE", r#"["DEPOSIT"]"#);
+    assert_eq!(consent.id, "c1");
+    assert!(consent.active && consent.deposit);
+    assert_eq!(consent.from, 1_758_844_800);
+    assert_eq!(consent.to, 1_790_380_800);
+    assert!(consent.start < consent.expiry);
+}
+
+#[test]
+fn parse_consent_rejects_from_equal_to_to() {
+    let json = consent_json("ACTIVE", r#"["DEPOSIT"]"#, FROM, FROM);
+    assert!(is_consent_invalid(parse_consent(json.as_bytes())));
+}
+
+#[test]
+fn parse_consent_rejects_from_after_to() {
+    let json = consent_json("ACTIVE", r#"["DEPOSIT"]"#, TO, FROM);
+    assert!(is_consent_invalid(parse_consent(json.as_bytes())));
+}
+
+#[test]
+fn parse_consent_rejects_a_json_array() {
+    assert!(is_consent_invalid(parse_consent(
+        br#"["c1","ACTIVE","a","b",["DEPOSIT"],["a","b"]]"#
+    )));
+}
+
+#[test]
+fn parse_consent_rejects_a_missing_fi_types() {
+    let json = r#"{"consentId":"c1","status":"ACTIVE","consentStart":"2026-09-25T10:00:00.000Z","consentExpiry":"2027-09-26T10:00:00.000Z","FIDataRange":{"from":"2025-09-26T00:00:00.000Z","to":"2026-09-26T00:00:00.000Z"}}"#;
+    assert!(is_consent_invalid(parse_consent(json.as_bytes())));
+}
+
+// --- check_consent_active ------------------------------------------------------
+
+#[test]
+fn consent_without_deposit_is_not_active() {
+    let consent = consent_of("ACTIVE", r#"["TERM_DEPOSIT"]"#);
+    assert_eq!(
+        check_consent_active(&consent, consent.start),
+        Err(EvaluateError::ConsentInvalid)
+    );
+}
+
+#[test]
+fn revoked_consent_is_not_active() {
+    let consent = consent_of("REVOKED", r#"["DEPOSIT"]"#);
+    assert_eq!(
+        check_consent_active(&consent, consent.start),
+        Err(EvaluateError::ConsentInvalid)
+    );
+}
+
+#[test]
+fn valid_consent_is_active_inside_its_time_window() {
+    let consent = consent_of("ACTIVE", r#"["DEPOSIT"]"#);
+    assert_eq!(check_consent_active(&consent, consent.start), Ok(()));
+}
+
+// --- open_envelope -----------------------------------------------------------------
+
+fn is_bad_envelope(plaintext: &[u8]) -> bool {
+    matches!(open_envelope(plaintext), Err(EvaluateError::BadFipEnvelope))
+}
+
+#[test]
+fn envelope_opens_and_decodes_the_statement() {
+    let (fi, jws) = open_envelope(br#"{"fi":"aGVsbG8=","jws":"x..y"}"#).unwrap();
+    assert_eq!(fi.as_slice(), b"hello");
+    assert_eq!(jws, "x..y");
+}
+
+#[test]
+fn envelope_allows_leading_whitespace() {
+    let (fi, _) = open_envelope(b" \n\t{\"fi\":\"aGVsbG8=\",\"jws\":\"x..y\"}").unwrap();
+    assert_eq!(fi.as_slice(), b"hello");
+}
+
+#[test]
+fn envelope_rejects_a_json_array() {
+    assert!(is_bad_envelope(br#"["aGVsbG8=","x..y"]"#));
+}
+
+#[test]
+fn envelope_rejects_an_escape_in_fi() {
+    assert!(is_bad_envelope(br#"{"fi":"aGVs\/G8=","jws":"x..y"}"#));
+}
+
+// An escape in a member we ignore would parse (and be copied into serde's
+// unwiped scratch buffer) if only the borrowed members were checked.
+#[test]
+fn envelope_rejects_an_escape_in_an_ignored_member() {
+    assert!(is_bad_envelope(
+        br#"{"fi":"aGVsbG8=","jws":"x..y","extra":"a\nb"}"#
+    ));
+}
+
+#[test]
+fn envelope_rejects_a_duplicate_fi_key() {
+    assert!(is_bad_envelope(
+        br#"{"fi":"aGVsbG8=","fi":"aGVsbG8=","jws":"x..y"}"#
+    ));
+}
+
+#[test]
+fn envelope_rejects_non_base64_fi() {
+    assert!(is_bad_envelope(br#"{"fi":"not base64 !","jws":"x..y"}"#));
+}

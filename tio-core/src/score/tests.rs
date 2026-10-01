@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 
 use super::*;
 use crate::rebit::Txn;
-use crate::time::parse_date;
+use crate::time::{parse_date, IST_OFFSET};
 
 /// A balance that is never overdrawn.
 const BAL: i64 = 1_000_000_000;

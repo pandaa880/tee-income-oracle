@@ -51,12 +51,12 @@ describe('generateAll', () => {
     expect(manifest.generator_version).toBe(GENERATOR_VERSION);
   });
 
-  it('lists exactly 6 positive and 25 negative cases', () => {
+  it('lists exactly 6 positive and 26 negative cases', () => {
     const manifest = manifestOf(generateAll(loadKeys()));
     const positive = manifest.cases.filter((c) => c.kind === 'positive');
     const negative = manifest.cases.filter((c) => c.kind === 'negative');
     expect(positive).toHaveLength(6);
-    expect(negative).toHaveLength(25);
+    expect(negative).toHaveLength(26);
   });
 
   it('carries payload_hex and msg_hex in every positive case (null only for REJECT)', () => {

@@ -19,8 +19,6 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use crate::money::Paise;
 use crate::policy::{Policy, Recurrence, Rules, Tier};
 use crate::rebit::{DepositFi, Txn};
-#[cfg(test)]
-use crate::time::IST_OFFSET;
 use crate::time::{civil_from_days, days_from_civil, india_day};
 use crate::ErrorCode;
 

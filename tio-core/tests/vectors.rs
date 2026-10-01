@@ -287,6 +287,7 @@ fn manifest_lists_the_evaluate_negatives_with_their_codes() {
         ("window_too_short", "window_too_short"),
         ("window_stale", "window_stale"),
         ("statement_outside_window", "window_mismatch"),
+        ("statement_too_short", "window_too_short"),
         ("multi_fip_response", "bad_fetch_response"),
         ("multi_account_response", "bad_fetch_response"),
         ("fip_envelope_malformed", "bad_fip_envelope"),

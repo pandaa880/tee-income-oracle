@@ -389,6 +389,15 @@
       }
     },
     {
+      "id": "statement_too_short",
+      "kind": "negative",
+      "dir": "negative/statement_too_short",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "window_too_short"
+      }
+    },
+    {
       "id": "multi_fip_response",
       "kind": "negative",
       "dir": "negative/multi_fip_response",

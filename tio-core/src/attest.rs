@@ -55,9 +55,13 @@ pub struct PayloadFields {
     pub window_to: u32,
 }
 
+// The field sizes of each layout add up to its length, checked at compile time.
+const _: () = assert!(1 + 1 + 1 + 32 + 32 + 8 + 4 + 4 == PAYLOAD_LEN);
+const _: () = assert!(13 + 32 + 32 + 32 + 32 + PAYLOAD_LEN + 8 == MESSAGE_LEN);
+
 /// Writes `parts` back to back into a fixed-size array. Callers pass parts
-/// that add up to exactly `N`; a mismatch would leave zeros rather than
-/// panic (the unit tests pin the lengths).
+/// that add up to exactly `N` (the const assertions above pin the layout
+/// sizes); a mismatch would leave zeros rather than panic.
 fn assemble<const N: usize>(parts: &[&[u8]]) -> [u8; N] {
     let mut out = [0u8; N];
     let mut rest = out.as_mut_slice();

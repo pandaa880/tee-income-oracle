@@ -2,9 +2,15 @@
  * TS mirror of the enclave's `tio_core::evaluate` check order (plan "Check
  * order", FORMATS §10.1): AA signature → fetch shape → txnid → consent
  * signature → consent parse → consent id → consent status and time → requested
- * range ⊆ consent → too short → stale → decrypt → FIP envelope → FIP signature
- * → FI parse → statement inside range → score. Tests use it to prove each
- * negative case fails at its own layer and every layer before it passes.
+ * range ⊆ consent → too short → stale → future end → decrypt → FIP envelope →
+ * FIP signature → FI parse → statement inside range and long enough → score.
+ * Tests use it to prove each negative case fails at its own layer and every
+ * layer before it passes.
+ *
+ * Where this mirror is looser than tio-core, on inputs no vector uses:
+ * - timestamps go through `Date.parse`, not the FORMATS §12 grammar;
+ * - a duplicate JSON key is last-wins here (`JSON.parse`), an error in Rust;
+ * - `KeyMaterial` is only checked shallowly (a record with the members we read).
  */
 
 import { b64Decode, pemToDer } from '../crypto/encoding.ts';
@@ -23,6 +29,7 @@ export type CheckResult =
 
 const DAY = 86_400;
 const IST_OFFSET_S = 19_800;
+const BACKSLASH = 0x5c;
 
 /** Thrown inside the pipeline to stop at the first failing layer. */
 class CheckFailure extends Error {
@@ -79,12 +86,10 @@ function runChecks(files: CaseFiles, keys: TestKeys): Uint8Array {
   const entry = fetchEntry(body, session);
   const consentJws = verifyCompact(text(files, 'consent.jws'), aa);
   jwsOk(consentJws, 'bad_consent_signature');
-  if (consentJws.ok) {
-    checkConsent(readConsent(parse(consentJws.value)), session);
-  }
+  checkConsent(readConsent(parse(consentJws.value)), session);
   const fi = openEnvelope(entry, session, keys);
   const mini = parseFi(fi);
-  checkStatementInRange(mini, session);
+  checkStatement(mini, session);
   score(mini, DEFAULT_POLICY);
   return fi;
 }
@@ -130,6 +135,10 @@ function checkConsent(consent: Consent, session: Session): void {
   if (session.now - to > max_age_days * DAY) {
     throw new CheckFailure('window_stale');
   }
+  // The raw requested end: a window can't end after the moment it is evaluated.
+  if (session.to > session.now) {
+    throw new CheckFailure('window_mismatch');
+  }
 }
 
 /** Steps 11-13: key exchange, decrypt, envelope shape, FIP signature. Returns the FI bytes. */
@@ -142,7 +151,13 @@ function openEnvelope(entry: unknown, session: Session, keys: TestKeys): Uint8Ar
   const shared = enclave.sharedSecret(peerKey);
   const key = deriveSessionKey(shared, nonce(session.nonceB64), theirs);
   const encrypted = str(field(firstOf(field(entry, 'data')), 'encryptedFI'));
-  const envelope = parseOrFail(decrypt(key, encrypted), 'bad_fip_envelope');
+  const plaintext = decrypt(key, encrypted);
+  // Same rule as tio-core: base64 and a compact JWS never need an escape, and the
+  // enclave refuses them so no plaintext is copied out of its wiped buffer.
+  if (plaintext.includes(BACKSLASH)) {
+    throw new CheckFailure('bad_fip_envelope');
+  }
+  const envelope = parseOrFail(plaintext, 'bad_fip_envelope');
   const fiB64 = field(envelope, 'fi');
   const jws = field(envelope, 'jws');
   if (typeof fiB64 !== 'string' || typeof jws !== 'string') {
@@ -178,13 +193,19 @@ function parseFi(fi: Uint8Array): MiniFi {
   }
 }
 
-/** Step 15: the statement's India days lie inside the requested range's India days. */
-function checkStatementInRange(mini: MiniFi, session: Session): void {
+/**
+ * Step 15: the statement's India days lie inside the requested range's India days, and
+ * the statement itself spans at least `min_days` (inclusive day count).
+ */
+function checkStatement(mini: MiniFi, session: Session): void {
   if (mini.startDay < indiaDay(floorToDay(session.from))) {
     throw new CheckFailure('window_mismatch');
   }
   if (mini.endDay > indiaDay(floorToDay(session.to))) {
     throw new CheckFailure('window_mismatch');
+  }
+  if (mini.endDay - mini.startDay + 1 < DEFAULT_POLICY.window.min_days) {
+    throw new CheckFailure('window_too_short');
   }
 }
 
@@ -241,7 +262,10 @@ function readConsent(json: unknown): Consent {
 }
 
 /** A signature failure takes the layer's name; other JWS codes pass through. */
-function jwsOk(result: JwsResult<unknown>, layerCode: string): void {
+function jwsOk<T>(
+  result: JwsResult<T>,
+  layerCode: string,
+): asserts result is Extract<JwsResult<T>, { readonly ok: true }> {
   if (!result.ok) {
     throw new CheckFailure(result.code === 'bad_signature' ? layerCode : result.code);
   }
