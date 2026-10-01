@@ -107,7 +107,8 @@ pub struct EvaluateInput<'a> {
 /// Time inputs: the crate has no clock of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Clock {
-    /// Current unix time.
+    /// Current unix time. Must come from the same clock that set the session's
+    /// requested `to`: the future-end rule (step 10) compares the two.
     pub now: i64,
     /// Expiry written into the signed message (§8). The caller (the enclave)
     /// sets it after `now`; it is not checked here.

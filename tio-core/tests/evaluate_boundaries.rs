@@ -27,7 +27,7 @@
 
 mod common;
 
-use tio_core::{Clock, ErrorCode, FiDataRange, Outcome};
+use tio_core::{Clock, ErrorCode, FiDataRange, Outcome, Policy};
 
 use common::{load_json, test_vectors_dir, CaseFixture, Overrides};
 
@@ -269,11 +269,13 @@ fn requested_range_of_exactly_180_days_passes_the_length_check() {
 #[test]
 fn issued_at_in_the_payload_is_the_clock_now() {
     let fx = salaried();
-    // now = the window end: the earliest `now` that is not before the window
-    // ends (a `now` before it is window_mismatch) and differs from the vector's.
-    let now = fx.range.to();
+    // now = one hour past the window end: not before the end (that would be
+    // window_mismatch), differs from the vector's, and differs from the
+    // payload's window_to, so a payload that used window_to is caught.
+    let now = fx.range.to() + 3600;
     assert_ne!(now, fx.clock.now);
     let evaluation = fx.evaluate_with(&at(&fx, now)).unwrap();
+    assert_ne!(now, i64::from(evaluation.window_to));
     let attestation = evaluation.attestation.unwrap();
     assert_eq!(&attestation.payload[67..75], &now.to_le_bytes());
 }
@@ -340,5 +342,34 @@ fn stressed_vector_still_reports_window_and_hashes() {
     assert_eq!(
         hex::encode(evaluation.consent_hash),
         expected["consent_hash"].as_str().unwrap()
+    );
+}
+
+// --- check 15b: the statement spans at least min_days ---------------------------
+
+// The stressed vector's statement is 2026-03-26..2026-09-26: 185 days
+// inclusive, under a 365-day request. Only `min_days` is varied.
+fn stressed_with_min_days(min_days: u64) -> CaseFixture {
+    let mut fx = fixture("stressed");
+    let path = test_vectors_dir().join("policy").join("default.json");
+    let mut json = load_json(&path);
+    json["window"]["min_days"] = serde_json::json!(min_days);
+    fx.policy = Policy::from_json(&serde_json::to_vec(&json).unwrap()).unwrap();
+    fx
+}
+
+#[test]
+fn statement_spanning_exactly_min_days_passes_check_15b() {
+    let evaluation = stressed_with_min_days(185).evaluate().unwrap();
+    assert_eq!(evaluation.outcome, Outcome::Reject);
+    assert_eq!(evaluation.attestation, None);
+}
+
+#[test]
+fn statement_one_day_under_min_days_is_window_too_short() {
+    let fx = stressed_with_min_days(186);
+    assert_eq!(
+        fx.evaluate().map(|_| ()).map_err(|e| e.code()),
+        Err("window_too_short")
     );
 }

@@ -355,3 +355,27 @@ fn envelope_rejects_a_duplicate_fi_key() {
 fn envelope_rejects_non_base64_fi() {
     assert!(is_bad_envelope(br#"{"fi":"not base64 !","jws":"x..y"}"#));
 }
+
+// --- check_window_policy: the future-end rule uses the raw requested end ----
+
+fn default_policy() -> Policy {
+    Policy::from_json(include_bytes!("../../../test-vectors/policy/default.json")).unwrap()
+}
+
+// The floored end (`window.to`) is <= now, the raw end is not: only the raw
+// rule can reject this. A mutant comparing `window.to` would return Ok.
+#[test]
+fn future_end_rule_uses_the_raw_requested_end_not_the_floored_one() {
+    let to: u32 = 400 * 86_400;
+    let window = Window { from: 0, to };
+    let range = FiDataRange::new(0, i64::from(to) + 3600).unwrap();
+    let policy = default_policy();
+    let early = i64::from(to) + 1800;
+    assert_eq!(
+        check_window_policy(window, range, &policy, early),
+        Err(EvaluateError::WindowMismatch)
+    );
+    // Control: once now reaches the raw end, the same inputs pass.
+    let reached = i64::from(to) + 3600;
+    assert_eq!(check_window_policy(window, range, &policy, reached), Ok(()));
+}

@@ -154,6 +154,33 @@ const CONSENT_TIMES: Partial<
   consent_not_started: { start: DAY, expiry: (WINDOW_DAYS + 1) * DAY },
 };
 
+/** The parts of the persona FI JSON that `statement_too_short` rewrites. */
+interface FiText {
+  readonly [key: string]: JsonValue;
+  readonly Transactions: {
+    readonly [key: string]: JsonValue;
+    readonly Transaction: readonly { readonly transactionTimestamp: string }[];
+  };
+}
+
+function isFiText(value: unknown): value is FiText {
+  if (typeof value !== 'object' || value === null || !('Transactions' in value)) return false;
+  const txns = value.Transactions;
+  return (
+    typeof txns === 'object' &&
+    txns !== null &&
+    'Transaction' in txns &&
+    Array.isArray(txns.Transaction)
+  );
+}
+
+/** The persona FI JSON, parsed; the generator wrote it, so a bad shape is a bug. */
+function parseFiText(text: string): FiText {
+  const fi: unknown = JSON.parse(text);
+  if (!isFiText(fi)) throw new Error('persona FI has no Transactions.Transaction array');
+  return fi;
+}
+
 /** Changes to the FI bytes the FIP signs (the FIP signs the changed bytes: its layer is valid). */
 const FI_MUTATIONS: Partial<Record<NegativeId, (ctx: Context) => Uint8Array>> = {
   statement_outside_window: (ctx) => {
@@ -161,11 +188,19 @@ const FI_MUTATIONS: Partial<Record<NegativeId, (ctx: Context) => Uint8Array>> = 
     return utf8(personaFiText(ctx).replace(/"startDate":"[^"]*"/, `"startDate":"${day}"`));
   },
   // A 30-day statement (endDate − 29 days .. endDate) under the full-year request. The
-  // transactions before the new startDate are kept: check 15 fires before scoring, so the
-  // enclave never looks at them.
+  // transactions before the new startDate are dropped (the persona generator's own rule:
+  // UTC date of the transaction >= startDate), so only check 15b is broken.
   statement_too_short: (ctx) => {
     const day = isoUtc(NOW_UNIX - 29 * DAY).slice(0, 10);
-    return utf8(personaFiText(ctx).replace(/"startDate":"[^"]*"/, `"startDate":"${day}"`));
+    const fi = parseFiText(personaFiText(ctx));
+    const kept = fi.Transactions.Transaction.filter(
+      (t) => t.transactionTimestamp.slice(0, 10) >= day,
+    );
+    const short = {
+      ...fi,
+      Transactions: { ...fi.Transactions, startDate: day, Transaction: kept },
+    };
+    return utf8(JSON.stringify(short));
   },
   amount_three_decimals: (ctx) => withFirstAmount(personaFiText(ctx), '1234.567'),
   amount_negative_string: (ctx) => withFirstAmount(personaFiText(ctx), '"-0.50"'),
