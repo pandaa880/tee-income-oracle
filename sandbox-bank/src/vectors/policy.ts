@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { utf8 } from '../crypto/encoding.ts';
 import { canonicalize, type JsonValue } from '../crypto/jcs.ts';
 
-export const DEFAULT_POLICY: JsonValue = {
+export const DEFAULT_POLICY = {
   v: 2,
   recurrence: { amount_tol_bps: 1000, day_tol: 5, min_occurrences: 3 },
   recent_months: 3,
@@ -16,7 +16,7 @@ export const DEFAULT_POLICY: JsonValue = {
     { tier: 'C', foir_max_bps: 7000, cv_max_bps: 6000, bounces_max: 3 },
   ],
   reject_if: { od_days_min: 30 },
-};
+} as const satisfies JsonValue;
 
 /** JCS bytes: the exact bytes that `policy_hash` commits to. */
 export function policyBytes(): Uint8Array {

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { reduceFi } from '../scoring/reduce.ts';
+import { score } from '../scoring/score.ts';
 import { buildPersonas, type Persona } from './personas.ts';
+import { DEFAULT_POLICY } from './policy.ts';
 
 interface FinvuTransaction {
   readonly type: string;
@@ -70,16 +73,17 @@ function monthsBetween(fromIso: string, toIso: string): number {
 describe('buildPersonas', () => {
   const personas = buildPersonas();
 
-  it('returns exactly 3 personas in the fixed order', () => {
+  it('returns exactly 4 personas in the fixed order', () => {
     expect(personas.map((p) => p.persona_id)).toEqual([
       'salaried_steady',
       'trader_lumpy',
+      'declining',
       'stressed',
     ]);
   });
 
-  it('assigns the expected tiers A, B, C in order', () => {
-    expect(personas.map((p) => p.expected_tier)).toEqual(['A', 'B', 'C']);
+  it('assigns the expected tiers A, B, C and REJECT in order', () => {
+    expect(personas.map((p) => p.expected_tier)).toEqual(['A', 'B', 'C', 'REJECT']);
   });
 
   it('is deterministic: calling it twice produces deep-equal output', () => {
@@ -169,8 +173,15 @@ describe('buildPersonas', () => {
     ).toBeLessThanOrEqual(1);
   });
 
-  it('stressed spans about 6 months', () => {
+  it('declining spans about 12 months', () => {
     const fi = asFi(required(personas[2], 'expected persona 2'));
+    expect(
+      Math.abs(monthsBetween(fi.Transactions.startDate, fi.Transactions.endDate) - 12),
+    ).toBeLessThanOrEqual(1);
+  });
+
+  it('stressed spans about 6 months', () => {
+    const fi = asFi(required(personas[3], 'expected persona 3'));
     expect(
       Math.abs(monthsBetween(fi.Transactions.startDate, fi.Transactions.endDate) - 6),
     ).toBeLessThanOrEqual(1);
@@ -188,8 +199,44 @@ describe('buildPersonas', () => {
     expect(fi.Transactions.Transaction.some((t) => t.amount < 1)).toBe(true);
   });
 
-  it('stressed has at least one negative running balance', () => {
+  it('declining has no negative running balance (no overdraft)', () => {
     const fi = asFi(required(personas[2], 'expected persona 2'));
+    expect(fi.Transactions.Transaction.every((t) => toPaise(t.currentBalance) >= 0n)).toBe(true);
+  });
+
+  it('stressed has at least one negative running balance', () => {
+    const fi = asFi(required(personas[3], 'expected persona 3'));
     expect(fi.Transactions.Transaction.some((t) => toPaise(t.currentBalance) < 0n)).toBe(true);
+  });
+
+  describe('scored with the default policy by the independent TS scorer', () => {
+    const policy = DEFAULT_POLICY;
+    const scored = (persona: Persona) => score(reduceFi(JSON.stringify(persona.fi)), policy);
+
+    it.each(personas.map((p) => [p.persona_id, p] as const))(
+      '%s scores to its expected_tier',
+      (_id, persona) => {
+        expect(scored(persona).outcome).toBe(persona.expected_tier);
+      },
+    );
+
+    it('declining: full window B-shaped, recent window C-shaped, one explained bounce', () => {
+      const { full, recent } = scored(required(personas[2], 'expected persona 2'));
+      expect(full.bounces).toBe(1);
+      expect(recent.bounces).toBe(1);
+      expect(full.foir_bps).toBeLessThanOrEqual(5500);
+      expect(full.cv_bps).toBeLessThanOrEqual(5000);
+      expect(recent.foir_bps).toBeGreaterThan(5500);
+      expect(recent.foir_bps).toBeLessThanOrEqual(7000);
+      expect([full.loans, recent.loans]).toEqual([1, 1]);
+      expect(full.unmatched_emi_bounces).toBe(0);
+      expect(recent.unmatched_emi_bounces).toBe(0);
+      expect(full.od_days).toBeLessThan(30);
+    });
+
+    it('stressed: rejected for EMI bounces with no known loan', () => {
+      const { full } = scored(required(personas[3], 'expected persona 3'));
+      expect(full.unmatched_emi_bounces).toBeGreaterThan(0);
+    });
   });
 });

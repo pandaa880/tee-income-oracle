@@ -1,5 +1,5 @@
 /**
- * The three borrower personas (FORMATS §1), generated from seeded specs so
+ * The four borrower personas (FORMATS §1), generated from seeded specs so
  * nobody hand-edits 200 transactions. Money is integer paise throughout and
  * only formatted at the edge: `amount` as a JSON number with at most 2
  * decimals, balances as strings, as Finvu emits them.
@@ -9,12 +9,15 @@ import type { JsonValue } from '../crypto/jcs.ts';
 import { isoUtc } from '../rebit/key-material.ts';
 import { createPrng, seedBytes, uuidFromSeed, type Prng } from './prng.ts';
 
-export type PersonaId = 'salaried_steady' | 'trader_lumpy' | 'stressed';
+export type PersonaId = 'salaried_steady' | 'trader_lumpy' | 'declining' | 'stressed';
+
+/** A tier, or REJECT (FORMATS §6.1). */
+export type ExpectedTier = 'A' | 'B' | 'C' | 'REJECT';
 
 export type Persona = {
   readonly persona_id: PersonaId;
   readonly description: string;
-  readonly expected_tier: 'A' | 'B' | 'C';
+  readonly expected_tier: ExpectedTier;
   readonly fi: JsonValue;
 };
 
@@ -39,7 +42,7 @@ interface TxnEvent {
 interface Spec {
   readonly id: PersonaId;
   readonly description: string;
-  readonly tier: 'A' | 'B' | 'C';
+  readonly tier: ExpectedTier;
   readonly months: number;
   readonly accountType: 'SAVINGS' | 'CURRENT';
   readonly odLimitPaise: number; // 0 = no overdraft
@@ -72,9 +75,20 @@ const SPECS: readonly Spec[] = [
     monthEvents: traderMonth,
   },
   {
+    id: 'declining',
+    description: 'Steady salary, then lower gig income for the last months; one EMI bounce',
+    tier: 'C',
+    months: 12,
+    accountType: 'SAVINGS',
+    odLimitPaise: 0,
+    openingPaise: 5_000_000,
+    holder: { name: 'Meera Iyer', dob: '1989-06-15', pan: 'DEFPI4567J' },
+    monthEvents: decliningMonth,
+  },
+  {
     id: 'stressed',
     description: 'Irregular salary, overdraft for weeks, EMI bounces',
-    tier: 'C',
+    tier: 'REJECT',
     months: 6,
     accountType: 'SAVINGS',
     odLimitPaise: 5_000_000,
@@ -84,7 +98,7 @@ const SPECS: readonly Spec[] = [
   },
 ];
 
-/** Personas in fixed order: salaried_steady, trader_lumpy, stressed. */
+/** Personas in fixed order: salaried_steady, trader_lumpy, declining, stressed. */
 export function buildPersonas(): readonly Persona[] {
   return SPECS.map((spec) => ({
     persona_id: spec.id,
@@ -199,6 +213,45 @@ function traderMonth(m: number, prng: Prng): readonly TxnEvent[] {
     events.push(
       ev(m, prng.int(1, 28), prng, 'DEBIT', 'FT', paise, 'NEFT-DR-SUPPLIER', 'skip_if_short'),
     );
+  }
+  return events;
+}
+
+/** First month of `declining`'s gig phase: May 2026, so it covers the recent window. */
+const GIG_START = addMonths(firstOfMonth(NOW_UNIX), -4);
+/** The month whose late one-off expense leaves too little for the next EMI. */
+const DRAIN_MONTH = addMonths(firstOfMonth(NOW_UNIX), -3);
+
+/**
+ * Steady salary until GIG_START, then three smaller gig credits a month.
+ * Only the EMI is posted when the money is short (and bounces); everything
+ * else is skipped, so the balance never goes negative. One large expense late
+ * in DRAIN_MONTH makes exactly the next EMI bounce.
+ */
+function decliningMonth(m: number, prng: Prng): readonly TxnEvent[] {
+  const events: TxnEvent[] = [
+    ev(m, 5, prng, 'DEBIT', 'OTHERS', 2_000_000, 'ACH-DR-ICICI PERSONAL LOAN EMI', 'emi'),
+  ];
+  if (m < GIG_START) {
+    events.push(
+      ev(m, 1, prng, 'CREDIT', 'FT', 9_000_000, 'NEFT-SAL-NORTHWIND LOGISTICS'),
+      ev(m, 3, prng, 'DEBIT', 'UPI', 2_000_000, 'UPI-RENT-GREEN PARK', 'skip_if_short'),
+      ev(m, 7, prng, 'DEBIT', 'OTHERS', 3_000_000, 'ACH-DR-MUTUAL FUND SIP', 'skip_if_short'),
+    );
+  } else {
+    events.push(ev(m, 3, prng, 'DEBIT', 'UPI', 800_000, 'UPI-RENT-SHARED ROOM', 'skip_if_short'));
+    for (const day of [9, 17, 25]) {
+      const paise = prng.int(1_100_000, 1_180_000);
+      events.push(ev(m, day, prng, 'CREDIT', 'UPI', paise, 'UPI-CR-GIG PLATFORM PAYOUT'));
+    }
+  }
+  if (m === DRAIN_MONTH) {
+    events.push(
+      ev(m, 28, prng, 'DEBIT', 'FT', 15_000_000, 'NEFT-DR-CITY HOSPITAL', 'skip_if_short'),
+    );
+  }
+  for (let i = prng.int(4, 6); i > 0; i--) {
+    events.push(spend(m, prng, 20_000, 150_000));
   }
   return events;
 }

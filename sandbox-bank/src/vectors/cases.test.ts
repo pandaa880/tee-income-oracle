@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { verifyDetached } from '../crypto/jws.ts';
 import {
   NEGATIVE_CASES,
+  scoredJson,
   buildCase,
   type CaseFiles,
   type CaseOptions,
@@ -145,5 +146,24 @@ describe('buildCase determinism', () => {
     for (const [name, bytes] of first) {
       expect(second.get(name)).toEqual(bytes);
     }
+  });
+});
+
+describe('scoredJson', () => {
+  it('fails generation when the TS scorer disagrees with expected_tier', () => {
+    const stressed = buildPersonas().find((p) => p.persona_id === 'stressed');
+    if (stressed === undefined) {
+      throw new Error('stressed persona missing');
+    }
+    const mislabelled: Persona = { ...stressed, expected_tier: 'A' };
+    expect(() => scoredJson(mislabelled)).toThrow(/TS scorer gave REJECT, expected A/);
+  });
+
+  it('returns the tier when it matches expected_tier', () => {
+    const steady = buildPersonas().find((p) => p.persona_id === 'salaried_steady');
+    if (steady === undefined) {
+      throw new Error('salaried_steady persona missing');
+    }
+    expect(scoredJson(steady).tier).toBe('A');
   });
 });

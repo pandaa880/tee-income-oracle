@@ -1,0 +1,31 @@
+{
+  "policy_hash": "93794d5602241cd6c487a0a0dac57028b050c65af7865c8e7ce8d293b00aa6e4",
+  "consent_hash": "f30f043c91a3ac48a37b684f27b070affad58fb0e7fc52813a02570a317d610a",
+  "window_from": 1758844800,
+  "window_to": 1790380800,
+  "tier": "C",
+  "features": {
+    "full": {
+      "months": 11,
+      "income_median_paise": 9000000,
+      "obligation_median_paise": 2000000,
+      "foir_bps": 2222,
+      "cv_bps": 3859,
+      "loans": 1,
+      "bounces": 1,
+      "unmatched_emi_bounces": 0,
+      "od_days": 0
+    },
+    "recent": {
+      "months": 3,
+      "income_median_paise": 3419467,
+      "obligation_median_paise": 2000000,
+      "foir_bps": 5848,
+      "cv_bps": 104,
+      "loans": 1,
+      "bounces": 1,
+      "unmatched_emi_bounces": 0,
+      "od_days": 0
+    }
+  }
+}

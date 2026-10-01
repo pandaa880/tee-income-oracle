@@ -19,9 +19,11 @@ import { buildConsent } from '../rebit/consent.ts';
 import { buildFetchResponse, buildFipEnvelope } from '../rebit/fetch-response.ts';
 import { buildFiRequest } from '../rebit/fi-request.ts';
 import { buildKeyMaterial, isoUtc } from '../rebit/key-material.ts';
+import { reduceFi } from '../scoring/reduce.ts';
+import { score, type Features } from '../scoring/score.ts';
 import { ENCLAVE_KEY_FILE, type TestKeys } from './keys.ts';
 import { NOW_UNIX, type Persona } from './personas.ts';
-import { policyHashHex } from './policy.ts';
+import { DEFAULT_POLICY, policyHashHex } from './policy.ts';
 import { seedBytes, uuidFromSeed } from './prng.ts';
 
 export type NegativeId =
@@ -260,7 +262,48 @@ function expectedJson(ctx: Context, consentJws: string): JsonValue {
     consent_hash: createHash('sha256').update(consentJws, 'ascii').digest('hex'),
     window_from: ctx.windowFrom,
     window_to: ctx.windowTo,
+    ...scoredJson(ctx.persona),
   };
+}
+
+/**
+ * `tier` and `features` from the independent TS scorer (FORMATS §6.1).
+ * Generation fails if the tier isn't the persona's `expected_tier`.
+ */
+export function scoredJson(persona: Persona): { tier: string; features: JsonValue } {
+  const fiText = new TextDecoder().decode(jsonBytes(persona.fi, 0));
+  const scores = score(reduceFi(fiText), DEFAULT_POLICY);
+  if (scores.outcome !== persona.expected_tier) {
+    throw new Error(
+      `${persona.persona_id}: TS scorer gave ${scores.outcome}, expected ${persona.expected_tier}`,
+    );
+  }
+  return {
+    tier: scores.outcome,
+    features: { full: featuresJson(scores.full), recent: featuresJson(scores.recent) },
+  };
+}
+
+function featuresJson(f: Features): JsonValue {
+  return {
+    months: f.months,
+    income_median_paise: safeInteger(f.income_median_paise),
+    obligation_median_paise: safeInteger(f.obligation_median_paise),
+    foir_bps: f.foir_bps,
+    cv_bps: f.cv_bps,
+    loans: f.loans,
+    bounces: f.bounces,
+    unmatched_emi_bounces: f.unmatched_emi_bounces,
+    od_days: f.od_days,
+  };
+}
+
+/** Paise as a JSON integer; refuses values a JSON reader may not hold exactly. */
+function safeInteger(paise: bigint): number {
+  if (paise > BigInt(Number.MAX_SAFE_INTEGER) || paise < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new Error(`paise ${paise} exceed 2^53 - 1`);
+  }
+  return Number(paise);
 }
 
 /** Compact (indent 0) for signed bodies; 2-space for human-read files. No trailing newline. */

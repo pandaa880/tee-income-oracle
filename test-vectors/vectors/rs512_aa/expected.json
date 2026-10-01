@@ -2,5 +2,30 @@
   "policy_hash": "93794d5602241cd6c487a0a0dac57028b050c65af7865c8e7ce8d293b00aa6e4",
   "consent_hash": "df15691c46c3d5c50cd3c60b5eae93cafc29a38cc91007b71e2916068148822a",
   "window_from": 1758844800,
-  "window_to": 1790380800
+  "window_to": 1790380800,
+  "tier": "A",
+  "features": {
+    "full": {
+      "months": 11,
+      "income_median_paise": 8500052,
+      "obligation_median_paise": 1800000,
+      "foir_bps": 2117,
+      "cv_bps": 0,
+      "loans": 1,
+      "bounces": 0,
+      "unmatched_emi_bounces": 0,
+      "od_days": 0
+    },
+    "recent": {
+      "months": 3,
+      "income_median_paise": 8500023,
+      "obligation_median_paise": 1800000,
+      "foir_bps": 2117,
+      "cv_bps": 0,
+      "loans": 1,
+      "bounces": 0,
+      "unmatched_emi_bounces": 0,
+      "od_days": 0
+    }
+  }
 }

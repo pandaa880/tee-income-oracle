@@ -34,12 +34,12 @@ golden/rfc7515/   RSA keys and the RS256 example from RFC 7515 App. A.2 and
                   and verification match the standard.
 keys/             TEST-ONLY FIP / AA / FIU / rogue RSA keys (+ public JWKs) and
                   the enclave Curve25519 + secp256k1 test scalars
-personas/         3 borrower statements: salaried_steady → A,
-                  trader_lumpy → B, stressed → C (C or Reject, set by the scoring policy)
+personas/         4 borrower statements: salaried_steady → A,
+                  trader_lumpy → B, declining → C, stressed → REJECT
 policy/           default scoring policy (JCS bytes) + its hash
 vectors/          positive cases: one per persona, plus rs512_aa and
                   x25519_mode. FI request, fetch response, consent, expected
-                  hashes (tier and payload are added once scoring exists)
+                  hashes, tier and scoring features (payload added later)
 negative/         one broken layer per case, expected error code
 manifest.json     index of all cases + generator version
 ```
