@@ -51,12 +51,38 @@ describe('generateAll', () => {
     expect(manifest.generator_version).toBe(GENERATOR_VERSION);
   });
 
-  it('lists exactly 6 positive and 9 negative cases', () => {
+  it('lists exactly 6 positive and 25 negative cases', () => {
     const manifest = manifestOf(generateAll(loadKeys()));
     const positive = manifest.cases.filter((c) => c.kind === 'positive');
     const negative = manifest.cases.filter((c) => c.kind === 'negative');
     expect(positive).toHaveLength(6);
-    expect(negative).toHaveLength(9);
+    expect(negative).toHaveLength(25);
+  });
+
+  it('carries payload_hex and msg_hex in every positive case (null only for REJECT)', () => {
+    const manifest = manifestOf(generateAll(loadKeys()));
+    for (const c of manifest.cases.filter((x) => x.kind === 'positive')) {
+      const expected = c.expected as Record<string, unknown>;
+      if (expected['tier'] === 'REJECT') {
+        expect(expected, c.id).toHaveProperty('payload_hex', null);
+        expect(expected, c.id).toHaveProperty('msg_hex', null);
+      } else {
+        expect(String(expected['payload_hex']), c.id).toMatch(/^[0-9a-f]{166}$/);
+        expect(String(expected['msg_hex']), c.id).toMatch(/^[0-9a-f]{464}$/);
+      }
+    }
+  });
+
+  it('writes the new session.json members into every case directory', () => {
+    const files = generateAll(loadKeys());
+    const manifest = manifestOf(files);
+    for (const c of manifest.cases) {
+      const bytes = required(files.get(`${c.dir}/session.json`), `${c.id}: session.json`);
+      const session = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+      for (const member of ['consent_id', 'wallet', 'attest']) {
+        expect(session, `${c.id} ${member}`).toHaveProperty(member);
+      }
+    }
   });
 
   it('lists every vectors/ and negative/ case directory exactly once', () => {
