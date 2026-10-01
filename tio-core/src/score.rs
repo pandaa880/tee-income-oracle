@@ -428,11 +428,10 @@ fn obligation_in(loans: &[Loan], month: &Month) -> Result<i64, ScoreError> {
         })
 }
 
-/// EMI bounces on `span`'s days that no known loan explains. A bounce is
-/// explained by a loan that missed the bounce's month and is due within
-/// `day_tol` days of the bounce's day of month; each loan explains at most
-/// one bounce a month. Entries are in time order, so a month's bounces are
-/// consecutive and the claims reset when the month changes.
+/// EMI bounces on `span`'s days that no known loan explains (see
+/// [`claim_missed_loan`]); each loan explains at most one bounce a month.
+/// Entries are in time order, so a month's bounces are consecutive, in day
+/// order, and the claims reset when the month changes.
 fn unmatched_emi_bounces(
     entries: &[Entry],
     loans: &[Loan],
@@ -460,20 +459,26 @@ fn unmatched_emi_bounces(
     count(unmatched)
 }
 
-/// Marks the first unclaimed loan that explains `bounce` (started by the end
-/// of its month, no payment that month, due day within `day_tol`); false if
-/// there is none.
+/// Claims the unclaimed loan that explains `bounce`: started by the end of
+/// its month, no payment that month, due within `day_tol` days of it, and
+/// **cured** (paid again in a later month, so the loan is alive and the miss
+/// was a gap in its schedule). Nothing in the data names the loan a bounce
+/// belongs to, so an uncured bounce is never attributed. Among eligible
+/// loans the earliest due day wins: with bounces taken in day order, this
+/// greedy choice finds a full pairing whenever one exists. False if none.
 fn claim_missed_loan(loans: &[Loan], claimed: &mut [bool], bounce: &Entry, day_tol: u32) -> bool {
     let month_end = month_span(bounce.month).last;
     let explains = |loan: &Loan| {
         loan.first_day <= month_end
             && !loan.paid_months.contains(&bounce.month)
             && (loan.due_dom - bounce.dom).abs() <= i64::from(day_tol)
+            && loan.paid_months.iter().any(|&m| m > bounce.month)
     };
     let slot = loans
         .iter()
         .zip(claimed.iter_mut())
-        .find(|(loan, taken)| !**taken && explains(loan));
+        .filter(|(loan, taken)| !**taken && explains(loan))
+        .min_by_key(|(loan, _)| loan.due_dom);
     match slot {
         Some((_, taken)) => {
             *taken = true;

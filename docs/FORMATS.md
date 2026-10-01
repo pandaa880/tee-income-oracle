@@ -66,7 +66,7 @@ never seen by the enclave directly.
 Four personas, fixed, in this order: `salaried_steady` → A, `trader_lumpy` → B,
 `declining` → C (steady salary, then lower gig income in the recent months and one
 EMI bounce: full window B, recent window C), `stressed` → `"REJECT"` (weeks of
-overdraft and more bounces than any tier allows; its loan is measured). 6–12 months of transactions each.
+overdraft, more bounces than any tier allows, and uncured EMI bounces; its loan is measured). 6–12 months of transactions each.
 `expected_tier` is `"A"`, `"B"`, `"C"` or `"REJECT"`; the generator fails if its
 independent scorer (§6.1) disagrees.
 
@@ -550,13 +550,18 @@ UTC. Transaction order = (`transactionTimestamp`, input index).
      `cv_bps = floor(isqrt(10⁸ · D) / Σx)`, 0 if `Σx = 0`. Scaling before the root keeps it the exact floor
      of `10⁴ · √D / Σx` (`[1,1,2]` → 3535, not 2500).
    - `loans` = loans with `first_day ≤` S's last day; `bounces` = bounces on S's days.
-   - `unmatched_emi_bounces` = EMI bounces on S's days that no known loan explains. Bounces are taken in
-     order; a bounce is explained by the first loan, not yet used for another bounce that month, that
-     (a) started by the end of the bounce's month, (b) has no payment in that month, and (c) is due
-     within `day_tol` days of the bounce: `|due_dom − dom(bounce)| ≤ day_tol`. A NACH bounce posts on
-     the instalment's due day, so the due day is the evidence that ties a bounce to a loan (the bounce
-     line's amount is usually the return charge, not the EMI). A small loan paid on time, or a loan
-     due on another day, can't hide a bounced unknown one.
+   - `unmatched_emi_bounces` = EMI bounces on S's days that no known loan explains. A loan can explain
+     a bounce if it (a) started by the end of the bounce's month, (b) has no payment in that month,
+     (c) is due within `day_tol` days of the bounce (`|due_dom − dom(bounce)| ≤ day_tol`), and
+     (d) is **cured**: it has a payment in a later month. Bounces are taken in time order; each takes
+     the eligible loan with the **earliest due day** (first on ties) not yet used for another bounce
+     that month. That greedy choice explains every bounce whenever some pairing can. Why these rules:
+     nothing in the reduced data names the loan a bounce belongs to (narration is reduced to flags;
+     the bounce line's amount is usually the return charge, not the EMI). A NACH bounce posts on the
+     due day, which ties it to loans due near that day, and a later payment proves the loan is alive,
+     so the miss was a gap in its own schedule. An uncured bounce could equally be a new, unseen
+     loan's first instalment, so it is never attributed. A small loan paid on time, a loan due on
+     another day, or a loan that has stopped paying can't hide a bounced unknown one.
    - `od_days` = days of S whose end-of-day balance (the last transaction on or before that day) is
      negative; days before the first transaction don't count.
    - S's days: full = `[startDate, endDate]`, even with no complete months; recent = first to last
@@ -574,6 +579,10 @@ UTC. Transaction order = (`transactionTimestamp`, input index).
   bounced) is unmatched → Reject.
 - A bank that posts two bounce lines per miss (e.g. return charge + GST, both with EMI words) double-counts.
 - A bounce posted more than `day_tol` days after the due day (late re-presentation) is unmatched → Reject.
+- An uncured EMI bounce (no later payment of a matching loan, e.g. in the statement's last month) is
+  unmatched → Reject: a fresh, unresolved bounce. Periodic re-pulls re-check it once a payment follows.
+- Residual: a known loan that skips a month with no bounce line and pays later, while an unseen loan
+  due near the same day bounces that month, still has the bounce explained by the known loan.
 - A loan with fewer than `min_occurrences` payments in the statement (default 2: a single payment) is
   not seen.
 - Income = every non-bounce credit, so self-transfers, loan proceeds and refunds count. FIP signatures prove

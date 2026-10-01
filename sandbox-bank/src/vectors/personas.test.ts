@@ -234,10 +234,10 @@ describe('buildPersonas', () => {
       expect(full.od_days).toBeLessThan(30);
     });
 
-    it('stressed: loan measured, bounces explained, rejected for weeks of overdraft', () => {
+    it('stressed: loan measured, uncured bounces unmatched, weeks of overdraft', () => {
       const { full } = scored(required(personas[3], 'expected persona 3'));
       expect(full.loans).toBe(1);
-      expect(full.unmatched_emi_bounces).toBe(0);
+      expect(full.unmatched_emi_bounces).toBeGreaterThan(0);
       expect(full.od_days).toBeGreaterThanOrEqual(30);
       expect(full.bounces).toBeGreaterThan(3);
     });

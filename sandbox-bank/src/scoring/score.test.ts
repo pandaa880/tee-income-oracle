@@ -483,10 +483,14 @@ describe('loan recurrence', () => {
 const JAN_APR = ['2026-01', '2026-02', '2026-03', '2026-04'];
 
 /** Loan due on the 5th, paid Jan-Mar; one EMI bounce in April on `day`. */
+const JAN_MAY = [...JAN_APR, '2026-05'];
+const PAID_EXCEPT_APRIL = ['2026-01', '2026-02', '2026-03', '2026-05'];
+
+/** Loan due on the 5th, paid Jan-Mar and May (cured); one April bounce on `day`. */
 const aprilBounceOn = (day: string): Scores =>
-  scores('2026-01-01', '2026-04-30', [
-    ...incomes(JAN_APR),
-    ...emis(Q1, '05'),
+  scores('2026-01-01', '2026-05-31', [
+    ...incomes(JAN_MAY),
+    ...emis(PAID_EXCEPT_APRIL, '05'),
     emiBounce(`2026-04-${day}`),
   ]);
 
@@ -519,15 +523,34 @@ describe('unmatched EMI bounces', () => {
     expect(s.outcome).toBe('REJECT');
   });
 
-  it('explains a bounce by a known loan that missed that month', () => {
+  it('explains a cured bounce by a known loan that missed that month', () => {
+    const s = aprilBounceOn('05');
+    expect(s.full.bounces).toBe(1);
+    expect(s.full.unmatched_emi_bounces).toBe(0);
+    expect(s.outcome).toBe('B');
+  });
+
+  it('never attributes an uncured bounce (review of #17)', () => {
     const s = scores('2026-01-01', '2026-04-30', [
       ...incomes(april),
       ...emis(Q1, '05'),
       emiBounce('2026-04-05'),
     ]);
-    expect(s.full.bounces).toBe(1);
+    expect(s.full.unmatched_emi_bounces).toBe(1);
+    expect(s.outcome).toBe('REJECT');
+  });
+
+  it('pairs bounces with the earliest-due loan so all can be explained (review of #17)', () => {
+    const s = scores('2026-01-01', '2026-05-31', [
+      ...incomes(JAN_MAY),
+      ...emis(PAID_EXCEPT_APRIL, '10'),
+      ...emis(['2026-02', '2026-03', '2026-05'], '05', 2n * EMI),
+      emiBounce('2026-04-08'),
+      emiBounce('2026-04-12'),
+    ]);
+    expect(s.full.loans).toBe(2);
     expect(s.full.unmatched_emi_bounces).toBe(0);
-    expect(s.outcome).toBe('B');
+    expect(s.outcome).toBe('C');
   });
 
   it('does not explain a bounce in a month every known loan paid', () => {
@@ -537,9 +560,9 @@ describe('unmatched EMI bounces', () => {
   });
 
   it('leaves one unmatched when two bounces meet one missed loan', () => {
-    const s = scores('2026-01-01', '2026-04-30', [
-      ...incomes(april),
-      ...emis(Q1, '05'),
+    const s = scores('2026-01-01', '2026-05-31', [
+      ...incomes(JAN_MAY),
+      ...emis(PAID_EXCEPT_APRIL, '05'),
       emiBounce('2026-04-05'),
       emiBounce('2026-04-06'),
     ]);

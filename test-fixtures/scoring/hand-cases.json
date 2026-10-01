@@ -404,6 +404,34 @@
         "full": { "months": 4, "income_median_paise": 100000, "obligation_median_paise": 10000, "foir_bps": 1000, "cv_bps": 0, "loans": 1, "bounces": 1, "unmatched_emi_bounces": 1, "od_days": 0 },
         "recent": { "months": 3, "income_median_paise": 100000, "obligation_median_paise": 10000, "foir_bps": 1000, "cv_bps": 0, "loans": 1, "bounces": 1, "unmatched_emi_bounces": 1, "od_days": 0 }
       }
+    },
+    {
+      "id": "cured_bounces_pair_with_the_earliest_due_loan",
+      "why": "Review of #17. Jan-May 2026, income 100000 on day 1 every month. Loan A: 10000 on the 10th of Jan, Feb, Mar, May (anchor Jan 10; 20000 debits are 100% off its amount, so they never join) -> scheduled 10000, due 10, first day Jan 10. Loan B: 20000 on the 5th of Feb, Mar, May -> scheduled 20000, due 5, first day Feb 5. Obligation per month: Jan 10000 (B not started), Feb-May 30000. EMI bounces Apr 8 and Apr 12; both loans missed April and paid again in May (cured). Apr 8: A (|10-8| = 2) and B (|5-8| = 3) both eligible -> earliest due day wins -> B. Apr 12: A (|10-12| = 2) -> A. Both explained, unmatched 0 (taking A for Apr 8 would leave Apr 12 unexplained: B is 7 days away). FULL: months 5, obligations [10000,30000,30000,30000,30000] -> median 30000, foir 3000, cv 0, loans 2, bounces 2, od 0 -> A fails (bounces 2 > 0), B fails (2 > 1), C passes -> C. RECENT (Mar-May): obligations all 30000, foir 3000, loans 2, bounces 2 (Apr), unmatched 0 -> C. Final C.",
+      "policy": "default",
+      "start": "2026-01-01",
+      "end": "2026-05-31",
+      "txns": [
+        { "at": "2026-01-01T10:00:00+05:30", "credit": true, "amount": 100000, "balance": 1000000, "bounce": false, "emi": false },
+        { "at": "2026-01-10T11:00:00+05:30", "credit": false, "amount": 10000, "balance": 1000000, "bounce": false, "emi": true },
+        { "at": "2026-02-01T10:00:00+05:30", "credit": true, "amount": 100000, "balance": 1000000, "bounce": false, "emi": false },
+        { "at": "2026-02-05T11:00:00+05:30", "credit": false, "amount": 20000, "balance": 1000000, "bounce": false, "emi": true },
+        { "at": "2026-02-10T11:00:00+05:30", "credit": false, "amount": 10000, "balance": 1000000, "bounce": false, "emi": true },
+        { "at": "2026-03-01T10:00:00+05:30", "credit": true, "amount": 100000, "balance": 1000000, "bounce": false, "emi": false },
+        { "at": "2026-03-05T11:00:00+05:30", "credit": false, "amount": 20000, "balance": 1000000, "bounce": false, "emi": true },
+        { "at": "2026-03-10T11:00:00+05:30", "credit": false, "amount": 10000, "balance": 1000000, "bounce": false, "emi": true },
+        { "at": "2026-04-01T10:00:00+05:30", "credit": true, "amount": 100000, "balance": 1000000, "bounce": false, "emi": false },
+        { "at": "2026-04-08T11:00:00+05:30", "credit": false, "amount": 10000, "balance": 1000000, "bounce": true, "emi": true },
+        { "at": "2026-04-12T11:00:00+05:30", "credit": false, "amount": 10000, "balance": 1000000, "bounce": true, "emi": true },
+        { "at": "2026-05-01T10:00:00+05:30", "credit": true, "amount": 100000, "balance": 1000000, "bounce": false, "emi": false },
+        { "at": "2026-05-05T11:00:00+05:30", "credit": false, "amount": 20000, "balance": 1000000, "bounce": false, "emi": true },
+        { "at": "2026-05-10T11:00:00+05:30", "credit": false, "amount": 10000, "balance": 1000000, "bounce": false, "emi": true }
+      ],
+      "expected": {
+        "tier": "C",
+        "full": { "months": 5, "income_median_paise": 100000, "obligation_median_paise": 30000, "foir_bps": 3000, "cv_bps": 0, "loans": 2, "bounces": 2, "unmatched_emi_bounces": 0, "od_days": 0 },
+        "recent": { "months": 3, "income_median_paise": 100000, "obligation_median_paise": 30000, "foir_bps": 3000, "cv_bps": 0, "loans": 2, "bounces": 2, "unmatched_emi_bounces": 0, "od_days": 0 }
+      }
     }
   ]
 }

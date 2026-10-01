@@ -278,12 +278,20 @@ function unmatchedEmiBounces(
     const used = claimed.get(b.month) ?? new Set<Loan>();
     claimed.set(b.month, used);
     const monthEnd = monthSpan(b.month).last;
-    const loan = loans.find(
+    // Eligible: unclaimed, started by month end, missed this month, due
+    // within dayTol, and cured (paid again in a later month). Earliest due
+    // day wins (first on ties), which pairs every bounce when possible.
+    const eligible = loans.filter(
       (l) =>
         !used.has(l) &&
         l.firstDay <= monthEnd &&
         !l.paidMonths.has(b.month) &&
-        Math.abs(l.dueDom - b.dom) <= dayTol,
+        Math.abs(l.dueDom - b.dom) <= dayTol &&
+        [...l.paidMonths].some((m) => m > b.month),
+    );
+    const loan = eligible.reduce<Loan | undefined>(
+      (best, l) => (best === undefined || l.dueDom < best.dueDom ? l : best),
+      undefined,
     );
     if (loan === undefined) {
       unmatched += 1;
