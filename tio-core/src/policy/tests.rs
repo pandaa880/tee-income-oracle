@@ -36,8 +36,29 @@ fn default_value() -> Value {
     })
 }
 
+/// Thresholds loosen by letter (A strictest): identical tiers are now rejected.
 fn tier_entry(tier: &str) -> Value {
-    json!({ "tier": tier, "foir_max_bps": 1, "cv_max_bps": 1, "bounces_max": 1 })
+    let (foir, cv, bounces) = match tier {
+        "A" => (1, 1, 0),
+        "B" => (2, 2, 1),
+        _ => (3, 3, 2),
+    };
+    tier_with(tier, foir, cv, bounces)
+}
+
+fn tier_with(tier: &str, foir: u32, cv: u32, bounces: u32) -> Value {
+    json!({ "tier": tier, "foir_max_bps": foir, "cv_max_bps": cv, "bounces_max": bounces })
+}
+
+/// `(letter, foir, cv, bounces)` rows as a tiers array.
+type Row = (&'static str, u32, u32, u32);
+
+fn tiers_from(rows: &[Row]) -> Value {
+    Value::Array(
+        rows.iter()
+            .map(|&(t, foir, cv, bounces)| tier_with(t, foir, cv, bounces))
+            .collect(),
+    )
 }
 
 fn tiers_value(names: &[&str]) -> Value {
@@ -543,6 +564,86 @@ fn strictly_ascending_tier_subsets_are_accepted() {
     }
 }
 
+// --- BadTiers: thresholds must loosen A -> B -> C ---
+
+#[test]
+fn tiers_that_never_loosen_are_rejected() {
+    let cases: [(&str, &[Row]); 10] = [
+        (
+            "A looser than B in all three",
+            &[("A", 5, 5, 5), ("B", 2, 2, 2)],
+        ),
+        ("identical [A,B]", &[("A", 2, 2, 1), ("B", 2, 2, 1)]),
+        (
+            "identical [A,B,C]",
+            &[("A", 2, 2, 1), ("B", 2, 2, 1), ("C", 2, 2, 1)],
+        ),
+        (
+            "B looser foir, stricter cv",
+            &[("A", 2, 2, 1), ("B", 3, 1, 1)],
+        ),
+        ("B stricter foir only", &[("A", 2, 2, 1), ("B", 1, 3, 2)]),
+        ("B stricter cv only", &[("A", 2, 2, 1), ("B", 3, 1, 2)]),
+        ("B stricter bounces only", &[("A", 2, 2, 1), ("B", 3, 3, 0)]),
+        (
+            "only B -> C identical",
+            &[("A", 1, 1, 0), ("B", 2, 2, 1), ("C", 2, 2, 1)],
+        ),
+        (
+            "only B -> C stricter",
+            &[("A", 1, 1, 0), ("B", 2, 2, 1), ("C", 1, 3, 2)],
+        ),
+        ("identical subset [A,C]", &[("A", 2, 2, 1), ("C", 2, 2, 1)]),
+    ];
+    for (name, rows) in cases {
+        assert_eq!(
+            parse(&with("/tiers", tiers_from(rows))).err(),
+            Some(PolicyError::BadTiers),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn tiers_loosening_in_at_least_one_dimension_and_never_stricter_are_accepted() {
+    let cases: [(&str, &[Row]); 9] = [
+        ("foir only", &[("A", 1, 2, 1), ("B", 2, 2, 1)]),
+        ("cv only", &[("A", 2, 1, 1), ("B", 2, 2, 1)]),
+        ("bounces only", &[("A", 2, 2, 0), ("B", 2, 2, 1)]),
+        (
+            "fixture A,B,C",
+            &[("A", 1, 1, 0), ("B", 2, 2, 1), ("C", 3, 3, 2)],
+        ),
+        ("subset [A,C]", &[("A", 1, 1, 0), ("C", 3, 3, 2)]),
+        ("subset [B,C]", &[("B", 2, 2, 1), ("C", 3, 3, 2)]),
+        (
+            "each pair loosens a different dimension",
+            &[("A", 1, 1, 0), ("B", 2, 1, 0), ("C", 2, 1, 1)],
+        ),
+        (
+            "bps above 10000 on C",
+            &[("A", 1, 1, 0), ("B", 2, 2, 1), ("C", 20_000, 50_000, 2)],
+        ),
+        (
+            "zero A, u32::MAX C",
+            &[("A", 0, 0, 0), ("C", u32::MAX, u32::MAX, u32::MAX)],
+        ),
+    ];
+    for (name, rows) in cases {
+        assert!(parse(&with("/tiers", tiers_from(rows))).is_ok(), "{name}");
+    }
+}
+
+#[test]
+fn single_tier_lists_are_accepted_whatever_the_thresholds() {
+    for rows in [[("A", 0, 0, 0)], [("C", 9, 9, 9)]] {
+        assert!(
+            parse(&with("/tiers", tiers_from(&rows))).is_ok(),
+            "{rows:?}"
+        );
+    }
+}
+
 // --- ZeroValue ---
 
 #[test]
@@ -604,6 +705,48 @@ fn version_is_checked_before_tiers() {
 #[test]
 fn tiers_are_checked_before_zero_values() {
     let mut v = with("/tiers", json!([]));
+    v["recent_months"] = json!(0);
+    assert_eq!(parse(&v).err(), Some(PolicyError::BadTiers));
+}
+
+#[test]
+fn wrong_letter_order_is_rejected_even_when_thresholds_loosen() {
+    // Thresholds loosen by position, so only the letter rule can reject these.
+    let cases: [&[Row]; 4] = [
+        &[("B", 1, 1, 0), ("A", 2, 2, 1)],
+        &[("A", 1, 1, 0), ("A", 2, 2, 1)],
+        &[("A", 1, 1, 0), ("C", 2, 2, 1), ("B", 3, 3, 2)],
+        &[
+            ("A", 1, 1, 0),
+            ("B", 2, 2, 1),
+            ("C", 3, 3, 2),
+            ("C", 4, 4, 3),
+        ],
+    ];
+    for rows in cases {
+        assert_eq!(
+            parse(&with("/tiers", tiers_from(rows))).err(),
+            Some(PolicyError::BadTiers),
+            "tiers {rows:?}"
+        );
+    }
+}
+
+#[test]
+fn earlier_tier_at_u32_max_must_loosen_in_another_limit() {
+    let looser_cv: [Row; 2] = [("A", u32::MAX, 1, 0), ("B", u32::MAX, 2, 0)];
+    assert!(parse(&with("/tiers", tiers_from(&looser_cv))).is_ok());
+    let identical: [Row; 2] = [("A", u32::MAX, 1, 0), ("B", u32::MAX, 1, 0)];
+    assert_eq!(
+        parse(&with("/tiers", tiers_from(&identical))).err(),
+        Some(PolicyError::BadTiers)
+    );
+}
+
+#[test]
+fn tier_thresholds_are_checked_before_zero_values() {
+    let rows: [Row; 2] = [("A", 1, 1, 1), ("B", 1, 1, 1)];
+    let mut v = with("/tiers", tiers_from(&rows));
     v["recent_months"] = json!(0);
     assert_eq!(parse(&v).err(), Some(PolicyError::BadTiers));
 }

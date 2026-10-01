@@ -206,18 +206,32 @@ fn check_version(rules: &Rules) -> Result<(), PolicyError> {
     }
 }
 
-/// Non-empty and strictly ascending (A before B before C). Tiers are matched
-/// first-to-last, so an out-of-order list would make a better tier
-/// unreachable. Strict order also rules out duplicates and more than three.
+/// Non-empty, strictly ascending (A before B before C), and each tier looser
+/// than the one before it ([`loosens`]). Tiers are matched first-to-last:
+/// this keeps every listed tier reachable and A the strictest, which is what
+/// a pool assumes when it reads the tier byte. A mixed pair (looser in one
+/// limit, stricter in another) is reachable but rejected for that reason.
 fn check_tiers(tiers: &[TierRule]) -> Result<(), PolicyError> {
-    let ascending = tiers.windows(2).all(|pair| match pair {
-        [a, b] => a.tier < b.tier,
+    let ordered = tiers.windows(2).all(|pair| match pair {
+        [a, b] => a.tier < b.tier && loosens(a, b),
         _ => false,
     });
-    if tiers.is_empty() || !ascending {
+    if tiers.is_empty() || !ordered {
         return Err(PolicyError::BadTiers);
     }
     Ok(())
+}
+
+/// `later` is never stricter than `earlier` and strictly looser in at least
+/// one limit. Then a borrower exactly at `later`'s limits passes `later` but
+/// fails `earlier` (and every tier before it), so `later` is reachable.
+fn loosens(earlier: &TierRule, later: &TierRule) -> bool {
+    let limits = |t: &TierRule| [t.foir_max_bps, t.cv_max_bps, t.bounces_max];
+    let never_stricter = limits(earlier)
+        .into_iter()
+        .zip(limits(later))
+        .all(|(e, l)| l >= e);
+    never_stricter && limits(earlier) != limits(later)
 }
 
 /// Values that would make scoring undefined or its outcome fixed: no recent

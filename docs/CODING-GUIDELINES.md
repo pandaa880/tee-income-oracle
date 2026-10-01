@@ -220,7 +220,11 @@ Stdlib only unless a dependency is agreed.
 - **Every prefix, template or OID check gets its own negative test with an
   input of the correct length**, so an earlier length check can't mask it.
 - **Mutation-check security checks:** disable each check in turn; at least one
-  test must fail. A check no test notices is untested.
+  test must fail. A check no test notices is untested. For a condition built
+  with `&&`, delete each part separately.
+- **A new rule that returns an existing error needs a fixture that breaks
+  only the old rule.** Otherwise fixtures that now break both rules make the
+  old check invisible: deleting it keeps every test green.
 - **A strictness claim needs input the lenient variant would accept.** For
   a strict decoder: correctly padded base64, and non-canonical trailing bits
   with the signature taken over that exact text, so only the decoder can

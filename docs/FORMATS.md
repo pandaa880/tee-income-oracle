@@ -504,7 +504,9 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 - **Strict parse** (any failure → `bad_policy`): at most 4096 bytes; the policy, `recurrence`, `window`,
   `reject_if` and each `tiers[]` entry are JSON objects and `tiers` is an array (a positional array in place
   of an object is rejected); unknown, repeated or missing keys; non-integer spellings
-  (`3.0`, `3e0`, `"3"`); `v ≠ 2`; `tiers` empty or not strictly ordered A, B, C (no repeats);
+  (`3.0`, `3e0`, `"3"`); `v ≠ 2`; `tiers` empty or not strictly ordered A, B, C (no repeats); each tier
+  at least as loose as the one before it in every limit and looser in at least one (so every tier can be
+  awarded and A is the strictest);
   `recent_months`, `min_occurrences` or `od_days_min` equal to 0 (scoring would be undefined or reject everyone).
 - **Hash input.** Any JSON spelling of a valid policy is accepted (whitespace, key order, string escapes).
   The hash is over the JCS bytes of the *parsed* policy, so every spelling gives the same `policy_hash`.
