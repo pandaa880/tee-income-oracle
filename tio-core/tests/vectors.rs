@@ -20,7 +20,10 @@ use std::{collections::BTreeSet, fs};
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use tio_core::{verify_detached, KeyMaterial, Nonce, Policy};
+use tio_core::{
+    parse_deposit_fi, score, verify_detached, Features, KeyMaterial, Nonce, Outcome, Paise, Policy,
+    Scores, Tier,
+};
 
 use common::{enclave_key_pair, key_mode, load_json, pinned_key, run_case, test_vectors_dir};
 
@@ -251,4 +254,160 @@ fn manifest_matches_directories() {
         manifest_dirs, disk_dirs,
         "manifest.json and the vectors/ + negative/ directories must list exactly the same cases"
     );
+}
+
+fn default_policy() -> Policy {
+    let bytes = fs::read(test_vectors_dir().join("policy").join("default.json"))
+        .expect("read test-vectors/policy/default.json");
+    Policy::from_json(&bytes).expect("default policy must parse")
+}
+
+fn tier_name(outcome: Outcome) -> &'static str {
+    match outcome {
+        Outcome::Tier(Tier::A) => "A",
+        Outcome::Tier(Tier::B) => "B",
+        Outcome::Tier(Tier::C) => "C",
+        Outcome::Reject => "REJECT",
+    }
+}
+
+fn number(value: &Value, key: &str) -> i64 {
+    value
+        .get(key)
+        .and_then(Value::as_i64)
+        .unwrap_or_else(|| panic!("features.{key} must be an integer in {value}"))
+}
+
+fn count(value: &Value, key: &str) -> u32 {
+    u32::try_from(number(value, key)).expect("count fits u32")
+}
+
+/// Reads a `Features` from the vector JSON keys (FORMATS §11): paise as plain
+/// integers.
+fn features_from_json(value: &Value) -> Features {
+    Features {
+        months: count(value, "months"),
+        income_median: Paise::new(number(value, "income_median_paise")),
+        obligation_median: Paise::new(number(value, "obligation_median_paise")),
+        foir_bps: count(value, "foir_bps"),
+        cv_bps: count(value, "cv_bps"),
+        loans: count(value, "loans"),
+        bounces: count(value, "bounces"),
+        unmatched_emi_bounces: count(value, "unmatched_emi_bounces"),
+        od_days: count(value, "od_days"),
+    }
+}
+
+/// The Rust scorer, run on the FI the enclave would decrypt, reproduces the
+/// tier and features the generator's independent TypeScript scorer wrote.
+#[test]
+fn positive_cases_score_to_the_expected_tier_and_features() {
+    let policy = default_policy();
+    let cases = manifest_cases();
+    let positive: Vec<&Value> = cases.iter().filter(|c| c["kind"] == "positive").collect();
+    assert!(!positive.is_empty(), "manifest must list positive cases");
+
+    for case in positive {
+        let id = case_id(case);
+        let plaintext = run_case(&case_dir(case))
+            .unwrap_or_else(|code| panic!("case {id}: expected Ok, got {code}"));
+        let fi = parse_deposit_fi(&plaintext)
+            .unwrap_or_else(|e| panic!("case {id}: decrypted FI must parse: {e:?}"));
+        let got = score(&fi, &policy).unwrap_or_else(|e| panic!("case {id}: score failed: {e:?}"));
+
+        let expected = &case["expected"];
+        let tier = expected
+            .get("tier")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("case {id}: expected.tier missing"));
+        assert_eq!(tier_name(got.outcome), tier, "case {id}: tier");
+        let features = expected
+            .get("features")
+            .unwrap_or_else(|| panic!("case {id}: expected.features missing"));
+        assert_eq!(
+            got.full,
+            features_from_json(&features["full"]),
+            "case {id}: full features"
+        );
+        assert_eq!(
+            got.recent,
+            features_from_json(&features["recent"]),
+            "case {id}: recent features"
+        );
+
+        // `vectors/<case>/expected.json` carries the same claim as the manifest.
+        let file = load_json(&case_dir(case).join("expected.json"));
+        assert_eq!(
+            file["tier"], expected["tier"],
+            "case {id}: expected.json tier"
+        );
+        assert_eq!(
+            file["features"], expected["features"],
+            "case {id}: expected.json features"
+        );
+    }
+}
+
+fn persona_scores(persona_id: &str) -> (Value, Scores) {
+    let persona = load_json(
+        &test_vectors_dir()
+            .join("personas")
+            .join(format!("{persona_id}.json")),
+    );
+    let bytes = serde_json::to_vec(&persona["fi"]).expect("FI serializes");
+    let fi = parse_deposit_fi(&bytes).expect("persona FI must parse");
+    let scored = score(&fi, &default_policy()).expect("persona FI must score");
+    (persona, scored)
+}
+
+fn assert_persona_tier(persona_id: &str, tier: &str) {
+    let (persona, got) = persona_scores(persona_id);
+    assert_eq!(
+        persona["expected_tier"], tier,
+        "{persona_id}: personas file expected_tier"
+    );
+    assert_eq!(tier_name(got.outcome), tier, "{persona_id}: scored tier");
+}
+
+#[test]
+fn salaried_steady_scores_a() {
+    assert_persona_tier("salaried_steady", "A");
+}
+
+#[test]
+fn trader_lumpy_scores_b() {
+    assert_persona_tier("trader_lumpy", "B");
+}
+
+#[test]
+fn stressed_is_rejected_for_overdraft_with_its_loan_measured() {
+    assert_persona_tier("stressed", "REJECT");
+    let (_, got) = persona_scores("stressed");
+    // Two paid EMIs make a loan (min_occurrences 2), so the debt counts. Its
+    // bounces all come after the last payment (uncured), so none is
+    // attributed; weeks of overdraft and the bounce count reject too.
+    assert_eq!(got.full.loans, 1, "{:?}", got.full);
+    assert!(got.full.unmatched_emi_bounces > 0, "{:?}", got.full);
+    assert!(got.full.od_days >= 30, "{:?}", got.full);
+    assert!(got.full.bounces > 3, "{:?}", got.full);
+}
+
+#[test]
+fn declining_is_tier_b_over_the_full_window_and_c_over_the_recent_one() {
+    assert_persona_tier("declining", "C");
+    let (_, got) = persona_scores("declining");
+    let (full, recent) = (got.full, got.recent);
+    // Full: one bounce keeps it out of A, everything else fits B.
+    assert_eq!(full.bounces, 1, "{full:?}");
+    assert!(full.foir_bps <= 5500 && full.cv_bps <= 5000, "{full:?}");
+    // Recent: the loan persists against shrunken income, so FOIR lands in C.
+    assert!(
+        recent.foir_bps > 5500 && recent.foir_bps <= 7000,
+        "{recent:?}"
+    );
+    // The one EMI bounce is explained by the known loan missing that month.
+    assert_eq!((full.loans, recent.loans), (1, 1));
+    assert_eq!(full.unmatched_emi_bounces, 0);
+    assert_eq!(recent.unmatched_emi_bounces, 0);
+    assert!(full.od_days < 30);
 }

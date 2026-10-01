@@ -5,7 +5,7 @@ import { policyBytes, policyHashHex } from './policy.ts';
 // FORMATS §6 example, canonicalized by hand (JCS: keys sorted, no
 // whitespace) so the test doesn't depend on our own canonicalize().
 const EXPECTED_CANONICAL_JSON =
-  '{"recent_months":3,"recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":3},' +
+  '{"recent_months":3,"recurrence":{"amount_tol_bps":1000,"day_tol":5,"min_occurrences":2},' +
   '"reject_if":{"od_days_min":30},' +
   '"tiers":[{"bounces_max":0,"cv_max_bps":1500,"foir_max_bps":4000,"tier":"A"},' +
   '{"bounces_max":1,"cv_max_bps":5000,"foir_max_bps":5500,"tier":"B"},' +

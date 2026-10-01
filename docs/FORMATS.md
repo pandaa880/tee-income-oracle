@@ -63,9 +63,12 @@ never seen by the enclave directly.
 }
 ```
 
-Three personas, fixed: `salaried_steady` → A, `trader_lumpy` → B,
-`stressed` → C or Reject (decide when the policy is final). 6–12 months of
-transactions each.
+Four personas, fixed, in this order: `salaried_steady` → A, `trader_lumpy` → B,
+`declining` → C (steady salary, then lower gig income in the recent months and one
+EMI bounce: full window B, recent window C), `stressed` → `"REJECT"` (weeks of
+overdraft, more bounces than any tier allows, and uncured EMI bounces; its loan is measured). 6–12 months of transactions each.
+`expected_tier` is `"A"`, `"B"`, `"C"` or `"REJECT"`; the generator fails if its
+independent scorer (§6.1) disagrees.
 
 ### Schema source
 ReBIT `deposit.xsd` (namespace `http://api.rebit.org.in/FISchema/deposit`,
@@ -477,7 +480,7 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 ```json
 {
   "v": 2,
-  "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 3 },
+  "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 2 },
   "recent_months": 3,
   "window": { "min_days": 180, "max_age_days": 7 },
   "tiers": [
@@ -492,8 +495,8 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 | Key | Meaning |
 |---|---|
 | `v` | schema version, must be `2` |
-| `recurrence.amount_tol_bps`, `.day_tol` | a debit joins a recurring-obligation cluster if its amount is within ±bps and its day of month within ±days of the cluster's first debit |
-| `recurrence.min_occurrences` | cluster size that counts as a recurring obligation (≥ 1) |
+| `recurrence.amount_tol_bps`, `.day_tol` | an EMI debit joins a recurring-obligation cluster if its amount is within ±bps and its day of month within ±days of the cluster's first debit (at most one debit per calendar month per cluster, §6.1) |
+| `recurrence.min_occurrences` | number of **distinct calendar months** with a matching debit that makes a cluster a loan (≥ 1) |
 | `recent_months` | the last N complete months are also scored alone; the worse tier wins (≥ 1) |
 | `window.min_days` | shortest consent window accepted |
 | `window.max_age_days` | how old the window's end may be when evaluated |
@@ -510,6 +513,85 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
   `recent_months`, `min_occurrences` or `od_days_min` equal to 0 (scoring would be undefined or reject everyone).
 - **Hash input.** Any JSON spelling of a valid policy is accepted (whitespace, key order, string escapes).
   The hash is over the JCS bytes of the *parsed* policy, so every spelling gives the same `policy_hash`.
+
+## 6.1 Scoring algorithm — FROZEN
+
+`score(DepositFi, Policy) → { outcome, full, recent }` (`tio-core/src/score.rs`; independent TypeScript
+mirror in `sandbox-bank/src/scoring/`). Pure, no clock, **integers only**: money in paise (`i64`), ratios
+in basis points, overflow is an error (`bad_fi_data`), never a wrap.
+
+**Time basis: India calendar days.** `day(t) = floor((transactionTimestamp_unix + 19800) / 86400)`
+(IST = UTC+05:30, no daylight saving). `startDate` / `endDate` are the dates as written (`xs:date`, no
+zone in practice) and are read as India dates: an Indian FIP writes them in IST. Months and day of month
+come from these days. API instants (`FIDataRange`, `window_from/to`, §5/§7) are not scoring days and stay
+UTC. Transaction order = (`transactionTimestamp`, input index).
+
+0. **Bounds.** A transaction whose day is outside `[startDate, endDate]` → `window_mismatch`.
+1. **Classify.** DEBIT + bounce token → *bounce* (an *EMI bounce* if it also has an EMI token);
+   DEBIT + EMI token with an amount > 0 → *EMI candidate*; CREDIT without a bounce token → *income*;
+   anything else is ignored (a credit with a bounce token, e.g. a reversal, is not income; a ₹0 EMI
+   line is not a payment). Tokens: §1 parse rules.
+2. **Loans.** Walk EMI candidates in order. Each unassigned candidate `c` anchors a cluster; a later
+   unassigned candidate `d` joins iff no member is in `d`'s month yet, `|d − c| × 10000 ≤ c × amount_tol_bps`
+   and `|dom(d) − dom(c)| ≤ day_tol`. A cluster with ≥ `min_occurrences` members (= months) is a **loan**:
+   `scheduled` = median member amount, `first_day` = day of its first payment, `due_dom` = that
+   payment's day of month. Two equal EMIs in the same months are two loans.
+3. **Complete months** = calendar months wholly inside `[startDate, endDate]`. *Full* set = all of them;
+   *recent* set = the last `min(recent_months, count)`.
+4. **Monthly sums** per complete month: income = sum of income amounts; obligation = sum of `scheduled`
+   over loans with `first_day ≤` the month's last day. **A loan persists**: a missed or bounced month
+   still counts, until statement end.
+5. **Features of a set S** (each key as in §11):
+   - `months`; `income_median`, `obligation_median` (median: odd → middle, even → floor of the mean of
+     the middle two, empty → 0).
+   - `foir_bps` = `floor(obligation_median × 10000 / income_median)`; 0 if income is 0; values
+     ≥ 2³² − 1 are reported as 2³² − 1, which always rejects.
+   - `cv_bps` over the monthly incomes `x` (n months): `D = n·Σx² − (Σx)²`,
+     `cv_bps = floor(isqrt(10⁸ · D) / Σx)`, 0 if `Σx = 0`. Scaling before the root keeps it the exact floor
+     of `10⁴ · √D / Σx` (`[1,1,2]` → 3535, not 2500).
+   - `loans` = loans with `first_day ≤` S's last day; `bounces` = bounces on S's days.
+   - `unmatched_emi_bounces` = EMI bounces on S's days that no known loan explains. A loan can explain
+     a bounce if it (a) started by the end of the bounce's month, (b) has no payment in that month,
+     (c) is due within `day_tol` days of the bounce (`|due_dom − dom(bounce)| ≤ day_tol`), and
+     (d) is **cured**: it has a payment in a later month. Bounces are taken in time order; each takes
+     the eligible loan with the **earliest due day** (first on ties) not yet used for another bounce
+     that month. That greedy choice explains every bounce whenever some pairing can. Why these rules:
+     nothing in the reduced data names the loan a bounce belongs to (narration is reduced to flags;
+     the bounce line's amount is usually the return charge, not the EMI). A NACH bounce posts on the
+     due day, which ties it to loans due near that day, and a later payment proves the loan is alive,
+     so the miss was a gap in its own schedule. An uncured bounce could equally be a new, unseen
+     loan's first instalment, so it is never attributed. A small loan paid on time, a loan due on
+     another day, or a loan that has stopped paying can't hide a bounced unknown one.
+   - `od_days` = days of S whose end-of-day balance (the last transaction on or before that day) is
+     negative; days before the first transaction don't count.
+   - S's days: full = `[startDate, endDate]`, even with no complete months; recent = first to last
+     day of the recent months, and a recent set with no months has no days (its day-based counts are 0).
+6. **Outcome of a set**, first rule that fires: `months = 0` → Reject · `income_median = 0` → Reject ·
+   `foir_bps = 2³² − 1` → Reject · `unmatched_emi_bounces > 0` → Reject (unmeasurable debt never
+   counts as zero debt) · `od_days ≥ od_days_min` → Reject · else the first tier with `foir_bps ≤ foir_max_bps`,
+   `cv_bps ≤ cv_max_bps` and `bounces ≤ bounces_max`; none → Reject.
+7. **Final outcome** = the worse of full and recent (A < B < C < Reject).
+
+**Known limitations** (conservative by design, or out of scope):
+- A loan counts until statement end even if it was repaid (no closure detection).
+- A NACH retry that succeeds in the month of its bounce looks like an unknown loan → Reject.
+- An EMI bounce before a loan's first payment in the statement (e.g. the window's first instalment
+  bounced) is unmatched → Reject.
+- A bank that posts two bounce lines per miss (e.g. return charge + GST, both with EMI words) double-counts.
+- A bounce posted more than `day_tol` days after the due day (late re-presentation) is unmatched → Reject.
+- An uncured EMI bounce (no later payment of a matching loan, e.g. in the statement's last month) is
+  unmatched → Reject: a fresh, unresolved bounce. Periodic re-pulls re-check it once a payment follows.
+- Residual: a known loan that skips a month with no bounce line and pays later, while an unseen loan
+  due near the same day bounces that month, still has the bounce explained by the known loan.
+- A loan with fewer than `min_occurrences` payments in the statement (default 2: a single payment) is
+  not seen.
+- Income = every non-bounce credit, so self-transfers, loan proceeds and refunds count. FIP signatures prove
+  where the data came from, not that a credit is income.
+- `day_tol` has no month-end wrap (the 31st and the 1st are 30 days apart).
+- Transactions with equal timestamps keep input order; reordering them can change an end-of-day balance.
+- Not modelled: income regularity/timing, UPI patterns, ongoing monitoring.
+
+Clustering is O(c²) in EMI candidates: about 0.4 s for 20 000 candidates (release build, worst case).
 
 ---
 
@@ -625,6 +707,8 @@ string and verifies; any difference → reject.
   repeated member, not DEPOSIT, missing or invalid member, bad money or
   timestamp, too many transactions). The order is §1's reject list.
 - Policy code (`tio-core`): `bad_policy` (any §6 strict-parse rule).
+- Scoring codes (`tio-core`, §6.1): `window_mismatch` (a transaction's India day is outside the
+  statement's `[startDate, endDate]`), `bad_fi_data` (scoring arithmetic overflow).
 
 ---
 
@@ -642,8 +726,8 @@ test-vectors/
     fetch_response.body     exact bytes
     fetch_response.jws      detached, AA key
     consent.jws             compact, AA key
-    expected.json           { policy_hash, consent_hash, window_from, window_to }
-                            (+ tier, features, payload_hex, msg_hex once scoring exists)
+    expected.json           { policy_hash, consent_hash, window_from, window_to, tier, features }
+                            (+ payload_hex, msg_hex once the payload exists)
   negative/<case>/          same files, one thing broken; expected.json = { error_code }
   manifest.json             { generator_version, cases: [{ id, kind, dir, persona_id, expected }] }
 ```
@@ -652,9 +736,22 @@ test-vectors/
 session_id, txnid, now_unix, key_expiry_unix, fi_data_range: { from, to } }`
 (+ `wallet` once the §9 intent and §8 message are generated). `enclave_key`
 points at `keys/enclave.test-private.json`; its Curve25519 scalar is used as-is by
-`SessionKeyPair::generate` (which clamps it). Positive case ids: the three personas
+`SessionKeyPair::generate` (which clamps it). Positive case ids: the four personas
 (`wei25519`, RS256), `rs512_aa` (AA signs the fetch response and consent with RS512) and
 `x25519_mode` (§3 second mode), both on `salaried_steady`.
+
+Positive `expected.json` (and the manifest's `expected`) also carry the §6.1 result from the
+generator's independent TypeScript scorer: `tier` (`"A"`, `"B"`, `"C"` or `"REJECT"`) and
+`features: { full, recent }`, each `{ months, income_median_paise, obligation_median_paise,
+foir_bps, cv_bps, loans, bounces, unmatched_emi_bounces, od_days }` (paise as JSON integers,
+at most 2⁵³ − 1). `tio-core/tests/vectors.rs` must reproduce them exactly.
+
+**Hand-calculated scoring fixtures** live outside `test-vectors/` in
+`test-fixtures/scoring/hand-cases.json`: small statements whose expected features were worked
+out by hand from §6.1 (working in each case's `why`). They are written by people, never
+generated, and both scorers replay them (`tio-core/tests/scoring_hand.rs`,
+`sandbox-bank/src/scoring/hand-cases.test.ts`), which catches a mistake the two
+implementations could share.
 
 **Generated, deterministic.** `pnpm --filter @tio/sandbox-bank gen:keys` makes the RSA keys
 once (it refuses to overwrite). `gen:vectors` is a pure function of the keys: nonces,
@@ -699,7 +796,7 @@ form above and **accept** these variants:
 | `KeyValue` PEM | Armour and base64 with no newlines | Strip armour and whitespace, then base64-decode |
 | Request `timestamp` | epoch-millis number (`1586430349059`) in one sample, ISO string elsewhere | Emit ISO string; accept both on input |
 | Response timestamps | `2020-04-09T11:05:49.059+0000` | Accept `+0000`. FI timestamps: `YYYY-MM-DD'T'HH:MM:SS[.1–9 digits][Z\|±HH:MM\|±HHMM]`, uppercase `T`/`Z`; an offset such as `+05:30` is converted to UTC; no zone = UTC; the fraction is truncated |
-| `FIDataRange.from/to` | `2018-10-31T04:10:12.898` (no zone) | **OPEN:** UTC or IST? Treat as UTC until Finvu confirms; we emit `Z` |
+| `FIDataRange.from/to` | `2018-10-31T04:10:12.898` (no zone) | ReBIT AA API 2.0.0 / 2.1.0 type these (and `consentStart`, `consentExpiry`, `timestamp`) as `string`, `format: date-time` (RFC 3339: zone required; every spec example uses `Z`), so the zone-less sample breaks the spec. We emit `Z` and treat a zone-less value as UTC. Statement dates (`startDate`, `endDate`: `xs:date`, usually zone-less) are read as India dates for scoring (§6.1). **OPEN** only for live Finvu: confirm their FI dates are IST |
 | `valueDate` | full datetime in Finvu sample, `xs:date` in XSD | Accept both; use the date part |
 | FI `type` | `DEPOSIT` (XSD fixes `deposit`) | Case-insensitive |
 | FI `version` | `1.1` in Finvu sample | Record, don't reject |

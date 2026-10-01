@@ -14,6 +14,7 @@ pub mod key_material;
 pub mod money;
 pub mod policy;
 pub mod rebit;
+pub mod score;
 pub mod time;
 
 pub use cipher::{decrypt, derive_session_key, DecryptError, Nonce, SessionKey};
@@ -23,6 +24,7 @@ pub use key_material::{DhPublicKey, KeyMaterial, KeyMaterialError};
 pub use money::{parse_paise, MoneyError, Paise, Sign};
 pub use policy::{Policy, PolicyError, PolicyHash, Tier, MAX_POLICY_BYTES};
 pub use rebit::{parse_deposit_fi, DepositFi, FiError, Txn};
+pub use score::{score, Features, Outcome, ScoreError, Scores};
 pub use time::{parse_date, parse_rebit_timestamp, TimeError};
 
 /// Stable, machine-readable error code for the enclave's HTTP layer

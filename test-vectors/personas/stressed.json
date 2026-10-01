@@ -1,7 +1,7 @@
 {
   "persona_id": "stressed",
   "description": "Irregular salary, overdraft for weeks, EMI bounces",
-  "expected_tier": "C",
+  "expected_tier": "REJECT",
   "fi": {
     "type": "DEPOSIT",
     "maskedAccNumber": "XXXXXXXX3580",
