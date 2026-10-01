@@ -35,7 +35,9 @@
             "unmatched_emi_bounces": 0,
             "od_days": 0
           }
-        }
+        },
+        "payload_hex": "01010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cfa007acefc7ed7fe390e57095b786eb7d762054fb92e973f3699e6db573b942da097b76a0000000080d7d568000bb76a",
+        "msg_hex": "54494f2d4154544553542d7631f62d4dadf8399028569a8e992456b68bfe4255bc46df267f4a64b42320348da1a95ee65dc8bdc2bc768e59a3f042d803e745566dd29af98bc1ef6f48aedfffe94c370533c60cd5189b08b52d2e34eb3f6aecef6556f792b548732db94bc79f774a5f58ff1e208bc830f031fb07f9980cf893534045de01c779452b246767d59a01010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cfa007acefc7ed7fe390e57095b786eb7d762054fb92e973f3699e6db573b942da097b76a0000000080d7d568000bb76af899b76a00000000"
       }
     },
     {
@@ -72,7 +74,9 @@
             "unmatched_emi_bounces": 0,
             "od_days": 0
           }
-        }
+        },
+        "payload_hex": "02010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cd2f8850e24ef8982af5cc02dcb3e2c0ffae3e6edbee7e936482daa4f6ccd24faa097b76a0000000080d7d568000bb76a",
+        "msg_hex": "54494f2d4154544553542d7631f62d4dadf8399028569a8e992456b68bfe4255bc46df267f4a64b42320348da1a95ee65dc8bdc2bc768e59a3f042d803e745566dd29af98bc1ef6f48aedfffe94c370533c60cd5189b08b52d2e34eb3f6aecef6556f792b548732db94bc79f7717d8fb2de4bbeac6c2d10ac6c7c14a4d111fa7c32c9a53cea68597e46ad5f5cc02010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cd2f8850e24ef8982af5cc02dcb3e2c0ffae3e6edbee7e936482daa4f6ccd24faa097b76a0000000080d7d568000bb76af899b76a00000000"
       }
     },
     {
@@ -109,7 +113,9 @@
             "unmatched_emi_bounces": 0,
             "od_days": 0
           }
-        }
+        },
+        "payload_hex": "03010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cf30f043c91a3ac48a37b684f27b070affad58fb0e7fc52813a02570a317d610aa097b76a0000000080d7d568000bb76a",
+        "msg_hex": "54494f2d4154544553542d7631f62d4dadf8399028569a8e992456b68bfe4255bc46df267f4a64b42320348da1a95ee65dc8bdc2bc768e59a3f042d803e745566dd29af98bc1ef6f48aedfffe94c370533c60cd5189b08b52d2e34eb3f6aecef6556f792b548732db94bc79f77d783cc77a0ba6395d31f77c8d73605f6955d9bdb8396f6cd5552e259bbdda8c903010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cf30f043c91a3ac48a37b684f27b070affad58fb0e7fc52813a02570a317d610aa097b76a0000000080d7d568000bb76af899b76a00000000"
       }
     },
     {
@@ -146,7 +152,9 @@
             "unmatched_emi_bounces": 3,
             "od_days": 92
           }
-        }
+        },
+        "payload_hex": null,
+        "msg_hex": null
       }
     },
     {
@@ -183,7 +191,9 @@
             "unmatched_emi_bounces": 0,
             "od_days": 0
           }
-        }
+        },
+        "payload_hex": "01010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cdf15691c46c3d5c50cd3c60b5eae93cafc29a38cc91007b71e2916068148822aa097b76a0000000080d7d568000bb76a",
+        "msg_hex": "54494f2d4154544553542d7631f62d4dadf8399028569a8e992456b68bfe4255bc46df267f4a64b42320348da1a95ee65dc8bdc2bc768e59a3f042d803e745566dd29af98bc1ef6f48aedfffe94c370533c60cd5189b08b52d2e34eb3f6aecef6556f792b548732db94bc79f77736b26b80c47015ff3a7a502272cdfca2ee7ed3949bf97509fb99edbc30e78c501010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cdf15691c46c3d5c50cd3c60b5eae93cafc29a38cc91007b71e2916068148822aa097b76a0000000080d7d568000bb76af899b76a00000000"
       }
     },
     {
@@ -220,7 +230,9 @@
             "unmatched_emi_bounces": 0,
             "od_days": 0
           }
-        }
+        },
+        "payload_hex": "01010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cae9819888e9d2a3458b19b69f5f6c8f5104f951eacf9a3734d527286c9ef19a2a097b76a0000000080d7d568000bb76a",
+        "msg_hex": "54494f2d4154544553542d7631f62d4dadf8399028569a8e992456b68bfe4255bc46df267f4a64b42320348da1a95ee65dc8bdc2bc768e59a3f042d803e745566dd29af98bc1ef6f48aedfffe94c370533c60cd5189b08b52d2e34eb3f6aecef6556f792b548732db94bc79f7701e1731abdd64bd17604d15f1a40c8f79592db8bc3ceeb0568284063df2927cf01010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cae9819888e9d2a3458b19b69f5f6c8f5104f951eacf9a3734d527286c9ef19a2a097b76a0000000080d7d568000bb76af899b76a00000000"
       }
     },
     {
@@ -302,6 +314,150 @@
       "persona_id": "salaried_steady",
       "expected": {
         "error_code": "bad_header"
+      }
+    },
+    {
+      "id": "fetch_txnid_mismatch",
+      "kind": "negative",
+      "dir": "negative/fetch_txnid_mismatch",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "session_mismatch"
+      }
+    },
+    {
+      "id": "consent_id_mismatch",
+      "kind": "negative",
+      "dir": "negative/consent_id_mismatch",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "session_mismatch"
+      }
+    },
+    {
+      "id": "consent_expired",
+      "kind": "negative",
+      "dir": "negative/consent_expired",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "consent_invalid"
+      }
+    },
+    {
+      "id": "consent_not_started",
+      "kind": "negative",
+      "dir": "negative/consent_not_started",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "consent_invalid"
+      }
+    },
+    {
+      "id": "window_outside_consent",
+      "kind": "negative",
+      "dir": "negative/window_outside_consent",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "window_mismatch"
+      }
+    },
+    {
+      "id": "window_too_short",
+      "kind": "negative",
+      "dir": "negative/window_too_short",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "window_too_short"
+      }
+    },
+    {
+      "id": "window_stale",
+      "kind": "negative",
+      "dir": "negative/window_stale",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "window_stale"
+      }
+    },
+    {
+      "id": "statement_outside_window",
+      "kind": "negative",
+      "dir": "negative/statement_outside_window",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "window_mismatch"
+      }
+    },
+    {
+      "id": "multi_fip_response",
+      "kind": "negative",
+      "dir": "negative/multi_fip_response",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_fetch_response"
+      }
+    },
+    {
+      "id": "multi_account_response",
+      "kind": "negative",
+      "dir": "negative/multi_account_response",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_fetch_response"
+      }
+    },
+    {
+      "id": "fip_envelope_malformed",
+      "kind": "negative",
+      "dir": "negative/fip_envelope_malformed",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_fip_envelope"
+      }
+    },
+    {
+      "id": "amount_three_decimals",
+      "kind": "negative",
+      "dir": "negative/amount_three_decimals",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_fi_data"
+      }
+    },
+    {
+      "id": "amount_negative_string",
+      "kind": "negative",
+      "dir": "negative/amount_negative_string",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "bad_fi_data"
+      }
+    },
+    {
+      "id": "fi_xml",
+      "kind": "negative",
+      "dir": "negative/fi_xml",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "unsupported_fi_format"
+      }
+    },
+    {
+      "id": "order_txnid_before_decrypt",
+      "kind": "negative",
+      "dir": "negative/order_txnid_before_decrypt",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "session_mismatch"
+      }
+    },
+    {
+      "id": "order_stale_before_decrypt",
+      "kind": "negative",
+      "dir": "negative/order_stale_before_decrypt",
+      "persona_id": "salaried_steady",
+      "expected": {
+        "error_code": "window_stale"
       }
     }
   ]

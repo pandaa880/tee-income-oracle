@@ -27,5 +27,7 @@
       "unmatched_emi_bounces": 3,
       "od_days": 92
     }
-  }
+  },
+  "payload_hex": null,
+  "msg_hex": null
 }

@@ -4,6 +4,16 @@
 
 const SECS_PER_DAY: i64 = 86_400;
 
+/// India Standard Time, UTC+05:30, in seconds. India has no daylight saving.
+pub(crate) const IST_OFFSET: i64 = 19_800;
+
+/// India calendar day (days since 1970-01-01 in IST) of a unix timestamp.
+pub(crate) fn india_day(unix_secs: i64) -> i64 {
+    unix_secs
+        .saturating_add(IST_OFFSET)
+        .div_euclid(SECS_PER_DAY)
+}
+
 /// A timestamp or date that doesn't match the accepted grammar or names a
 /// day or time that doesn't exist. Carries no data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]

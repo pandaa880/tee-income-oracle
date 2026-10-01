@@ -448,6 +448,13 @@ Header: `x-jws-signature` = detached JWS by the AA key over these exact bytes.
 `KeyMaterial` sits on the `FI[]` entry (one per FIP), **not** inside each
 `data[]` item: this matches Finvu's sample. One FIP key serves all its accounts.
 
+**The enclave accepts exactly one `FI[]` entry with exactly one `data[]`
+item** (else `bad_fetch_response`). One `KeyMaterial` + our nonce derive one
+AES key **and one IV** (§3). Two `encryptedFI` values under the same key and
+IV break AES-GCM: the XOR of the plaintexts leaks and the GHASH key can be
+recovered (NIST SP 800-38D). Until a provider shows per-account keys or
+nonces, multi-account and multi-FIP responses are refused.
+
 **FIP signature (our sandbox; OPEN (a) for real FIPs):** the plaintext inside
 `encryptedFI` is a JSON envelope:
 
@@ -468,7 +475,18 @@ Payload (subset we rely on):
   "fiTypes": ["DEPOSIT"], "FIDataRange": { "from": "...", "to": "..." },
   "DataLife": { "unit": "DAY", "value": 0 } }
 ```
-- `window_from` / `window_to` come from `FIDataRange` (floor to UTC day, `u32` unix seconds).
+- The enclave requires: `consentId` = the id it put in its FI request,
+  `status` = `ACTIVE`, `fiTypes` contains `DEPOSIT`,
+  `consentStart ≤ now < consentExpiry`, and `FIDataRange.from < to`
+  (timestamps per §12). It also requires the range it requested (§5.1
+  `FIDataRange`) to lie inside the consent's `FIDataRange`. The binding of
+  accounts, FIU id and purpose is not checked yet.
+- `window_from` / `window_to` come from the **requested** range (§5.1, which
+  lies inside the consent's), floored to the UTC day, as `u32` unix seconds.
+  Using the request, not the consent, stops a short request under a long
+  consent from claiming the long window. The policy window checks (§6) run on
+  these same floored values, so what the enclave checked is what the pool
+  reads.
 - `consent_hash = sha256(ASCII bytes of the whole compact JWS string)`.
 
 ---
@@ -709,6 +727,41 @@ string and verifies; any difference → reject.
 - Policy code (`tio-core`): `bad_policy` (any §6 strict-parse rule).
 - Scoring codes (`tio-core`, §6.1): `window_mismatch` (a transaction's India day is outside the
   statement's `[startDate, endDate]`), `bad_fi_data` (scoring arithmetic overflow).
+- Evaluate codes (`tio-core`, §10.1): `bad_fetch_response` (not an object, or not exactly one
+  `FI[]` with exactly one `data[]`, §5.2), `session_mismatch` (`txnid` or `consentId` differs from
+  the session's), `consent_invalid`, `window_mismatch` (requested range not inside the consent's,
+  or statement not inside the requested range), `window_too_short`, `window_stale`,
+  `bad_fip_envelope` (decrypted plaintext is not `{fi, jws}` with string members and base64 `fi`),
+  `bad_fi_data_range` (session range not `0 ≤ from < to ≤ 2³² − 1`).
+
+### 10.1 Evaluate check order — FROZEN
+
+`tio_core::evaluate` runs these in order; the first failure wins and names
+its check. Checks 1–10 run **before decryption**: a request that can't produce
+a valid result never touches plaintext.
+
+| # | Check | Code |
+|---|---|---|
+| 1 | AA detached JWS over the exact fetch-response bytes | JWS codes; a bad signature → `bad_aa_signature` |
+| 2 | Fetch-response shape (§5.2: one `FI[]`, one `data[]`) | `bad_fetch_response` |
+| 3 | `txnid` = session's | `session_mismatch` |
+| 4 | Consent compact JWS | JWS codes; a bad signature → `bad_consent_signature` |
+| 5 | Consent payload parses (§5.3 members, timestamps, `from < to`) | `consent_invalid` |
+| 6 | `consentId` = session's | `session_mismatch` |
+| 7 | `ACTIVE`, `DEPOSIT`, `consentStart ≤ now < consentExpiry` | `consent_invalid` |
+| 8 | Requested range inside the consent's `FIDataRange` | `window_mismatch` |
+| 9 | `window_to − window_from < window.min_days` days (floored, §5.3) | `window_too_short` |
+| 10 | `now − window_to > window.max_age_days` days | `window_stale` |
+| 11 | `KeyMaterial`, key exchange, decryption (§3) | key-exchange codes |
+| 12 | FIP envelope `{fi, jws}` (§5.2) | `bad_fip_envelope` |
+| 13 | FIP detached JWS over the decoded `fi` bytes | JWS codes; a bad signature → `bad_fip_signature` |
+| 14 | FI parse (§1) | FI data codes |
+| 15 | Statement inside the requested range by India day: `startDate ≥ day(window_from)`, `endDate ≤ day(window_to)` (§6.1 time basis) | `window_mismatch` |
+| 16 | Score (§6.1) | scoring codes |
+
+A tier yields the §7 payload (`issued_at` = the enclave's `now`) and the §8
+message; Reject yields neither. `now` is the enclave clock, which the host
+can influence, so the pool re-checks `issued_at` on-chain.
 
 ---
 
@@ -726,15 +779,18 @@ test-vectors/
     fetch_response.body     exact bytes
     fetch_response.jws      detached, AA key
     consent.jws             compact, AA key
-    expected.json           { policy_hash, consent_hash, window_from, window_to, tier, features }
-                            (+ payload_hex, msg_hex once the payload exists)
+    expected.json           { policy_hash, consent_hash, window_from, window_to, tier, features,
+                              payload_hex, msg_hex }   (both null for REJECT)
   negative/<case>/          same files, one thing broken; expected.json = { error_code }
   manifest.json             { generator_version, cases: [{ id, kind, dir, persona_id, expected }] }
 ```
 
 `session.json`: `{ case_id, persona_id, mode, aa_alg, enclave_key, enclave_nonce_b64,
-session_id, txnid, now_unix, key_expiry_unix, fi_data_range: { from, to } }`
-(+ `wallet` once the §9 intent and §8 message are generated). `enclave_key`
+session_id, txnid, consent_id, wallet, now_unix, key_expiry_unix, fi_data_range: { from, to },
+attest: { oracle_program_id, sas_credential, sas_schema, proof_type, measurement_id, expiry_unix } }`.
+`fi_data_range` is the range the enclave requested (§5.3); `consent_id` is the id in its FI
+request; `wallet` and the `attest` ids are base58; `now_unix` is also the payload's `issued_at`
+and `expiry_unix` the §8 message expiry. `enclave_key`
 points at `keys/enclave.test-private.json`; its Curve25519 scalar is used as-is by
 `SessionKeyPair::generate` (which clamps it). Positive case ids: the four personas
 (`wei25519`, RS256), `rs512_aa` (AA signs the fetch response and consent with RS512) and
@@ -776,6 +832,26 @@ Required negative cases:
 | `unpinned_aa_key` | fetch response validly signed by the rogue key (`kid` not pinned) | `unknown_kid` |
 | `alg_none` / `alg_hs256` | fetch-response header algorithm swapped | `bad_alg` |
 | `detached_no_crit` | `crit` removed from the fetch-response header, re-signed | `bad_header` |
+| `fetch_txnid_mismatch` | fetch-response `txnid` from another session, AA-signed | `session_mismatch` |
+| `consent_id_mismatch` | consent signed with another `consentId` | `session_mismatch` |
+| `consent_expired` | `ACTIVE`, `consentExpiry` before `now` | `consent_invalid` |
+| `consent_not_started` | `ACTIVE`, `consentStart` after `now` | `consent_invalid` |
+| `window_outside_consent` | consent `FIDataRange` starts 30 days after the requested `from` | `window_mismatch` |
+| `window_too_short` | requested and consent range 179 days | `window_too_short` |
+| `window_stale` | range ends 8 days before `now` | `window_stale` |
+| `statement_outside_window` | FI `startDate` one day before the requested `from`, FIP-signed | `window_mismatch` |
+| `multi_fip_response` | two `FI[]` entries | `bad_fetch_response` |
+| `multi_account_response` | one `FI[]` with two `data[]` items (shared `KeyMaterial`) | `bad_fetch_response` |
+| `fip_envelope_malformed` | envelope `fi` not base64, re-encrypted and re-signed | `bad_fip_envelope` |
+| `amount_three_decimals` | one `amount` `1234.567`, FIP-signed | `bad_fi_data` |
+| `amount_negative_string` | one `amount` `"-0.50"`, FIP-signed | `bad_fi_data` |
+| `fi_xml` | the FI bytes are XML, FIP-signed | `unsupported_fi_format` |
+| `order_txnid_before_decrypt` | `fetch_txnid_mismatch` **and** a flipped ciphertext byte | `session_mismatch` |
+| `order_stale_before_decrypt` | `window_stale` **and** a flipped ciphertext byte | `window_stale` |
+
+The two `order_*` cases break two layers on purpose, against the layering
+rule: they prove the §10.1 order (no decryption before the session and
+window checks), not just the verdict.
 
 Plus the positive RS512 case `rs512_aa`.
 

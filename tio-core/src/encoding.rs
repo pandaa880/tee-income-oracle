@@ -1,5 +1,11 @@
 //! Byte encodings shared by the ReBIT-facing modules.
 
+use serde::{
+    de::{DeserializeOwned, Error as _},
+    Deserialize, Deserializer,
+};
+use serde_json::value::RawValue;
+
 use base64::{
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
     Engine,
@@ -58,11 +64,36 @@ fn strip_armour(compact: &str) -> Option<&str> {
 /// Deserializes `bytes` only if the JSON value is an object. serde's derived
 /// struct visitor also accepts an array (members by position), which no other
 /// implementation does: an input only we accept is a parser differential.
-pub(crate) fn from_json_object<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Option<T> {
+pub(crate) fn from_json_object<T: DeserializeOwned>(bytes: &[u8]) -> Option<T> {
     if bytes.trim_ascii_start().first() != Some(&b'{') {
         return None;
     }
     serde_json::from_slice(bytes).ok()
+}
+
+/// Nested structs must be JSON objects too. Derived visitors also accept a
+/// positional array (`"window":[7,180]`), which JCS of the input would keep
+/// as an array while our re-serialized bytes have an object: two different
+/// hashes for one policy. So each nested value is read raw and re-parsed
+/// object-only.
+pub(crate) fn object<'de, D: Deserializer<'de>, T: DeserializeOwned>(
+    deserializer: D,
+) -> Result<T, D::Error> {
+    let raw = Box::<RawValue>::deserialize(deserializer)?;
+    from_json_object(raw.get().as_bytes()).ok_or_else(|| D::Error::custom("expected a JSON object"))
+}
+
+/// [`object`] for each element of an array.
+pub(crate) fn objects<'de, D: Deserializer<'de>, T: DeserializeOwned>(
+    deserializer: D,
+) -> Result<Vec<T>, D::Error> {
+    Vec::<Box<RawValue>>::deserialize(deserializer)?
+        .iter()
+        .map(|raw| {
+            from_json_object(raw.get().as_bytes())
+                .ok_or_else(|| D::Error::custom("expected a JSON object"))
+        })
+        .collect()
 }
 
 #[cfg(test)]

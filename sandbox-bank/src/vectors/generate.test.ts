@@ -64,11 +64,18 @@ describe('generateAll', () => {
     for (const c of manifest.cases.filter((x) => x.kind === 'positive')) {
       const expected = c.expected as Record<string, unknown>;
       if (expected['tier'] === 'REJECT') {
-        expect(expected, c.id).toHaveProperty('payload_hex', null);
-        expect(expected, c.id).toHaveProperty('msg_hex', null);
+        // The case id rides along in the compared value so a failure names it.
+        expect({ id: c.id, ...expected }).toMatchObject({
+          id: c.id,
+          payload_hex: null,
+          msg_hex: null,
+        });
       } else {
-        expect(String(expected['payload_hex']), c.id).toMatch(/^[0-9a-f]{166}$/);
-        expect(String(expected['msg_hex']), c.id).toMatch(/^[0-9a-f]{464}$/);
+        expect({
+          id: c.id,
+          payload: /^[0-9a-f]{166}$/.test(String(expected['payload_hex'])),
+          msg: /^[0-9a-f]{464}$/.test(String(expected['msg_hex'])),
+        }).toEqual({ id: c.id, payload: true, msg: true });
       }
     }
   });

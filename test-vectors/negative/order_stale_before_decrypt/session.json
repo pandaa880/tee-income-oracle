@@ -1,0 +1,26 @@
+{
+  "case_id": "order_stale_before_decrypt",
+  "persona_id": "salaried_steady",
+  "mode": "wei25519",
+  "aa_alg": "RS256",
+  "enclave_key": "keys/enclave.test-private.json",
+  "enclave_nonce_b64": "v6zEXxKpku6BISgujQX8LL6p7hEVh2j3+d2bMClVo4g=",
+  "session_id": "2e4d4aa3-5a12-4685-8d72-2dd573c92510",
+  "txnid": "7c76995b-e078-4038-9e60-6fd1702fda82",
+  "now_unix": 1790416800,
+  "key_expiry_unix": 1790503200,
+  "fi_data_range": {
+    "from": "2025-09-18T00:00:00.000Z",
+    "to": "2026-09-18T00:00:00.000Z"
+  },
+  "consent_id": "be26743a-768a-4e26-b02f-db9816cfbbc6",
+  "wallet": "FW9aMPufqx2d35NKiozQunbjyG3zEfvmuDhpf1U6MkcB",
+  "attest": {
+    "oracle_program_id": "HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8",
+    "sas_credential": "CQ9qBy7hC6LiTRioc8ZNDqfvf25SgUE2TjDicZ6Rnb9i",
+    "sas_schema": "68WeRj3cLW9NZqTU81vFqpdao9Sd4vEZJS7AShWfiNTx",
+    "proof_type": 1,
+    "measurement_id": 0,
+    "expiry_unix": 1790417400
+  }
+}

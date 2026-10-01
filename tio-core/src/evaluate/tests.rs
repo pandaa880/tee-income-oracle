@@ -132,9 +132,12 @@ fn fip_bad_signature_takes_the_fip_layer_code() {
     );
 }
 
+/// Builds one `JwsError` (they aren't `Copy`, so each layer gets a fresh one).
+type MakeJwsError = fn() -> JwsError;
+
 #[test]
 fn other_jws_errors_keep_their_own_code_in_every_layer() {
-    let jws_codes: [(fn() -> JwsError, &str); 6] = [
+    let jws_codes: [(MakeJwsError, &str); 6] = [
         (|| JwsError::Malformed, "bad_jws"),
         (|| JwsError::BadHeader, "bad_header"),
         (|| JwsError::BadAlg, "bad_alg"),
