@@ -3,7 +3,7 @@
  * order", FORMATS §10.1): AA signature → fetch shape → txnid → consent
  * signature → consent parse → consent id → consent status and time → requested
  * range ⊆ consent → too short → stale → future end → decrypt → FIP envelope →
- * FIP signature → FI parse → statement inside range and long enough → score.
+ * FIP signature → FI parse → statement inside range, long enough and fresh → score.
  * Tests use it to prove each negative case fails at its own layer and every
  * layer before it passes.
  *
@@ -194,8 +194,10 @@ function parseFi(fi: Uint8Array): MiniFi {
 }
 
 /**
- * Step 15: the statement's India days lie inside the requested range's India days, and
- * the statement itself spans at least `min_days` (inclusive day count).
+ * Step 15: the statement's India days lie inside the requested range's India days (15); its
+ * own window (start/end date at 00:00 UTC, which the payload carries) is then long enough
+ * (15b, length `end - start`, not inclusive) and fresh (15c), the same policy rules as the
+ * request-level checks.
  */
 function checkStatement(mini: MiniFi, session: Session): void {
   if (mini.startDay < indiaDay(floorToDay(session.from))) {
@@ -204,8 +206,14 @@ function checkStatement(mini: MiniFi, session: Session): void {
   if (mini.endDay > indiaDay(floorToDay(session.to))) {
     throw new CheckFailure('window_mismatch');
   }
-  if (mini.endDay - mini.startDay + 1 < DEFAULT_POLICY.window.min_days) {
+  const { min_days, max_age_days } = DEFAULT_POLICY.window;
+  const from = mini.startDay * DAY;
+  const to = mini.endDay * DAY;
+  if (to - from < min_days * DAY) {
     throw new CheckFailure('window_too_short');
+  }
+  if (session.now - to > max_age_days * DAY) {
+    throw new CheckFailure('window_stale');
   }
 }
 

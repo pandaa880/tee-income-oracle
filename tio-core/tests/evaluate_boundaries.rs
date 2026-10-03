@@ -177,14 +177,32 @@ fn window_ending_a_day_before_the_statement_end_is_window_mismatch() {
 
 // --- flooring ------------------------------------------------------------------
 
-// An unaligned start is floored to its UTC day in the payload.
+// The evaluation window is the statement's own dates, not the request's. An
+// unaligned request start is floored to its UTC day for the checks (15a still
+// passes: the statement starts that day), and the evaluation window stays the
+// statement's start at 00:00 UTC.
 #[test]
-fn unaligned_window_start_is_floored_in_the_evaluation() {
+fn unaligned_request_start_still_passes_and_the_window_is_the_statements() {
     let fx = salaried();
     let overrides = with_range(fx.range.from() + 3600, fx.range.to());
     let evaluation = fx.evaluate_with(&overrides).unwrap();
     assert_eq!(i64::from(evaluation.window_from), fx.range.from());
     assert_eq!(i64::from(evaluation.window_to), fx.range.to());
+}
+
+// trader_lumpy's statement is 2025-12-26..2026-09-26 under a 365-day request
+// (2025-09-26..2026-09-26): the payload window is the statement's, not the
+// request's.
+#[test]
+fn trader_evaluation_window_is_the_statement_dates() {
+    let fx = fixture("trader_lumpy");
+    assert_eq!(fx.range.from(), 1_758_844_800, "request starts 2025-09-26");
+    let evaluation = fx.evaluate().unwrap();
+    assert_eq!(evaluation.window_from, 1_766_707_200, "2025-12-26T00:00Z");
+    assert_eq!(evaluation.window_to, 1_790_380_800, "2026-09-26T00:00Z");
+    let payload = evaluation.attestation.unwrap().payload;
+    assert_eq!(&payload[75..79], &1_766_707_200_u32.to_le_bytes());
+    assert_eq!(&payload[79..83], &1_790_380_800_u32.to_le_bytes());
 }
 
 // --- session binding ------------------------------------------------------
@@ -327,7 +345,8 @@ fn stressed_vector_is_rejected_without_an_attestation() {
 fn stressed_vector_still_reports_window_and_hashes() {
     let fx = fixture("stressed");
     let evaluation = fx.evaluate().unwrap();
-    assert_eq!(i64::from(evaluation.window_from), fx.range.from());
+    // The statement's own window (2026-03-26..2026-09-26), not the request's.
+    assert_eq!(evaluation.window_from, 1_774_483_200);
     assert_eq!(i64::from(evaluation.window_to), fx.range.to());
     let expected = load_json(
         &test_vectors_dir()
@@ -347,29 +366,67 @@ fn stressed_vector_still_reports_window_and_hashes() {
 
 // --- check 15b: the statement spans at least min_days ---------------------------
 
-// The stressed vector's statement is 2026-03-26..2026-09-26: 185 days
-// inclusive, under a 365-day request. Only `min_days` is varied.
-fn stressed_with_min_days(min_days: u64) -> CaseFixture {
-    let mut fx = fixture("stressed");
+// A fixture whose policy has one window rule changed.
+fn with_window_rule(mut fx: CaseFixture, rule: &str, value: u64) -> CaseFixture {
     let path = test_vectors_dir().join("policy").join("default.json");
     let mut json = load_json(&path);
-    json["window"]["min_days"] = serde_json::json!(min_days);
+    json["window"][rule] = serde_json::json!(value);
     fx.policy = Policy::from_json(&serde_json::to_vec(&json).unwrap()).unwrap();
     fx
 }
 
+// The stressed vector's statement is 2026-03-26..2026-09-26: the payload
+// length is `end - start` = 184 days (not the inclusive 185), under a 365-day
+// request. Only `min_days` is varied. This is the length the pool reads from
+// the payload, so the check must equal it.
 #[test]
 fn statement_spanning_exactly_min_days_passes_check_15b() {
-    let evaluation = stressed_with_min_days(185).evaluate().unwrap();
+    let evaluation = with_window_rule(fixture("stressed"), "min_days", 184)
+        .evaluate()
+        .unwrap();
     assert_eq!(evaluation.outcome, Outcome::Reject);
     assert_eq!(evaluation.attestation, None);
+    assert_eq!(
+        i64::from(evaluation.window_to) - i64::from(evaluation.window_from),
+        184 * DAY
+    );
 }
 
 #[test]
 fn statement_one_day_under_min_days_is_window_too_short() {
-    let fx = stressed_with_min_days(186);
+    let fx = with_window_rule(fixture("stressed"), "min_days", 185);
     assert_eq!(
         fx.evaluate().map(|_| ()).map_err(|e| e.code()),
         Err("window_too_short")
     );
+}
+
+// --- check 15c: the statement ends at most max_age_days before now ---------------
+
+// `statement_stale`: the statement ends 2026-08-27, 30 days before the request
+// end (2026-09-26); the request itself is fresh. `max_age_days` is raised to 30
+// so the boundary can be hit with `now` at or after the request end, which the
+// request-level checks need: the future-end rule (10) rejects now < `to`, and
+// the request-level age (now - to) stays under 30 days for the 1 s steps used
+// here. So only the statement-level age, 30 days at now = to, can fire.
+fn statement_stale_fixture(max_age_days: u64) -> CaseFixture {
+    let dir = test_vectors_dir().join("negative").join("statement_stale");
+    with_window_rule(CaseFixture::load(&dir), "max_age_days", max_age_days)
+}
+
+#[test]
+fn statement_ending_exactly_max_age_days_before_now_is_ok() {
+    let fx = statement_stale_fixture(30);
+    let evaluation = fx.evaluate_with(&at(&fx, fx.range.to())).unwrap();
+    assert_eq!(
+        i64::from(evaluation.window_to),
+        fx.range.to() - 30 * DAY,
+        "the payload ends where the statement ends"
+    );
+}
+
+#[test]
+fn statement_ending_one_second_more_than_max_age_days_before_now_is_window_stale() {
+    let fx = statement_stale_fixture(30);
+    assert_eq!(code(&fx, &at(&fx, fx.range.to() + 1)), Err("window_stale"));
 }

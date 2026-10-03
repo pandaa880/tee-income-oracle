@@ -29,6 +29,7 @@ const EVALUATE_NEGATIVES = [
   ['window_stale', 'window_stale'],
   ['statement_outside_window', 'window_mismatch'],
   ['statement_too_short', 'window_too_short'],
+  ['statement_stale', 'window_stale'],
   ['multi_fip_response', 'bad_fetch_response'],
   ['multi_account_response', 'bad_fetch_response'],
   ['fip_envelope_malformed', 'bad_fip_envelope'],
@@ -99,7 +100,7 @@ function salariedSteady(): Persona {
 }
 
 describe('NEGATIVE_CASES', () => {
-  it('covers exactly the 26 negative ids (9 original + 17 from slice 2e)', () => {
+  it('covers exactly the 27 negative ids (9 original + 18 from slice 2e)', () => {
     expect(NEGATIVE_CASES.map((c) => c.id).toSorted()).toEqual(
       [...EXPECTED_NEGATIVE_IDS].toSorted(),
     );
@@ -510,6 +511,23 @@ describe('slice 2e negatives: only the intended layer is broken', () => {
     const end = required(/"endDate":"(\d{4}-\d{2}-\d{2})/.exec(text)?.[1], 'FI has an endDate');
     expect((Date.parse(end) - Date.parse(start)) / (DAY * 1000) + 1).toBe(30);
     expect(session.to - session.from).toBeGreaterThanOrEqual(180 * DAY);
+  });
+
+  it('statement_stale: FIP-signed FI ends 30 days before the requested end, inside the request', () => {
+    const files = build('statement_stale');
+    const session = sessionOf(files);
+    expect(fipSignatureVerifies(files, keys)).toBe(true);
+    const text = fiText(files, keys);
+    const start = required(
+      /"startDate":"(\d{4}-\d{2}-\d{2})/.exec(text)?.[1],
+      'FI has a startDate',
+    );
+    const end = required(/"endDate":"(\d{4}-\d{2}-\d{2})/.exec(text)?.[1], 'FI has an endDate');
+    expect(Date.parse(end) / 1000).toBe(session.to - 30 * DAY);
+    // The request itself is fresh and the statement is still long enough.
+    expect(session.now - session.to).toBeLessThanOrEqual(7 * DAY);
+    expect((Date.parse(end) - Date.parse(start)) / (DAY * 1000)).toBeGreaterThanOrEqual(180);
+    expect(Date.parse(start) / 1000).toBeGreaterThanOrEqual(session.from);
   });
 
   it('multi_fip_response: two FI[] entries, AA-signed', () => {

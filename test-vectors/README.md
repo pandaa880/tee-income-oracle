@@ -89,7 +89,7 @@ flowchart TD
   L4["④ window: inside the consent, not too short,<br/>not stale, not after now"]
   L5["⑤ decrypt encryptedFI<br/>ECDH → HKDF → AES-256-GCM"]
   L6["⑥ FIP envelope, then FIP (bank) signature"]
-  L7["⑦ parse statement; inside the window, long enough"]
+  L7["⑦ parse statement; inside the window, long enough, fresh"]
   OK["score → tier → payload + message"]
   E1["bad_aa_signature · unknown_kid · bad_alg · bad_header"]
   E2["bad_fetch_response · session_mismatch"]
@@ -97,7 +97,7 @@ flowchart TD
   E4["window_mismatch · window_too_short · window_stale"]
   E5["decrypt_failed (and key-exchange codes)"]
   E6["bad_fip_envelope · bad_fip_signature"]
-  E7["bad_fi_data · unsupported_fi_format · window_mismatch · window_too_short"]
+  E7["bad_fi_data · unsupported_fi_format · window_mismatch · window_too_short · window_stale"]
 
   IN --> L1
   L1 -- ok --> L2

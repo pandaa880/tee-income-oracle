@@ -64,6 +64,7 @@ export type NegativeId =
   | 'window_stale'
   | 'statement_outside_window'
   | 'statement_too_short'
+  | 'statement_stale'
   | 'multi_fip_response'
   | 'multi_account_response'
   | 'fip_envelope_malformed'
@@ -111,6 +112,7 @@ export const NEGATIVE_CASES: readonly { readonly id: NegativeId; readonly errorC
     { id: 'window_stale', errorCode: 'window_stale' },
     { id: 'statement_outside_window', errorCode: 'window_mismatch' },
     { id: 'statement_too_short', errorCode: 'window_too_short' },
+    { id: 'statement_stale', errorCode: 'window_stale' },
     { id: 'multi_fip_response', errorCode: 'bad_fetch_response' },
     { id: 'multi_account_response', errorCode: 'bad_fetch_response' },
     { id: 'fip_envelope_malformed', errorCode: 'bad_fip_envelope' },
@@ -201,6 +203,21 @@ const FI_MUTATIONS: Partial<Record<NegativeId, (ctx: Context) => Uint8Array>> = 
       Transactions: { ...fi.Transactions, startDate: day, Transaction: kept },
     };
     return utf8(JSON.stringify(short));
+  },
+  // A statement that ended 30 days before the requested end (still inside the request and
+  // long enough, so the request-level checks pass): transactions after the new endDate are
+  // dropped (UTC date, same rule as above). Only check 15c is broken.
+  statement_stale: (ctx) => {
+    const day = isoUtc(ctx.windowTo - 30 * DAY).slice(0, 10);
+    const fi = parseFiText(personaFiText(ctx));
+    const kept = fi.Transactions.Transaction.filter(
+      (t) => t.transactionTimestamp.slice(0, 10) <= day,
+    );
+    const stale = {
+      ...fi,
+      Transactions: { ...fi.Transactions, endDate: day, Transaction: kept },
+    };
+    return utf8(JSON.stringify(stale));
   },
   amount_three_decimals: (ctx) => withFirstAmount(personaFiText(ctx), '1234.567'),
   amount_negative_string: (ctx) => withFirstAmount(personaFiText(ctx), '"-0.50"'),
@@ -399,6 +416,7 @@ function signFetchResponse(ctx: Context, body: Uint8Array): string {
     case 'window_stale':
     case 'statement_outside_window':
     case 'statement_too_short':
+    case 'statement_stale':
     case 'multi_fip_response':
     case 'multi_account_response':
     case 'fip_envelope_malformed':
@@ -492,13 +510,14 @@ function expectedJson(ctx: Context, consentJws: string): JsonValue {
   }
   const consentHash = createHash('sha256').update(consentJws, 'ascii').digest();
   const scored = scoredJson(ctx.persona);
+  const window = statementWindow(ctx.persona);
   return {
     policy_hash: policyHashHex(),
     consent_hash: consentHash.toString('hex'),
-    window_from: ctx.windowFrom,
-    window_to: ctx.windowTo,
+    window_from: window.from,
+    window_to: window.to,
     ...scored,
-    ...attestationJson(ctx, scored.tier, consentHash),
+    ...attestationJson(ctx, scored.tier, consentHash, window),
   };
 }
 
@@ -507,6 +526,7 @@ function attestationJson(
   ctx: Context,
   tier: string,
   consentHash: Uint8Array,
+  window: { readonly from: number; readonly to: number },
 ): { payload_hex: string | null; msg_hex: string | null } {
   if (!isTier(tier)) {
     return { payload_hex: null, msg_hex: null };
@@ -518,8 +538,8 @@ function attestationJson(
     policyHash: new Uint8Array(Buffer.from(policyHashHex(), 'hex')),
     consentHash,
     issuedAt: BigInt(NOW_UNIX),
-    windowFrom: ctx.windowFrom,
-    windowTo: ctx.windowTo,
+    windowFrom: window.from,
+    windowTo: window.to,
   });
   const message = buildMessage(
     {
@@ -532,6 +552,12 @@ function attestationJson(
     BigInt(NOW_UNIX + ATTEST_TTL),
   );
   return { payload_hex: toHex(payload), msg_hex: toHex(message) };
+}
+
+/** The payload window: the statement's own start/end date at 00:00 UTC (FORMATS §5.3, §7). */
+function statementWindow(persona: Persona): { from: number; to: number } {
+  const { startDay, endDay } = reduceFi(new TextDecoder().decode(jsonBytes(persona.fi, 0)));
+  return { from: startDay * DAY, to: endDay * DAY };
 }
 
 function isTier(tier: string): tier is Tier {

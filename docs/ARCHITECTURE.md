@@ -141,7 +141,7 @@ What a hostile gateway or host can do at each hop:
 |---|---|---|
 | Hostile gateway/host reading data | keys born inside (G2); ciphertext only | metadata: timing, sizes, and which wallet ran which session |
 | Hostile gateway/host forging data or tiers | pinned keys, verify before parse (G1); session binding: response `txnid` and consent `consentId` must be the enclave's own (FORMATS §10.1); attested signer (G4/G5) | censorship, delay |
-| Host lying about "today" | window = the enclave's requested range, inside the signed consent, refused if too short, stale or ending after `now`; `issued_at` checked against the Solana clock | ± 5 min skew window (`max_skew_secs`) |
+| Host lying about "today" | window = the statement's own dates, inside the enclave's requested range, inside the signed consent; refused if too short or stale (request and statement) or the request ends after `now`; `issued_at` checked against the Solana clock | ± 5 min skew window (`max_skew_secs`) |
 | Borrower reusing another wallet's tier | SAS nonce = wallet; pool requires `borrower == nonce` | collusion (same as sybil) |
 | Borrower using a fresh wallet | none in the MVP | **sybil gap**: documented, never claimed solved |
 | Lender changing rules silently | `policy_hash` in the payload; pool pins it | — |

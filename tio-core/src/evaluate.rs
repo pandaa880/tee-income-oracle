@@ -151,7 +151,7 @@ pub enum EvaluateError {
     ConsentSignature(JwsError),
     #[error("consent is invalid or not active")]
     ConsentInvalid,
-    #[error("requested window is outside the consent or the statement")]
+    #[error("window is outside the consent, the request or the statement")]
     WindowMismatch,
     #[error("window is shorter than the policy minimum")]
     WindowTooShort,
@@ -276,7 +276,9 @@ struct Consent {
     to: i64,
 }
 
-/// The day-floored request range, as written into the payload.
+/// A window in unix seconds on a UTC day boundary. The floored request range
+/// is checked before decryption; the statement's own window (its dates at
+/// 00:00 UTC) is what the payload carries.
 #[derive(Clone, Copy)]
 struct Window {
     from: u32,
@@ -359,8 +361,29 @@ fn floor_window(range: FiDataRange) -> Result<Window, EvaluateError> {
     })
 }
 
-/// Steps 9 and 10: long enough, recent enough, and not ending after `now`.
-/// i64 holds every product (`u32 * 86400`), and the age uses checked math.
+/// The window spans at least `min_days`. i64 holds every product
+/// (`u32 * 86400`). Shared by the request (step 9) and the statement (15b):
+/// the length is `to - from`, which is what the pool reads from the payload.
+fn check_long_enough(window: Window, policy: &Policy) -> Result<(), EvaluateError> {
+    let length = i64::from(window.to) - i64::from(window.from);
+    if length < i64::from(policy.rules.window.min_days) * SECS_PER_DAY {
+        return Err(EvaluateError::WindowTooShort);
+    }
+    Ok(())
+}
+
+/// The window ended at most `max_age_days` before `now` (checked math).
+/// Shared by the request (step 10) and the statement (15c).
+fn check_fresh(window: Window, policy: &Policy, now: i64) -> Result<(), EvaluateError> {
+    let max_age = i64::from(policy.rules.window.max_age_days) * SECS_PER_DAY;
+    match now.checked_sub(i64::from(window.to)) {
+        Some(age) if age <= max_age => Ok(()),
+        _ => Err(EvaluateError::WindowStale),
+    }
+}
+
+/// Steps 9 and 10: the requested window is long enough, recent enough, and
+/// does not end after `now`.
 ///
 /// The future check uses the raw requested end: a window can't end after the
 /// moment it is evaluated, or the payload would attest days that haven't
@@ -371,16 +394,8 @@ fn check_window_policy(
     policy: &Policy,
     now: i64,
 ) -> Result<(), EvaluateError> {
-    let rule = &policy.rules.window;
-    let length = i64::from(window.to) - i64::from(window.from);
-    if length < i64::from(rule.min_days) * SECS_PER_DAY {
-        return Err(EvaluateError::WindowTooShort);
-    }
-    let age = now.checked_sub(i64::from(window.to));
-    match age {
-        Some(age) if age <= i64::from(rule.max_age_days) * SECS_PER_DAY => {}
-        _ => return Err(EvaluateError::WindowStale),
-    }
+    check_long_enough(window, policy)?;
+    check_fresh(window, policy, now)?;
     if range.to() > now {
         return Err(EvaluateError::WindowMismatch);
     }
@@ -431,47 +446,61 @@ fn open_envelope(plaintext: &[u8]) -> Result<(Zeroizing<Vec<u8>>, &str), Evaluat
     Ok((fi, envelope.jws))
 }
 
-/// Step 15: the statement lies inside the requested window, by India day, and
-/// itself spans at least `min_days` (inclusive day count): a short statement
-/// under a long request would make the payload claim a window it doesn't cover.
+/// Step 15: the statement's own window, which the payload will carry.
+///
+/// It must lie inside the requested window by India day (15), and is then
+/// held to the policy itself: `window_from`/`window_to` are the statement's
+/// `startDate`/`endDate` at 00:00 UTC, long enough (15b) and fresh (15c). The
+/// request-level checks (steps 9-10) can't stand in for these: a FIP-signed
+/// statement ending months before the requested end would otherwise get a
+/// fresh attestation claiming the requested window. Each date goes through
+/// `u32::try_from` so the payload fields can't wrap.
 fn check_statement_window(
     fi: &DepositFi,
-    window: Window,
+    requested: Window,
     policy: &Policy,
-) -> Result<(), EvaluateError> {
-    let inside = india_day(i64::from(window.from)) <= fi.start_day
-        && fi.end_day <= india_day(i64::from(window.to));
+    now: i64,
+) -> Result<Window, EvaluateError> {
+    let inside = india_day(i64::from(requested.from)) <= fi.start_day
+        && fi.end_day <= india_day(i64::from(requested.to));
     if !inside {
         return Err(EvaluateError::WindowMismatch);
     }
-    let span_days = fi
-        .end_day
-        .checked_sub(fi.start_day)
-        .and_then(|d| d.checked_add(1));
-    match span_days {
-        Some(days) if days >= i64::from(policy.rules.window.min_days) => Ok(()),
-        _ => Err(EvaluateError::WindowTooShort),
-    }
+    let at_midnight = |day: i64| {
+        day.checked_mul(SECS_PER_DAY)
+            .and_then(|t| u32::try_from(t).ok())
+            .ok_or(EvaluateError::WindowMismatch)
+    };
+    let window = Window {
+        from: at_midnight(fi.start_day)?,
+        to: at_midnight(fi.end_day)?,
+    };
+    check_long_enough(window, policy)?;
+    check_fresh(window, policy, now)?;
+    Ok(window)
 }
 
-/// Steps 11-16: from the encrypted statement to its scores.
+/// Steps 11-16: from the encrypted statement to its scores and the
+/// statement's window.
 fn score_statement(
     session: &Session<'_>,
     keys: &PinnedKeys<'_>,
     key_material: &KeyMaterial,
     encrypted_fi: &str,
-    window: Window,
-) -> Result<Scores, EvaluateError> {
+    requested: Window,
+    now: i64,
+) -> Result<(Scores, Window), EvaluateError> {
     let plaintext = decrypt_fi(session, key_material, encrypted_fi)?;
     let (fi_bytes, jws) = open_envelope(&plaintext)?;
     verify_detached(jws, &fi_bytes, keys.fip).map_err(EvaluateError::FipSignature)?;
     let fi = parse_deposit_fi(&fi_bytes).map_err(EvaluateError::Fi)?;
-    check_statement_window(&fi, window, session.policy)?;
-    score(&fi, session.policy).map_err(EvaluateError::Score)
+    let window = check_statement_window(&fi, requested, session.policy, now)?;
+    let scores = score(&fi, session.policy).map_err(EvaluateError::Score)?;
+    Ok((scores, window))
 }
 
 /// Step 17: hashes, and for a tier the payload and message (a reject has
-/// none).
+/// none). `window` is the statement's.
 fn finish(
     session: &Session<'_>,
     ctx: &AttestContext,
@@ -537,10 +566,17 @@ pub fn evaluate(
     }
     check_consent_active(&consent, clock.now)?;
     check_within_consent(session.range, &consent)?;
-    let window = floor_window(session.range)?;
-    check_window_policy(window, session.range, session.policy, clock.now)?;
+    let requested = floor_window(session.range)?;
+    check_window_policy(requested, session.range, session.policy, clock.now)?;
 
-    let scores = score_statement(session, keys, &key_material, &encrypted_fi, window)?;
+    let (scores, window) = score_statement(
+        session,
+        keys,
+        &key_material,
+        &encrypted_fi,
+        requested,
+        clock.now,
+    )?;
     Ok(finish(
         session,
         ctx,

@@ -197,7 +197,7 @@ fn verify_signature_accepts_the_rfc7515_a2_golden_vector() {
         .decode(field(&a2, "signature_b64"))
         .expect("valid base64url");
 
-    verify_signature(&pub_key, Alg::Rs256, signing_input, &signature)
+    verify_signature(&pub_key, Alg::Rs256, &[signing_input], &signature)
         .expect("the RFC 7515 A.2 signature must verify");
 }
 
@@ -211,13 +211,13 @@ fn verify_signature_rejects_a_tampered_signing_input() {
         .expect("valid base64url");
 
     // Baseline: the untouched signing input verifies.
-    assert!(verify_signature(&pub_key, Alg::Rs256, signing_input, &signature).is_ok());
+    assert!(verify_signature(&pub_key, Alg::Rs256, &[signing_input], &signature).is_ok());
 
     let mut tampered = signing_input.to_vec();
     let last = tampered.len() - 1;
     tampered[last] ^= 0x01;
 
-    let err = verify_signature(&pub_key, Alg::Rs256, &tampered, &signature)
+    let err = verify_signature(&pub_key, Alg::Rs256, &[&tampered], &signature)
         .expect_err("a tampered signing input must be rejected");
     assert_eq!(err, JwsError::BadSignature);
     assert_eq!(err.code(), "bad_signature");
@@ -233,11 +233,11 @@ fn verify_signature_rejects_a_signature_of_the_wrong_length() {
         .expect("valid base64url");
 
     // Baseline: the untouched signature verifies.
-    assert!(verify_signature(&pub_key, Alg::Rs256, signing_input, &signature).is_ok());
+    assert!(verify_signature(&pub_key, Alg::Rs256, &[signing_input], &signature).is_ok());
 
     signature.pop();
 
-    let err = verify_signature(&pub_key, Alg::Rs256, signing_input, &signature)
+    let err = verify_signature(&pub_key, Alg::Rs256, &[signing_input], &signature)
         .expect_err("a signature shorter than the modulus must be rejected");
     assert_eq!(err, JwsError::BadSignature);
 }
@@ -250,7 +250,7 @@ fn verify_signature_accepts_a_genuine_rs512_signature() {
     let message = b"rs512 detached body, signed with a 2048-bit key";
     let signature = SigningKey::<Sha512>::new(priv_key).sign(message).to_vec();
 
-    verify_signature(&pub_key, Alg::Rs512, message, &signature)
+    verify_signature(&pub_key, Alg::Rs512, &[message], &signature)
         .expect("a genuine RS512 signature over a 2048-bit key must verify");
 }
 
@@ -286,7 +286,7 @@ fn sign_rs256_output_verifies_against_the_matching_public_key() {
     let mut rng = ChaCha20Rng::seed_from_u64(9);
     let signature = sign_rs256(&priv_key, signing_input, &mut rng).expect("signing must succeed");
 
-    verify_signature(&pub_key, Alg::Rs256, signing_input, &signature)
+    verify_signature(&pub_key, Alg::Rs256, &[signing_input], &signature)
         .expect("our own freshly produced signature must verify");
 }
 

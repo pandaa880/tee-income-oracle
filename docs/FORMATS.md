@@ -481,15 +481,16 @@ Payload (subset we rely on):
   (timestamps per §12). It also requires the range it requested (§5.1
   `FIDataRange`) to lie inside the consent's `FIDataRange`. The binding of
   accounts, FIU id and purpose is not checked yet.
-- `window_from` / `window_to` come from the **requested** range (§5.1, which
-  lies inside the consent's), floored to the UTC day, as `u32` unix seconds.
-  Using the request, not the consent, stops a short request under a long
-  consent from claiming the long window. The policy window checks (§6) run on
-  these same floored values, so what the enclave checked is what the pool
-  reads. The statement itself must also span at least `min_days` days
-  (`endDate − startDate + 1`, §10.1 check 15), so a short statement can't
-  stand behind a long requested window. The requested `to` may not be after
-  `now` (§10.1 check 10).
+- `window_from` / `window_to` are the **statement's** `startDate` / `endDate`,
+  as written, at 00:00 UTC (`u32` unix seconds). They must lie inside the
+  requested range (§5.1), which lies inside the consent's (§10.1 check 15).
+  The requested range is still checked before decryption (§10.1 checks 8-10),
+  and the policy window checks (§6) run on both the requested and the
+  statement window (checks 9, 10, 15b, 15c). So the payload never claims more
+  than the statement covers (a short request under a long consent, or a stale
+  statement under a fresh request, can't get a window it doesn't have), and
+  the pool reads exactly what the enclave checked. The requested `to` may not
+  be after `now` (§10.1 check 10b).
 - `consent_hash = sha256(ASCII bytes of the whole compact JWS string)`.
 
 ---
@@ -628,8 +629,8 @@ Clustering is O(c²) in EMI candidates: about 0.4 s for 20 000 candidates (relea
 | 3 | 32 | `policy_hash` | bytes | section 6 |
 | 35 | 32 | `consent_hash` | bytes | section 5.3 |
 | 67 | 8 | `issued_at` | i64 | unix seconds, enclave clock (checked on-chain) |
-| 75 | 4 | `window_from` | u32 | unix seconds |
-| 79 | 4 | `window_to` | u32 | unix seconds |
+| 75 | 4 | `window_from` | u32 | statement start date, 00:00 UTC, unix seconds |
+| 79 | 4 | `window_to` | u32 | statement end date, 00:00 UTC, unix seconds |
 
 SAS schema layout (SAS has no fixed-size arrays; each 32-byte hash is two U128s):
 `[U8, U8, U8, U128, U128, U128, U128, I64, U32, U32]`
@@ -735,7 +736,8 @@ string and verifies; any difference → reject.
   the session's), `consent_invalid`, `window_mismatch` (requested range not inside the consent's,
   statement not inside the requested range, or the requested end after `now`),
   `window_too_short` (the requested window, or the statement itself, is shorter than
-  `window.min_days`), `window_stale`,
+  `window.min_days`), `window_stale` (the requested window, or the statement itself, ended
+  more than `window.max_age_days` before `now`),
   `bad_fip_envelope` (decrypted plaintext is not `{fi, jws}` with unescaped string members and
   base64 `fi`; any backslash in it is refused),
   `bad_fi_data_range` (session range not `0 ≤ from < to ≤ 2³² − 1`).
@@ -763,8 +765,9 @@ a valid result never touches plaintext.
 | 12 | FIP envelope `{fi, jws}` (§5.2): string members, base64 `fi`, no escapes in the plaintext | `bad_fip_envelope` |
 | 13 | FIP detached JWS over the decoded `fi` bytes | JWS codes; a bad signature → `bad_fip_signature` |
 | 14 | FI parse (§1) | FI data codes |
-| 15 | Statement inside the requested range by India day: `startDate ≥ day(window_from)`, `endDate ≤ day(window_to)` (§6.1 time basis) | `window_mismatch` |
-| 15b | Statement long enough: `endDate − startDate + 1 ≥ window.min_days` days (checked after 15's inside-window part) | `window_too_short` |
+| 15 | Statement inside the requested range by India day: `startDate ≥ day(requested from)`, `endDate ≤ day(requested to)` (§6.1 time basis). The payload window is then the statement's: `window_from = startDate`, `window_to = endDate`, each at 00:00 UTC and a `u32` (§5.3) | `window_mismatch` |
+| 15b | Statement long enough: `window_to − window_from ≥ window.min_days` days (the payload length, so exactly what the pool reads; checked after 15's inside-window part) | `window_too_short` |
+| 15c | Statement fresh: `now − window_to ≤ window.max_age_days` days (the statement window, as check 10 does for the requested one) | `window_stale` |
 | 16 | Score (§6.1) | scoring codes |
 
 A tier yields the §7 payload (`issued_at` = the enclave's `now`) and the §8
@@ -848,7 +851,8 @@ Required negative cases:
 | `window_too_short` | requested and consent range 179 days | `window_too_short` |
 | `window_stale` | range ends 8 days before `now` | `window_stale` |
 | `statement_outside_window` | FI `startDate` one day before the requested `from`, FIP-signed | `window_mismatch` |
-| `statement_too_short` | FI `Transactions.startDate` = `endDate` − 29 days (a 30-day statement under a full-year request; transactions kept, as check 15 runs before scoring), FIP-signed | `window_too_short` |
+| `statement_too_short` | FI `Transactions.startDate` = `endDate` − 29 days (a 30-day statement under a full-year request; transactions before the new start dropped, as check 15 runs before scoring), FIP-signed | `window_too_short` |
+| `statement_stale` | FI `Transactions.endDate` = the requested `to` date − 30 days (inside the request, long enough; the request itself is fresh); transactions after the new end dropped, FIP-signed | `window_stale` |
 | `multi_fip_response` | two `FI[]` entries | `bad_fetch_response` |
 | `multi_account_response` | one `FI[]` with two `data[]` items (shared `KeyMaterial`) | `bad_fetch_response` |
 | `fip_envelope_malformed` | envelope `fi` not base64, re-encrypted and re-signed | `bad_fip_envelope` |
