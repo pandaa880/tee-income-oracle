@@ -33,7 +33,9 @@ function manifestOf(files: ReadonlyMap<string, Uint8Array>): Manifest {
   return JSON.parse(new TextDecoder().decode(bytes)) as Manifest;
 }
 
-describe('generateAll', () => {
+// Each test builds all 32 cases (RSA signing per case); the determinism test
+// builds them twice. That exceeds vitest's 5 s default on CI runners.
+describe('generateAll', { timeout: 30_000 }, () => {
   it('is deterministic: two runs produce byte-identical output', () => {
     const keys = loadKeys();
     const first = generateAll(keys);
@@ -51,12 +53,45 @@ describe('generateAll', () => {
     expect(manifest.generator_version).toBe(GENERATOR_VERSION);
   });
 
-  it('lists exactly 6 positive and 9 negative cases', () => {
+  it('lists exactly 6 positive and 27 negative cases', () => {
     const manifest = manifestOf(generateAll(loadKeys()));
     const positive = manifest.cases.filter((c) => c.kind === 'positive');
     const negative = manifest.cases.filter((c) => c.kind === 'negative');
     expect(positive).toHaveLength(6);
-    expect(negative).toHaveLength(9);
+    expect(negative).toHaveLength(27);
+  });
+
+  it('carries payload_hex and msg_hex in every positive case (null only for REJECT)', () => {
+    const manifest = manifestOf(generateAll(loadKeys()));
+    for (const c of manifest.cases.filter((x) => x.kind === 'positive')) {
+      const expected = c.expected as Record<string, unknown>;
+      if (expected['tier'] === 'REJECT') {
+        // The case id rides along in the compared value so a failure names it.
+        expect({ id: c.id, ...expected }).toMatchObject({
+          id: c.id,
+          payload_hex: null,
+          msg_hex: null,
+        });
+      } else {
+        expect({
+          id: c.id,
+          payload: /^[0-9a-f]{166}$/.test(String(expected['payload_hex'])),
+          msg: /^[0-9a-f]{464}$/.test(String(expected['msg_hex'])),
+        }).toEqual({ id: c.id, payload: true, msg: true });
+      }
+    }
+  });
+
+  it('writes the new session.json members into every case directory', () => {
+    const files = generateAll(loadKeys());
+    const manifest = manifestOf(files);
+    for (const c of manifest.cases) {
+      const bytes = required(files.get(`${c.dir}/session.json`), `${c.id}: session.json`);
+      const session = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+      for (const member of ['consent_id', 'wallet', 'attest']) {
+        expect(session, `${c.id} ${member}`).toHaveProperty(member);
+      }
+    }
   });
 
   it('lists every vectors/ and negative/ case directory exactly once', () => {

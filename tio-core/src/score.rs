@@ -19,13 +19,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use crate::money::Paise;
 use crate::policy::{Policy, Recurrence, Rules, Tier};
 use crate::rebit::{DepositFi, Txn};
-use crate::time::{civil_from_days, days_from_civil};
+use crate::time::{civil_from_days, days_from_civil, india_day};
 use crate::ErrorCode;
-
-/// India Standard Time, UTC+05:30, in seconds. India has no daylight saving.
-const IST_OFFSET: i64 = 19_800;
-
-const SECS_PER_DAY: i64 = 86_400;
 
 /// Final verdict. Ordered best first, `Tier(A) < Tier(B) < Tier(C) < Reject`,
 /// so "worse of two" is `max`.
@@ -224,11 +219,6 @@ fn ordered_entries(
         });
     }
     Ok(entries)
-}
-
-/// India calendar day (days since 1970-01-01 in IST) of a unix timestamp.
-fn india_day(at: i64) -> i64 {
-    at.saturating_add(IST_OFFSET).div_euclid(SECS_PER_DAY)
 }
 
 fn classify(txn: &Txn) -> Class {

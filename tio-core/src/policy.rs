@@ -5,14 +5,13 @@
 //! attestation commits to. So every spelling of the same policy must give the
 //! same hash, and anything ambiguous is rejected rather than guessed.
 
-use serde::{
-    de::{DeserializeOwned, Error as _},
-    Deserialize, Deserializer, Serialize,
-};
-use serde_json::value::RawValue;
+use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{encoding::from_json_object, ErrorCode};
+use crate::{
+    encoding::{from_json_object, object, objects},
+    ErrorCode,
+};
 
 /// Largest policy accepted, in bytes. The v2 default is about 400 bytes.
 pub const MAX_POLICY_BYTES: usize = 4096;
@@ -116,29 +115,6 @@ pub(crate) struct TierRule {
 pub(crate) struct Window {
     pub(crate) max_age_days: u32,
     pub(crate) min_days: u32,
-}
-
-/// Nested structs must be JSON objects too. Derived visitors also accept a
-/// positional array (`"window":[7,180]`), which JCS of the input would keep
-/// as an array while our re-serialized bytes have an object: two different
-/// hashes for one policy. So each nested value is read raw and re-parsed
-/// object-only.
-fn object<'de, D: Deserializer<'de>, T: DeserializeOwned>(deserializer: D) -> Result<T, D::Error> {
-    let raw = Box::<RawValue>::deserialize(deserializer)?;
-    from_json_object(raw.get().as_bytes()).ok_or_else(|| D::Error::custom("expected a JSON object"))
-}
-
-/// [`object`] for each element of an array.
-fn objects<'de, D: Deserializer<'de>, T: DeserializeOwned>(
-    deserializer: D,
-) -> Result<Vec<T>, D::Error> {
-    Vec::<Box<RawValue>>::deserialize(deserializer)?
-        .iter()
-        .map(|raw| {
-            from_json_object(raw.get().as_bytes())
-                .ok_or_else(|| D::Error::custom("expected a JSON object"))
-        })
-        .collect()
 }
 
 /// Only the strings `"A"`, `"B"`, `"C"`. The derived enum visitor would also

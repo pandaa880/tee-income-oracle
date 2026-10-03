@@ -58,29 +58,21 @@ fn all_positive_cases_pass() {
 
     for case in positive {
         let dir = case_dir(case);
-        let plaintext = run_case(&dir)
+        let evaluation = run_case(&dir)
             .unwrap_or_else(|code| panic!("case {}: expected Ok, got {code}", case_id(case)));
 
-        // The decrypted FI matches the persona's plaintext exactly.
+        // `evaluate` no longer exposes the decrypted FI, so "decrypts back to
+        // the persona" is checked through its effect: the scores equal those
+        // of scoring the persona's own FI directly.
         let persona_id = case
             .get("persona_id")
             .and_then(Value::as_str)
             .expect("case.persona_id must be a string");
-        let persona = load_json(
-            &test_vectors_dir()
-                .join("personas")
-                .join(format!("{persona_id}.json")),
-        );
-        let expected_fi = persona
-            .get("fi")
-            .cloned()
-            .unwrap_or_else(|| panic!("personas/{persona_id}.json has no fi"));
-        let actual_fi: Value =
-            serde_json::from_slice(&plaintext).expect("decrypted FI must be JSON");
+        let (_, persona_scored) = persona_scores(persona_id);
         assert_eq!(
-            actual_fi,
-            expected_fi,
-            "case {}: decrypted FI does not match personas/{persona_id}.json",
+            evaluation.scores,
+            persona_scored,
+            "case {}: evaluated scores differ from scoring personas/{persona_id}.json",
             case_id(case)
         );
 
@@ -181,6 +173,78 @@ fn all_positive_cases_pass() {
             "case {}: policy/default.hash content does not match sha256(policy/default.json)",
             case_id(case)
         );
+
+        // What `evaluate` itself reports must equal the generator's claims.
+        assert_eq!(
+            hex::encode(evaluation.policy_hash.as_bytes()),
+            policy_hash,
+            "case {}: evaluate policy_hash",
+            case_id(case)
+        );
+        assert_eq!(
+            hex::encode(evaluation.consent_hash),
+            consent_hash,
+            "case {}: evaluate consent_hash",
+            case_id(case)
+        );
+    }
+}
+
+/// `window_from` / `window_to`, `payload_hex` and `msg_hex` from `evaluate`
+/// equal the generator's independently built values (FORMATS §7, §8, §11);
+/// a REJECT carries `null` for both and yields no attestation.
+#[test]
+fn positive_cases_match_expected_window_payload_and_message() {
+    let cases = manifest_cases();
+    let positive: Vec<&Value> = cases.iter().filter(|c| c["kind"] == "positive").collect();
+    assert!(!positive.is_empty(), "manifest must list positive cases");
+
+    for case in positive {
+        let id = case_id(case);
+        let evaluation = run_case(&case_dir(case))
+            .unwrap_or_else(|code| panic!("case {id}: expected Ok, got {code}"));
+        let expected = &case["expected"];
+
+        assert_eq!(
+            Some(i64::from(evaluation.window_from)),
+            expected["window_from"].as_i64(),
+            "case {id}: window_from"
+        );
+        assert_eq!(
+            Some(i64::from(evaluation.window_to)),
+            expected["window_to"].as_i64(),
+            "case {id}: window_to"
+        );
+
+        let payload_hex = &expected["payload_hex"];
+        let msg_hex = &expected["msg_hex"];
+        if expected["tier"] == "REJECT" {
+            assert!(payload_hex.is_null(), "case {id}: REJECT payload_hex null");
+            assert!(msg_hex.is_null(), "case {id}: REJECT msg_hex null");
+            assert_eq!(evaluation.outcome, Outcome::Reject, "case {id}: outcome");
+            assert_eq!(evaluation.attestation, None, "case {id}: no attestation");
+        } else {
+            let attestation = evaluation
+                .attestation
+                .as_ref()
+                .unwrap_or_else(|| panic!("case {id}: expected an attestation"));
+            assert_eq!(
+                Some(hex::encode(attestation.payload).as_str()),
+                payload_hex.as_str(),
+                "case {id}: payload_hex"
+            );
+            assert_eq!(
+                Some(hex::encode(attestation.message).as_str()),
+                msg_hex.as_str(),
+                "case {id}: msg_hex"
+            );
+        }
+
+        // `expected.json` carries the same claims as the manifest.
+        let file = load_json(&case_dir(case).join("expected.json"));
+        for key in ["window_from", "window_to", "payload_hex", "msg_hex"] {
+            assert_eq!(file[key], expected[key], "case {id}: expected.json {key}");
+        }
     }
 }
 
@@ -207,6 +271,40 @@ fn all_negative_cases_fail_with_expected_code() {
             "case {}: expected error {expected_code}",
             case_id(case)
         );
+    }
+}
+
+/// The slice-2e negatives (plan table) exist with the planned codes, so a
+/// generator that silently drops one is caught here.
+#[test]
+fn manifest_lists_the_evaluate_negatives_with_their_codes() {
+    let planned = [
+        ("fetch_txnid_mismatch", "session_mismatch"),
+        ("consent_id_mismatch", "session_mismatch"),
+        ("consent_expired", "consent_invalid"),
+        ("consent_not_started", "consent_invalid"),
+        ("window_outside_consent", "window_mismatch"),
+        ("window_too_short", "window_too_short"),
+        ("window_stale", "window_stale"),
+        ("statement_outside_window", "window_mismatch"),
+        ("statement_too_short", "window_too_short"),
+        ("statement_stale", "window_stale"),
+        ("multi_fip_response", "bad_fetch_response"),
+        ("multi_account_response", "bad_fetch_response"),
+        ("fip_envelope_malformed", "bad_fip_envelope"),
+        ("amount_three_decimals", "bad_fi_data"),
+        ("amount_negative_string", "bad_fi_data"),
+        ("fi_xml", "unsupported_fi_format"),
+        ("order_txnid_before_decrypt", "session_mismatch"),
+        ("order_stale_before_decrypt", "window_stale"),
+    ];
+    let cases = manifest_cases();
+    for (id, code) in planned {
+        let case = cases
+            .iter()
+            .find(|c| c["kind"] == "negative" && case_id(c) == id)
+            .unwrap_or_else(|| panic!("manifest has no negative case {id}"));
+        assert_eq!(case["expected"]["error_code"], code, "case {id}");
     }
 }
 
@@ -298,22 +396,19 @@ fn features_from_json(value: &Value) -> Features {
     }
 }
 
-/// The Rust scorer, run on the FI the enclave would decrypt, reproduces the
-/// tier and features the generator's independent TypeScript scorer wrote.
+/// `evaluate` on the real fixtures reproduces the tier and features the
+/// generator's independent TypeScript scorer wrote.
 #[test]
 fn positive_cases_score_to_the_expected_tier_and_features() {
-    let policy = default_policy();
     let cases = manifest_cases();
     let positive: Vec<&Value> = cases.iter().filter(|c| c["kind"] == "positive").collect();
     assert!(!positive.is_empty(), "manifest must list positive cases");
 
     for case in positive {
         let id = case_id(case);
-        let plaintext = run_case(&case_dir(case))
-            .unwrap_or_else(|code| panic!("case {id}: expected Ok, got {code}"));
-        let fi = parse_deposit_fi(&plaintext)
-            .unwrap_or_else(|e| panic!("case {id}: decrypted FI must parse: {e:?}"));
-        let got = score(&fi, &policy).unwrap_or_else(|e| panic!("case {id}: score failed: {e:?}"));
+        let got = run_case(&case_dir(case))
+            .unwrap_or_else(|code| panic!("case {id}: expected Ok, got {code}"))
+            .scores;
 
         let expected = &case["expected"];
         let tier = expected

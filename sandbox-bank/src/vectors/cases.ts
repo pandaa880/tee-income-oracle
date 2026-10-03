@@ -2,21 +2,40 @@
  * Builds one test case: every message a session exchanges, signed and
  * encrypted with the test keys (FORMATS §5, §11).
  *
- * Layering rule: the enclave checks AA signature → consent → decrypt → FIP
- * signature. A negative case breaks exactly one layer; every layer outside
- * it is then built normally (re-encrypted, re-signed), so the broken layer
- * is the one that fails.
+ * Layering rule: the enclave checks AA signature → fetch shape → session
+ * ids → consent → window → decrypt → FIP signature → FI (FORMATS §10.1).
+ * A negative case breaks exactly one layer; every layer outside it is then
+ * built normally (re-encrypted, re-signed), so the broken layer is the one
+ * that fails.
  */
 
 import { createHash, createHmac } from 'node:crypto';
 
-import { b64Decode, b64Encode, b64urlDecode, b64urlEncode, utf8 } from '../crypto/encoding.ts';
+import {
+  b64Decode,
+  b64Encode,
+  b64urlDecode,
+  b64urlEncode,
+  toHex,
+  utf8,
+} from '../crypto/encoding.ts';
 import { deriveSessionKey, encrypt } from '../crypto/cipher.ts';
 import { sessionKeyPairFromScalar, type KeyMode, type SessionKeyPair } from '../crypto/ecdh.ts';
 import type { JsonValue } from '../crypto/jcs.ts';
 import { encodeDetached, rsaSigner, signCompact, signDetached, type Alg } from '../crypto/jws.ts';
 import { buildConsent } from '../rebit/consent.ts';
-import { buildFetchResponse, buildFipEnvelope } from '../rebit/fetch-response.ts';
+import {
+  base58Decode,
+  base58Encode,
+  buildMessage,
+  buildPayload,
+  type Tier,
+} from '../attest/payload.ts';
+import {
+  buildFetchResponse,
+  buildFipEnvelope,
+  type ResponseLayout,
+} from '../rebit/fetch-response.ts';
 import { buildFiRequest } from '../rebit/fi-request.ts';
 import { buildKeyMaterial, isoUtc } from '../rebit/key-material.ts';
 import { reduceFi } from '../scoring/reduce.ts';
@@ -35,7 +54,25 @@ export type NegativeId =
   | 'unpinned_aa_key'
   | 'alg_none'
   | 'alg_hs256'
-  | 'detached_no_crit';
+  | 'detached_no_crit'
+  | 'fetch_txnid_mismatch'
+  | 'consent_id_mismatch'
+  | 'consent_expired'
+  | 'consent_not_started'
+  | 'window_outside_consent'
+  | 'window_too_short'
+  | 'window_stale'
+  | 'statement_outside_window'
+  | 'statement_too_short'
+  | 'statement_stale'
+  | 'multi_fip_response'
+  | 'multi_account_response'
+  | 'fip_envelope_malformed'
+  | 'amount_three_decimals'
+  | 'amount_negative_string'
+  | 'fi_xml'
+  | 'order_txnid_before_decrypt'
+  | 'order_stale_before_decrypt';
 
 export type ErrorCode =
   | 'bad_aa_signature'
@@ -45,7 +82,15 @@ export type ErrorCode =
   | 'consent_invalid'
   | 'unknown_kid'
   | 'bad_alg'
-  | 'bad_header';
+  | 'bad_header'
+  | 'session_mismatch'
+  | 'window_mismatch'
+  | 'window_too_short'
+  | 'window_stale'
+  | 'bad_fetch_response'
+  | 'bad_fip_envelope'
+  | 'bad_fi_data'
+  | 'unsupported_fi_format';
 
 export const NEGATIVE_CASES: readonly { readonly id: NegativeId; readonly errorCode: ErrorCode }[] =
   [
@@ -58,6 +103,24 @@ export const NEGATIVE_CASES: readonly { readonly id: NegativeId; readonly errorC
     { id: 'alg_none', errorCode: 'bad_alg' },
     { id: 'alg_hs256', errorCode: 'bad_alg' },
     { id: 'detached_no_crit', errorCode: 'bad_header' },
+    { id: 'fetch_txnid_mismatch', errorCode: 'session_mismatch' },
+    { id: 'consent_id_mismatch', errorCode: 'session_mismatch' },
+    { id: 'consent_expired', errorCode: 'consent_invalid' },
+    { id: 'consent_not_started', errorCode: 'consent_invalid' },
+    { id: 'window_outside_consent', errorCode: 'window_mismatch' },
+    { id: 'window_too_short', errorCode: 'window_too_short' },
+    { id: 'window_stale', errorCode: 'window_stale' },
+    { id: 'statement_outside_window', errorCode: 'window_mismatch' },
+    { id: 'statement_too_short', errorCode: 'window_too_short' },
+    { id: 'statement_stale', errorCode: 'window_stale' },
+    { id: 'multi_fip_response', errorCode: 'bad_fetch_response' },
+    { id: 'multi_account_response', errorCode: 'bad_fetch_response' },
+    { id: 'fip_envelope_malformed', errorCode: 'bad_fip_envelope' },
+    { id: 'amount_three_decimals', errorCode: 'bad_fi_data' },
+    { id: 'amount_negative_string', errorCode: 'bad_fi_data' },
+    { id: 'fi_xml', errorCode: 'unsupported_fi_format' },
+    { id: 'order_txnid_before_decrypt', errorCode: 'session_mismatch' },
+    { id: 'order_stale_before_decrypt', errorCode: 'window_stale' },
   ];
 
 export interface CaseOptions {
@@ -71,6 +134,116 @@ export type CaseFiles = ReadonlyMap<string, Uint8Array>;
 const DAY = 86_400;
 const KEY_TTL = DAY;
 const WINDOW_DAYS = 365;
+const ATTEST_TTL = 600;
+const ORACLE_PROGRAM_ID = 'HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8';
+/** Seed namespace of the ids all cases share: one deployment, one SAS credential and schema. */
+const DEPLOYMENT = 'deployment';
+
+/** Requested range: ends `endDaysAgo` days before today (UTC), `days` long. Default 0 / 365. */
+const REQUESTED_RANGES: Partial<
+  Record<NegativeId, { readonly endDaysAgo: number; readonly days: number }>
+> = {
+  window_too_short: { endDaysAgo: 0, days: 179 },
+  window_stale: { endDaysAgo: 8, days: WINDOW_DAYS },
+  order_stale_before_decrypt: { endDaysAgo: 8, days: WINDOW_DAYS },
+};
+
+/** Consent validity as offsets from now (seconds). Default: started a day ago, runs a year. */
+const CONSENT_TIMES: Partial<
+  Record<NegativeId, { readonly start: number; readonly expiry: number }>
+> = {
+  consent_expired: { start: -2 * DAY, expiry: -DAY },
+  consent_not_started: { start: DAY, expiry: (WINDOW_DAYS + 1) * DAY },
+};
+
+/** The parts of the persona FI JSON that `statement_too_short` rewrites. */
+interface FiText {
+  readonly [key: string]: JsonValue;
+  readonly Transactions: {
+    readonly [key: string]: JsonValue;
+    readonly Transaction: readonly { readonly transactionTimestamp: string }[];
+  };
+}
+
+function isFiText(value: unknown): value is FiText {
+  if (typeof value !== 'object' || value === null || !('Transactions' in value)) return false;
+  const txns = value.Transactions;
+  return (
+    typeof txns === 'object' &&
+    txns !== null &&
+    'Transaction' in txns &&
+    Array.isArray(txns.Transaction)
+  );
+}
+
+/** The persona FI JSON, parsed; the generator wrote it, so a bad shape is a bug. */
+function parseFiText(text: string): FiText {
+  const fi: unknown = JSON.parse(text);
+  if (!isFiText(fi)) throw new Error('persona FI has no Transactions.Transaction array');
+  return fi;
+}
+
+/** Changes to the FI bytes the FIP signs (the FIP signs the changed bytes: its layer is valid). */
+const FI_MUTATIONS: Partial<Record<NegativeId, (ctx: Context) => Uint8Array>> = {
+  statement_outside_window: (ctx) => {
+    const day = isoUtc(ctx.windowFrom - DAY).slice(0, 10);
+    return utf8(personaFiText(ctx).replace(/"startDate":"[^"]*"/, `"startDate":"${day}"`));
+  },
+  // A 30-day statement (endDate − 29 days .. endDate) under the full-year request. The
+  // transactions before the new startDate are dropped (the persona generator's own rule:
+  // UTC date of the transaction >= startDate), so only check 15b is broken.
+  statement_too_short: (ctx) => {
+    const day = isoUtc(NOW_UNIX - 29 * DAY).slice(0, 10);
+    const fi = parseFiText(personaFiText(ctx));
+    const kept = fi.Transactions.Transaction.filter(
+      (t) => t.transactionTimestamp.slice(0, 10) >= day,
+    );
+    const short = {
+      ...fi,
+      Transactions: { ...fi.Transactions, startDate: day, Transaction: kept },
+    };
+    return utf8(JSON.stringify(short));
+  },
+  // A statement that ended 30 days before the requested end (still inside the request and
+  // long enough, so the request-level checks pass): transactions after the new endDate are
+  // dropped (UTC date, same rule as above). Only check 15c is broken.
+  statement_stale: (ctx) => {
+    const day = isoUtc(ctx.windowTo - 30 * DAY).slice(0, 10);
+    const fi = parseFiText(personaFiText(ctx));
+    const kept = fi.Transactions.Transaction.filter(
+      (t) => t.transactionTimestamp.slice(0, 10) <= day,
+    );
+    const stale = {
+      ...fi,
+      Transactions: { ...fi.Transactions, endDate: day, Transaction: kept },
+    };
+    return utf8(JSON.stringify(stale));
+  },
+  amount_three_decimals: (ctx) => withFirstAmount(personaFiText(ctx), '1234.567'),
+  amount_negative_string: (ctx) => withFirstAmount(personaFiText(ctx), '"-0.50"'),
+  fi_xml: () =>
+    utf8(
+      '<Account xmlns="http://api.rebit.org.in/FIP/jsonSchema/deposit" type="deposit"></Account>',
+    ),
+};
+
+const LAYOUTS: Partial<Record<NegativeId, ResponseLayout>> = {
+  multi_fip_response: 'two_fips',
+  multi_account_response: 'two_accounts',
+};
+
+/** Negatives whose ciphertext is broken on purpose (the order cases hide it behind an earlier failure). */
+const FLIPPED_CIPHERTEXT: readonly (NegativeId | undefined)[] = [
+  'ciphertext_flipped',
+  'order_txnid_before_decrypt',
+  'order_stale_before_decrypt',
+];
+
+/** Negatives whose fetch response names a txnid other than the session's. */
+const OTHER_TXNID: readonly (NegativeId | undefined)[] = [
+  'fetch_txnid_mismatch',
+  'order_txnid_before_decrypt',
+];
 
 /** Per-case fixed values: ids, nonces, window. All derived from the case id. */
 interface Context {
@@ -81,8 +254,13 @@ interface Context {
   readonly enclave: SessionKeyPair;
   readonly enclaveNonce: Uint8Array;
   readonly txnid: string;
+  readonly consentId: string;
+  /** The enclave's FI request range (session.json `fi_data_range`). */
   readonly windowFrom: number;
   readonly windowTo: number;
+  /** The range the consent grants (usually equal to the requested one). */
+  readonly consentFrom: number;
+  readonly consentTo: number;
 }
 
 export function buildCase(
@@ -91,7 +269,7 @@ export function buildCase(
   keys: TestKeys,
   opts: CaseOptions,
 ): CaseFiles {
-  const windowTo = NOW_UNIX - (NOW_UNIX % DAY);
+  const range = requestedRange(opts.negative);
   const ctx: Context = {
     caseId,
     persona,
@@ -100,8 +278,11 @@ export function buildCase(
     enclave: sessionKeyPairFromScalar(opts.mode, keys.enclaveScalar),
     enclaveNonce: seedBytes(caseId, 'enclave_nonce'),
     txnid: uuidFromSeed(seedBytes(caseId, 'txnid')),
-    windowFrom: windowTo - WINDOW_DAYS * DAY,
-    windowTo,
+    consentId: uuidFromSeed(seedBytes(caseId, 'consent_id')),
+    windowFrom: range.from,
+    windowTo: range.to,
+    consentFrom: opts.negative === 'window_outside_consent' ? range.from + 30 * DAY : range.from,
+    consentTo: range.to,
   };
   const consentJws = buildConsentJws(ctx);
   const fiRequestBody = buildFiRequestBody(ctx, consentJws);
@@ -117,14 +298,31 @@ export function buildCase(
   ]);
 }
 
+function requestedRange(negative: NegativeId | undefined): { from: number; to: number } {
+  const shape = (negative === undefined ? undefined : REQUESTED_RANGES[negative]) ?? {
+    endDaysAgo: 0,
+    days: WINDOW_DAYS,
+  };
+  const to = NOW_UNIX - (NOW_UNIX % DAY) - shape.endDaysAgo * DAY;
+  return { from: to - shape.days * DAY, to };
+}
+
 function buildConsentJws(ctx: Context): string {
+  const negative = ctx.opts.negative;
+  const times = (negative === undefined ? undefined : CONSENT_TIMES[negative]) ?? {
+    start: -DAY,
+    expiry: WINDOW_DAYS * DAY,
+  };
   const consent = buildConsent({
-    consentId: uuidFromSeed(seedBytes(ctx.caseId, 'consent_id')),
-    status: ctx.opts.negative === 'consent_not_active' ? 'REVOKED' : 'ACTIVE',
-    start: isoUtc(NOW_UNIX - DAY),
-    expiry: isoUtc(NOW_UNIX + WINDOW_DAYS * DAY),
-    from: isoUtc(ctx.windowFrom),
-    to: isoUtc(ctx.windowTo),
+    consentId:
+      negative === 'consent_id_mismatch'
+        ? uuidFromSeed(seedBytes(ctx.caseId, 'other_consent_id'))
+        : ctx.consentId,
+    status: negative === 'consent_not_active' ? 'REVOKED' : 'ACTIVE',
+    start: isoUtc(NOW_UNIX + times.start),
+    expiry: isoUtc(NOW_UNIX + times.expiry),
+    from: isoUtc(ctx.consentFrom),
+    to: isoUtc(ctx.consentTo),
   });
   const jws = signCompact(utf8(JSON.stringify(consent)), ctx.keys.aa, ctx.opts.aaAlg);
   return ctx.opts.negative === 'consent_tampered' ? tamperCompactPayload(jws) : jws;
@@ -132,11 +330,10 @@ function buildConsentJws(ctx: Context): string {
 
 function buildFiRequestBody(ctx: Context, consentJws: string): Uint8Array {
   const [, , consentSignature = ''] = consentJws.split('.');
-  const consentId = uuidFromSeed(seedBytes(ctx.caseId, 'consent_id'));
   const request = buildFiRequest({
     txnid: ctx.txnid,
     timestamp: isoUtc(NOW_UNIX),
-    consentId,
+    consentId: ctx.consentId,
     consentSignature,
     from: isoUtc(ctx.windowFrom),
     to: isoUtc(ctx.windowTo),
@@ -149,7 +346,7 @@ function buildFiRequestBody(ctx: Context, consentJws: string): Uint8Array {
 function buildFetchBody(ctx: Context): Uint8Array {
   const fip = sessionKeyPairFromScalar(ctx.opts.mode, seedBytes(ctx.caseId, 'fip_scalar'));
   const fipNonce = seedBytes(ctx.caseId, 'fip_nonce');
-  const fiBytes = jsonBytes(ctx.persona.fi, 0);
+  const fiBytes = signedFiBytes(ctx);
   const fipJws = signDetached(fiBytes, ctx.keys.fip);
   const envelopeFi =
     ctx.opts.negative === 'fi_plaintext_changed' ? changedFi(ctx.persona.fi) : fiBytes;
@@ -158,14 +355,23 @@ function buildFetchBody(ctx: Context): Uint8Array {
     fipNonce,
     ctx.enclaveNonce,
   );
-  const encrypted = encrypt(key, jsonBytes(buildFipEnvelope(envelopeFi, fipJws), 0));
+  const envelope =
+    ctx.opts.negative === 'fip_envelope_malformed'
+      ? { fi: 'not base64 !', jws: fipJws }
+      : buildFipEnvelope(envelopeFi, fipJws);
+  const encrypted = encrypt(key, jsonBytes(envelope, 0));
   const response = buildFetchResponse({
-    txnid: ctx.txnid,
+    txnid: OTHER_TXNID.includes(ctx.opts.negative)
+      ? uuidFromSeed(seedBytes(ctx.caseId, 'other_txnid'))
+      : ctx.txnid,
     timestamp: isoUtc(NOW_UNIX),
     linkRefNumber: uuidFromSeed(seedBytes(ctx.caseId, 'link_ref')),
     maskedAccNumber: 'XXXXXXXX1234',
-    encryptedFi: ctx.opts.negative === 'ciphertext_flipped' ? flipB64Byte(encrypted) : encrypted,
+    encryptedFi: FLIPPED_CIPHERTEXT.includes(ctx.opts.negative)
+      ? flipB64Byte(encrypted)
+      : encrypted,
     keyMaterial: buildKeyMaterial(fip.publicSpki, fipNonce, NOW_UNIX + KEY_TTL),
+    layout: (ctx.opts.negative === undefined ? undefined : LAYOUTS[ctx.opts.negative]) ?? 'single',
   });
   return jsonBytes(response, 0);
 }
@@ -201,6 +407,24 @@ function signFetchResponse(ctx: Context, body: Uint8Array): string {
     case 'fi_plaintext_changed':
     case 'consent_tampered':
     case 'consent_not_active':
+    case 'fetch_txnid_mismatch':
+    case 'consent_id_mismatch':
+    case 'consent_expired':
+    case 'consent_not_started':
+    case 'window_outside_consent':
+    case 'window_too_short':
+    case 'window_stale':
+    case 'statement_outside_window':
+    case 'statement_too_short':
+    case 'statement_stale':
+    case 'multi_fip_response':
+    case 'multi_account_response':
+    case 'fip_envelope_malformed':
+    case 'amount_three_decimals':
+    case 'amount_negative_string':
+    case 'fi_xml':
+    case 'order_txnid_before_decrypt':
+    case 'order_stale_before_decrypt':
       break;
   }
   return signDetached(body, aa, alg);
@@ -230,6 +454,23 @@ function flipB64Byte(b64: string): string {
   return b64Encode(bytes);
 }
 
+/** The FI bytes the FIP signs: the persona's, or the case's mutation of them. */
+function signedFiBytes(ctx: Context): Uint8Array {
+  const mutate = ctx.opts.negative === undefined ? undefined : FI_MUTATIONS[ctx.opts.negative];
+  return mutate === undefined ? jsonBytes(ctx.persona.fi, 0) : mutate(ctx);
+}
+
+function personaFiText(ctx: Context): string {
+  return new TextDecoder().decode(jsonBytes(ctx.persona.fi, 0));
+}
+
+/** Replaces the first transaction's `amount` value (Summary's own amounts come before it). */
+function withFirstAmount(text: string, jsonValue: string): Uint8Array {
+  const at = text.indexOf('"Transaction":[');
+  const tail = text.slice(at).replace(/"amount":[^,}]*/, `"amount":${jsonValue}`);
+  return utf8(text.slice(0, at) + tail);
+}
+
 /** Different FI bytes: first transaction's narration changed. */
 function changedFi(fi: JsonValue): Uint8Array {
   const text = JSON.stringify(fi);
@@ -249,6 +490,16 @@ function sessionJson(ctx: Context): JsonValue {
     now_unix: NOW_UNIX,
     key_expiry_unix: NOW_UNIX + KEY_TTL,
     fi_data_range: { from: isoUtc(ctx.windowFrom), to: isoUtc(ctx.windowTo) },
+    consent_id: ctx.consentId,
+    wallet: base58Encode(seedBytes(ctx.caseId, 'wallet')),
+    attest: {
+      oracle_program_id: ORACLE_PROGRAM_ID,
+      sas_credential: base58Encode(seedBytes(DEPLOYMENT, 'sas_credential')),
+      sas_schema: base58Encode(seedBytes(DEPLOYMENT, 'sas_schema')),
+      proof_type: 1,
+      measurement_id: 0,
+      expiry_unix: NOW_UNIX + ATTEST_TTL,
+    },
   };
 }
 
@@ -257,13 +508,60 @@ function expectedJson(ctx: Context, consentJws: string): JsonValue {
   if (code !== undefined) {
     return { error_code: code };
   }
+  const consentHash = createHash('sha256').update(consentJws, 'ascii').digest();
+  const scored = scoredJson(ctx.persona);
+  const window = statementWindow(ctx.persona);
   return {
     policy_hash: policyHashHex(),
-    consent_hash: createHash('sha256').update(consentJws, 'ascii').digest('hex'),
-    window_from: ctx.windowFrom,
-    window_to: ctx.windowTo,
-    ...scoredJson(ctx.persona),
+    consent_hash: consentHash.toString('hex'),
+    window_from: window.from,
+    window_to: window.to,
+    ...scored,
+    ...attestationJson(ctx, scored.tier, consentHash, window),
   };
+}
+
+/** `payload_hex` / `msg_hex` (§7, §8) from the TS builders; both null when the tier is REJECT. */
+function attestationJson(
+  ctx: Context,
+  tier: string,
+  consentHash: Uint8Array,
+  window: { readonly from: number; readonly to: number },
+): { payload_hex: string | null; msg_hex: string | null } {
+  if (!isTier(tier)) {
+    return { payload_hex: null, msg_hex: null };
+  }
+  const payload = buildPayload({
+    tier,
+    proofType: 1,
+    measurementId: 0,
+    policyHash: new Uint8Array(Buffer.from(policyHashHex(), 'hex')),
+    consentHash,
+    issuedAt: BigInt(NOW_UNIX),
+    windowFrom: window.from,
+    windowTo: window.to,
+  });
+  const message = buildMessage(
+    {
+      oracleProgramId: base58Decode(ORACLE_PROGRAM_ID),
+      sasCredential: seedBytes(DEPLOYMENT, 'sas_credential'),
+      sasSchema: seedBytes(DEPLOYMENT, 'sas_schema'),
+    },
+    seedBytes(ctx.caseId, 'wallet'),
+    payload,
+    BigInt(NOW_UNIX + ATTEST_TTL),
+  );
+  return { payload_hex: toHex(payload), msg_hex: toHex(message) };
+}
+
+/** The payload window: the statement's own start/end date at 00:00 UTC (FORMATS §5.3, §7). */
+function statementWindow(persona: Persona): { from: number; to: number } {
+  const { startDay, endDay } = reduceFi(new TextDecoder().decode(jsonBytes(persona.fi, 0)));
+  return { from: startDay * DAY, to: endDay * DAY };
+}
+
+function isTier(tier: string): tier is Tier {
+  return tier === 'A' || tier === 'B' || tier === 'C';
 }
 
 /**
