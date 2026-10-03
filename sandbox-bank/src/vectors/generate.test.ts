@@ -33,7 +33,9 @@ function manifestOf(files: ReadonlyMap<string, Uint8Array>): Manifest {
   return JSON.parse(new TextDecoder().decode(bytes)) as Manifest;
 }
 
-describe('generateAll', () => {
+// Each test builds all 32 cases (RSA signing per case); the determinism test
+// builds them twice. That exceeds vitest's 5 s default on CI runners.
+describe('generateAll', { timeout: 30_000 }, () => {
   it('is deterministic: two runs produce byte-identical output', () => {
     const keys = loadKeys();
     const first = generateAll(keys);
