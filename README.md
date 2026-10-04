@@ -57,8 +57,8 @@ implementation that writes a full set of good and deliberately broken cases.
 flowchart LR
   GOLD["test-vectors/golden/<br/>rahasya (Java reference) · RFC 7515"]
   TS["sandbox-bank/ (TypeScript)<br/>independent implementation"]
-  TV["test-vectors/<br/>keys · personas · policy<br/>5 positive + 9 negative cases · manifest.json"]
-  RS["tio-core/ (Rust)<br/>tests/vectors.rs replays every case"]
+  TV["test-vectors/<br/>keys · personas · policy<br/>6 positive + 26 negative cases · manifest.json"]
+  RS["tio-core/ (Rust)<br/>tests/vectors.rs runs every case through evaluate"]
 
   GOLD -. "must reproduce" .-> TS
   GOLD -. "must reproduce" .-> RS
@@ -105,10 +105,12 @@ by digest and deployed with docker-compose on Marlin Oyster.
 
 ## Status
 Pre-alpha, under active development. The formats are frozen and the SAS
-schema has been verified on devnet. `tio-core` has key exchange, decryption
-and JWS verification, pinned to reference golden vectors and cross-checked
-against the TypeScript test-vector generator in `sandbox-bank`. Next:
-scoring in `tio-core`, then the programs, enclave, gateway and web.
+schema has been verified on devnet. `tio-core` runs the whole evaluate
+pipeline: it ties the response and consent to the session, checks the
+window, verifies, decrypts, parses and scores the statement, and builds the
+attestation payload and the message to sign. It is pinned to reference golden
+vectors and cross-checked against the TypeScript test-vector generator in
+`sandbox-bank`. Next: the programs, enclave, gateway and web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

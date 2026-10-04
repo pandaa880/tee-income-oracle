@@ -179,26 +179,30 @@ impl core::fmt::Debug for FiuSigningKey {
     }
 }
 
-/// Verifies a PKCS#1 v1.5 signature over `signing_input`. rsa checks the
-/// signature length equals the modulus size and compares the padded
-/// encoding in constant time.
+/// Verifies a PKCS#1 v1.5 signature over the concatenation of `parts`. rsa
+/// checks the signature length equals the modulus size and compares the
+/// padded encoding in constant time.
+///
+/// The parts are fed to the hash one by one instead of being joined first:
+/// for the FIP layer the body is the decrypted statement, and a joined buffer
+/// would be a second plaintext copy freed unwiped (invariant 1).
 pub(crate) fn verify_signature(
     key: &RsaPublicKey,
     alg: Alg,
-    signing_input: &[u8],
+    parts: &[&[u8]],
     signature: &[u8],
 ) -> Result<(), JwsError> {
     let verified = match alg {
-        Alg::Rs256 => key.verify(
-            Pkcs1v15Sign::new::<Sha256>(),
-            &Sha256::digest(signing_input),
-            signature,
-        ),
-        Alg::Rs512 => key.verify(
-            Pkcs1v15Sign::new::<Sha512>(),
-            &Sha512::digest(signing_input),
-            signature,
-        ),
+        Alg::Rs256 => {
+            let mut hash = Sha256::new();
+            parts.iter().for_each(|p| hash.update(p));
+            key.verify(Pkcs1v15Sign::new::<Sha256>(), &hash.finalize(), signature)
+        }
+        Alg::Rs512 => {
+            let mut hash = Sha512::new();
+            parts.iter().for_each(|p| hash.update(p));
+            key.verify(Pkcs1v15Sign::new::<Sha512>(), &hash.finalize(), signature)
+        }
     };
     verified.map_err(|_| JwsError::BadSignature)
 }

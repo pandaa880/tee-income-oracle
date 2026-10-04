@@ -39,7 +39,8 @@ personas/         4 borrower statements: salaried_steady → A,
 policy/           default scoring policy (JCS bytes) + its hash
 vectors/          positive cases: one per persona, plus rs512_aa and
                   x25519_mode. FI request, fetch response, consent, expected
-                  hashes, tier and scoring features (payload added later)
+                  hashes, window, tier, scoring features, and the attestation
+                  `payload_hex` / `msg_hex` (both null for REJECT)
 negative/         one broken layer per case, expected error code
 manifest.json     index of all cases + generator version
 ```
@@ -48,7 +49,7 @@ Regenerate with `pnpm gen:vectors` from the repo root (generator:
 `sandbox-bank/src/vectors/`). Output is deterministic, and CI fails if a
 regenerated file differs from the committed one. Keys are made once with
 `pnpm --filter @tio/sandbox-bank gen:keys`, which refuses to overwrite.
-`tio-core/tests/vectors.rs` replays every case in Rust.
+`tio-core/tests/vectors.rs` runs every case through `tio_core::evaluate` in Rust.
 
 ## Rules
 
@@ -57,47 +58,65 @@ regenerated file differs from the committed one. Keys are made once with
 - Every positive case has negative twins that must FAIL with a specific
   error code. A test that can only pass proves nothing.
 - **One broken layer per negative case.** The enclave checks from the outside
-  in (AA signature → consent → decrypt → FIP signature). The generator breaks
-  one layer and re-signs everything outside it, so that layer is the one that
-  fails. The full list is in `docs/FORMATS.md` §11: fetch response flipped
-  (`bad_aa_signature`), ciphertext flipped + re-signed (`decrypt_failed`), FI
-  plaintext changed without re-signing the FIP JWS (`bad_fip_signature`),
-  consent tampered / not ACTIVE, unpinned key, bad `alg`, missing `crit`.
+  in (`docs/FORMATS.md` §10.1). The generator breaks one layer and re-signs
+  everything outside it, so that layer is the one that fails. The full list
+  is in `docs/FORMATS.md` §11: broken signatures and headers (AA, consent,
+  FIP, unpinned key, bad `alg`, missing `crit`), a flipped ciphertext, a
+  response or consent from another session (`session_mismatch`), a consent
+  that isn't live, windows that are outside the consent, too short or stale,
+  a statement outside the window or too short, multi-account and multi-FIP
+  responses, a malformed FIP envelope, bad money values and XML FI data.
+- **Two cases break two layers on purpose** (`order_*`): a session or window
+  error plus a flipped ciphertext. They must report the session or window
+  error, which proves nothing is decrypted before those checks.
 - The generator is TypeScript on purpose. Two independent implementations
   agreeing catches derivation bugs that one implementation testing itself
   would miss. `golden/` adds a third, external reference.
 
 ## Check order and error codes
 
-Each case is one full bank → enclave exchange, sealed in layers. The enclave
-(and `tio-core/tests/vectors.rs`) opens them from the outside in and stops at
-the first failure:
+Each case is one full bank → enclave exchange, sealed in layers.
+`tio_core::evaluate` opens them from the outside in and stops at the first
+failure (the full table is `docs/FORMATS.md` §10.1). Steps ① to ④ run before
+anything is decrypted:
 
 ```mermaid
 flowchart TD
   IN["case folder<br/>fetch_response.body/.jws · consent.jws · session.json"]
   L1["① AA signature over fetch_response.body"]
-  L2["② consent: AA signature, then status = ACTIVE"]
-  L3["③ decrypt encryptedFI<br/>ECDH → HKDF → AES-256-GCM"]
-  L4["④ FIP (bank) signature over the statement"]
-  OK["statement JSON → scoring"]
+  L2["② response: one FI, one account; txnid = session's"]
+  L3["③ consent: AA signature, consentId = session's,<br/>ACTIVE, DEPOSIT, live now"]
+  L4["④ window: inside the consent, not too short,<br/>not stale, not after now"]
+  L5["⑤ decrypt encryptedFI<br/>ECDH → HKDF → AES-256-GCM"]
+  L6["⑥ FIP envelope, then FIP (bank) signature"]
+  L7["⑦ parse statement; inside the window, long enough, fresh"]
+  OK["score → tier → payload + message"]
   E1["bad_aa_signature · unknown_kid · bad_alg · bad_header"]
-  E2["bad_consent_signature · consent_invalid"]
-  E3["decrypt_failed"]
-  E4["bad_fip_signature"]
+  E2["bad_fetch_response · session_mismatch"]
+  E3["bad_consent_signature · consent_invalid · session_mismatch"]
+  E4["window_mismatch · window_too_short · window_stale"]
+  E5["decrypt_failed (and key-exchange codes)"]
+  E6["bad_fip_envelope · bad_fip_signature"]
+  E7["bad_fi_data · unsupported_fi_format · window_mismatch · window_too_short · window_stale"]
 
   IN --> L1
   L1 -- ok --> L2
   L2 -- ok --> L3
   L3 -- ok --> L4
-  L4 -- ok --> OK
+  L4 -- ok --> L5
+  L5 -- ok --> L6
+  L6 -- ok --> L7
+  L7 -- ok --> OK
   L1 -- fail --> E1
   L2 -- fail --> E2
   L3 -- fail --> E3
   L4 -- fail --> E4
+  L5 -- fail --> E5
+  L6 -- fail --> E6
+  L7 -- fail --> E7
 ```
 
 Example: `negative/ciphertext_flipped` flips one byte of the ciphertext, then
-re-signs the fetch response with the real AA key. Layers ① and ② pass, so the
-failure can only come from ③ (`decrypt_failed`). Without the re-sign, ① would
+re-signs the fetch response with the real AA key. Layers ① to ④ pass, so the
+failure can only come from ⑤ (`decrypt_failed`). Without the re-sign, ① would
 fail first and the decrypt check would never be tested.

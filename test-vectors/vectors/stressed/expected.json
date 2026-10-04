@@ -1,7 +1,7 @@
 {
   "policy_hash": "81112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1c",
   "consent_hash": "d64c0caf332794602a29e676f436c109cf94383768bb415f9e405a276cd6ab8f",
-  "window_from": 1758844800,
+  "window_from": 1774483200,
   "window_to": 1790380800,
   "tier": "REJECT",
   "features": {
@@ -27,5 +27,7 @@
       "unmatched_emi_bounces": 3,
       "od_days": 92
     }
-  }
+  },
+  "payload_hex": null,
+  "msg_hex": null
 }

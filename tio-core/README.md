@@ -86,6 +86,8 @@ catch each other's mistakes.
 | `rebit` | Decrypted ReBIT DEPOSIT FI → `DepositFi` (integers + bounce/EMI flags); lenient shape, strict meaning; PII never read |
 | `policy` | Scoring policy JSON → validated `Policy`; strict parse, canonical JCS bytes, `policy_hash` |
 | `score` | `DepositFi` + `Policy` → outcome (tier A/B/C or Reject) + features: loans, FOIR, income CV, bounces, overdraft days, over all and recent months, on India calendar days; integers only |
+| `evaluate` | The whole pipeline in a fixed order (FORMATS §10.1): AA signature, response tied to the session (`txnid`, `consentId`), consent valid now, window inside the consent and neither too short, stale nor in the future, all **before** decryption; then decrypt, FIP signature, parse, statement inside the window, score |
+| `attest` | The 83-byte attestation payload (§7) and the 232-byte message the enclave signs (§8); a Reject can't be written (the type has no such tier) |
 | `time` | Unix seconds ↔ ReBIT ISO-8601: format ours; parse FI timestamps (offsets converted) and dates |
 | `encoding` | PEM and base64 helpers |
 
@@ -97,14 +99,17 @@ panics in library code (enforced by clippy), stable error codes via the
 cargo test -p tio-core
 ```
 
-- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §1 (money, FI data), §3 (key exchange), §4 (JWS), §6 (policy), §6.1 (scoring), §12 (interop)
+- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §1 (money, FI data), §3 (key exchange), §4 (JWS), §5 (ReBIT messages), §6 (policy), §6.1 (scoring), §7 (payload), §8 (signed message), §10.1 (evaluate check order), §12 (interop)
 - Security model: [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
 - Where it fits: [system diagram](../README.md#how-it-fits-together);
   the order it runs its checks, with error codes:
   [check order](../test-vectors/README.md#check-order-and-error-codes)
 - Reference vectors: [`test-vectors/golden/rahasya/`](../test-vectors/golden/rahasya/),
   [`test-vectors/golden/rfc7515/`](../test-vectors/golden/rfc7515/)
-- Generated vectors: [`tests/vectors.rs`](tests/vectors.rs) replays every case in
+- Generated vectors: [`tests/vectors.rs`](tests/vectors.rs) runs every case in
   [`test-vectors/manifest.json`](../test-vectors/manifest.json) (made by the
-  independent TypeScript generator in `sandbox-bank`). Positive cases must pass
-  every layer; each negative must fail with exactly its expected code.
+  independent TypeScript generator in `sandbox-bank`) through `evaluate`.
+  Positive cases must reproduce the generator's tier, features, payload and
+  message bytes; each negative must fail with exactly its expected code.
+  [`tests/evaluate_boundaries.rs`](tests/evaluate_boundaries.rs) moves the
+  clock and session values across each check's boundary.

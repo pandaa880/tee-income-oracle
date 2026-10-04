@@ -12,5 +12,15 @@
   "fi_data_range": {
     "from": "2025-09-26T00:00:00.000Z",
     "to": "2026-09-26T00:00:00.000Z"
+  },
+  "consent_id": "0c578bc7-d2c3-4828-b37b-a9662a4aab4c",
+  "wallet": "61KVk7EVdi6HdL9oTC3davtspm1mov6RGN6LCs9FsMAH",
+  "attest": {
+    "oracle_program_id": "HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8",
+    "sas_credential": "CQ9qBy7hC6LiTRioc8ZNDqfvf25SgUE2TjDicZ6Rnb9i",
+    "sas_schema": "68WeRj3cLW9NZqTU81vFqpdao9Sd4vEZJS7AShWfiNTx",
+    "proof_type": 1,
+    "measurement_id": 0,
+    "expiry_unix": 1790417400
   }
 }

@@ -44,6 +44,7 @@ thiserror = { version = "2", default-features = false }
 zeroize = { version = "1.8", default-features = false, features = ["alloc", "zeroize_derive"] }
 
 [dev-dependencies]
+bs58 = "0.5.1"
 hex = "0.4.3"
 rand_chacha = "0.3.1"
 

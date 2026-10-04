@@ -39,10 +39,16 @@ flowchart TD
   subgraph vectors["src/vectors/ · test data"]
     GEN["generate.ts<br/>all cases + manifest"]
     CASES["cases.ts<br/>one case; one-layer break for negatives"]
-    CHECK["check-case.ts<br/>TS mirror of the enclave check order"]
-    PER["personas.ts + prng.ts<br/>3 seeded borrowers"]
+    CHECK["check-case.ts<br/>TS mirror of tio_core::evaluate's check order"]
+    PER["personas.ts + prng.ts<br/>4 seeded borrowers"]
     POL["policy.ts<br/>rules + hash"]
     KEYS["keys.ts<br/>load test keys, enforce test-only flag"]
+  end
+  subgraph scoring["src/scoring/ · independent scorer (FORMATS §6.1)"]
+    SCORE["reduce · score · calendar"]
+  end
+  subgraph attest["src/attest/ · FORMATS §7, §8"]
+    PAY["payload<br/>83-byte payload · 232-byte message · base58"]
   end
   subgraph rebit["src/rebit/ · ReBIT messages (FORMATS §3, §5)"]
     MSG["key-material · fi-request<br/>fetch-response · consent"]
@@ -67,6 +73,9 @@ flowchart TD
   CASES --> ECDH
   CASES --> CIPH
   CASES --> JWS
+  CASES --> SCORE
+  CASES --> PAY
+  CHECK --> SCORE
   CHECK --> ECDH
   CHECK --> CIPH
   CHECK --> JWS
