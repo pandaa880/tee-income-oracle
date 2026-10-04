@@ -1,15 +1,21 @@
-//! Shared harness for `tests/vectors.rs`: replays the enclave's outside-in
-//! verification pipeline (`docs/FORMATS.md` §11, §10) against the
-//! TypeScript-generated `test-vectors/` tree.
+//! Shared fixture loading for `tests/vectors.rs` and
+//! `tests/evaluate_boundaries.rs` (`docs/FORMATS.md` §11).
+//!
+//! This module only reads a case directory of the TypeScript-generated
+//! `test-vectors/` tree and hands the pieces to `tio_core::evaluate`. It
+//! reimplements no pipeline step: every check under test lives in `tio-core`.
+
+// Each test crate uses a different subset of these helpers.
+#![allow(dead_code)]
 
 use std::{fs, path::Path, path::PathBuf};
 
-use base64::{engine::general_purpose::STANDARD, Engine};
 use rand_core::{impls, CryptoRng, RngCore};
 use serde_json::Value;
 use tio_core::{
-    decrypt, derive_session_key, verify_compact, verify_detached, ErrorCode, JwsError, KeyMaterial,
-    KeyMode, Nonce, PinnedKey, SessionKeyPair,
+    evaluate, parse_rebit_timestamp, verify_compact, AttestContext, Clock, ErrorCode,
+    EvaluateError, EvaluateInput, Evaluation, FiDataRange, KeyMode, Nonce, PinnedKey, PinnedKeys,
+    Policy, ProofType, Session, SessionKeyPair,
 };
 
 /// `test-vectors/`, resolved relative to this crate (`tio-core/`).
@@ -101,101 +107,174 @@ pub fn enclave_key_pair(mode: KeyMode) -> SessionKeyPair {
     SessionKeyPair::generate(mode, &mut rng)
 }
 
-/// A [`JwsError::BadSignature`] becomes the layer-specific code
-/// (`docs/FORMATS.md` §10); every other JWS error keeps its own code.
-fn jws_layer_code(err: JwsError, layer_code: &'static str) -> &'static str {
-    match err {
-        JwsError::BadSignature => layer_code,
-        other => other.code(),
+/// The shared default policy (`test-vectors/policy/default.json`).
+pub fn default_policy() -> Policy {
+    let path = test_vectors_dir().join("policy").join("default.json");
+    let bytes = fs::read(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    Policy::from_json(&bytes).unwrap_or_else(|e| panic!("parse {}: {e:?}", path.display()))
+}
+
+fn read_text(path: &Path) -> String {
+    fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+fn str_member<'a>(value: &'a Value, key: &str, what: &str) -> &'a str {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("{what}: missing string member {key}"))
+}
+
+fn int_member(value: &Value, key: &str, what: &str) -> i64 {
+    value
+        .get(key)
+        .and_then(Value::as_i64)
+        .unwrap_or_else(|| panic!("{what}: missing integer member {key}"))
+}
+
+fn timestamp_member(value: &Value, key: &str, what: &str) -> i64 {
+    parse_rebit_timestamp(str_member(value, key, what))
+        .unwrap_or_else(|e| panic!("{what}: bad timestamp in {key}: {e:?}"))
+}
+
+/// A 32-byte value from a base58 string (wallet, program ids).
+pub fn base58_32(text: &str) -> [u8; 32] {
+    let bytes = bs58::decode(text)
+        .into_vec()
+        .unwrap_or_else(|e| panic!("bad base58 {text:?}: {e}"));
+    bytes
+        .try_into()
+        .unwrap_or_else(|v: Vec<u8>| panic!("base58 {text:?} is {} bytes, not 32", v.len()))
+}
+
+/// Values a test may swap in for the loaded `Session` / `Clock` fields.
+/// Everything left `None` keeps the case's own value.
+#[derive(Default, Clone)]
+pub struct Overrides {
+    pub txnid: Option<String>,
+    pub consent_id: Option<String>,
+    pub range: Option<FiDataRange>,
+    pub clock: Option<Clock>,
+}
+
+/// One case directory, loaded and owning everything `evaluate` borrows.
+pub struct CaseFixture {
+    pub fetch_response: Vec<u8>,
+    pub fetch_response_jws: String,
+    pub consent_jws: String,
+    pub key_pair: SessionKeyPair,
+    pub nonce: Nonce,
+    pub txnid: String,
+    pub consent_id: String,
+    pub range: FiDataRange,
+    pub policy: Policy,
+    pub wallet: [u8; 32],
+    pub aa: Vec<PinnedKey>,
+    pub fip: Vec<PinnedKey>,
+    pub attest: AttestContext,
+    pub clock: Clock,
+}
+
+impl CaseFixture {
+    /// Loads `dir`'s files.
+    ///
+    /// # Panics
+    /// On a missing file or a `session.json` that lacks a member the
+    /// generator promises (fixture bugs, not outcomes under test).
+    pub fn load(dir: &Path) -> Self {
+        let what = dir.display().to_string();
+        let session = load_json(&dir.join("session.json"));
+        let mode = key_mode(str_member(&session, "mode", &what));
+        let attest = &session["attest"];
+        let range = &session["fi_data_range"];
+        let from = timestamp_member(range, "from", &what);
+        let to = timestamp_member(range, "to", &what);
+        let proof_type = match int_member(attest, "proof_type", &what) {
+            1 => ProofType::TeeNitroOyster,
+            other => panic!("{what}: unknown proof_type {other}"),
+        };
+        Self {
+            fetch_response: fs::read(dir.join("fetch_response.body"))
+                .unwrap_or_else(|e| panic!("read {what}/fetch_response.body: {e}")),
+            fetch_response_jws: read_text(&dir.join("fetch_response.jws")),
+            consent_jws: read_text(&dir.join("consent.jws")),
+            key_pair: enclave_key_pair(mode),
+            nonce: Nonce::from_base64(str_member(&session, "enclave_nonce_b64", &what))
+                .unwrap_or_else(|e| panic!("{what}: bad enclave_nonce_b64: {e:?}")),
+            txnid: str_member(&session, "txnid", &what).to_owned(),
+            consent_id: str_member(&session, "consent_id", &what).to_owned(),
+            range: FiDataRange::new(from, to)
+                .unwrap_or_else(|e| panic!("{what}: bad fi_data_range: {e:?}")),
+            policy: default_policy(),
+            wallet: base58_32(str_member(&session, "wallet", &what)),
+            aa: vec![pinned_key("aa")],
+            fip: vec![pinned_key("fip")],
+            attest: AttestContext {
+                oracle_program_id: base58_32(str_member(attest, "oracle_program_id", &what)),
+                sas_credential: base58_32(str_member(attest, "sas_credential", &what)),
+                sas_schema: base58_32(str_member(attest, "sas_schema", &what)),
+                proof_type,
+                measurement_id: u8::try_from(int_member(attest, "measurement_id", &what))
+                    .unwrap_or_else(|_| panic!("{what}: measurement_id does not fit u8")),
+            },
+            clock: Clock {
+                now: int_member(&session, "now_unix", &what),
+                expiry: int_member(attest, "expiry_unix", &what),
+            },
+        }
+    }
+
+    /// Runs `tio_core::evaluate` on the case as generated.
+    pub fn evaluate(&self) -> Result<Evaluation, EvaluateError> {
+        self.evaluate_with(&Overrides::default())
+    }
+
+    /// Runs `tio_core::evaluate` with some `Session` / `Clock` fields swapped.
+    /// The signed artefacts are never touched, so nothing needs re-signing.
+    pub fn evaluate_with(&self, overrides: &Overrides) -> Result<Evaluation, EvaluateError> {
+        let session = Session {
+            key_pair: &self.key_pair,
+            nonce: &self.nonce,
+            txnid: overrides.txnid.as_deref().unwrap_or(&self.txnid),
+            consent_id: overrides.consent_id.as_deref().unwrap_or(&self.consent_id),
+            range: overrides.range.unwrap_or(self.range),
+            policy: &self.policy,
+            wallet: self.wallet,
+        };
+        let keys = PinnedKeys {
+            aa: &self.aa,
+            fip: &self.fip,
+        };
+        let input = EvaluateInput {
+            fetch_response: &self.fetch_response,
+            fetch_response_jws: &self.fetch_response_jws,
+            consent_jws: &self.consent_jws,
+        };
+        evaluate(
+            &session,
+            &keys,
+            &input,
+            &self.attest,
+            overrides.clock.unwrap_or(self.clock),
+        )
+    }
+
+    /// The consent's `consentStart` and `consentExpiry` (unix seconds), read
+    /// from the AA-signed payload.
+    pub fn consent_times(&self) -> (i64, i64) {
+        let payload = verify_compact(&self.consent_jws, &self.aa)
+            .unwrap_or_else(|e| panic!("consent.jws must verify: {e:?}"));
+        let consent: Value = serde_json::from_slice(&payload)
+            .unwrap_or_else(|e| panic!("consent payload is not JSON: {e}"));
+        (
+            timestamp_member(&consent, "consentStart", "consent"),
+            timestamp_member(&consent, "consentExpiry", "consent"),
+        )
     }
 }
 
-/// Replays the enclave's outside-in check order for one test-vector case
-/// directory and returns the decrypted FI bytes, or the stable error code of
-/// whichever layer failed first.
-///
-/// # Panics
-/// If a fixture file is missing or not the JSON shape the generator
-/// promises: those are fixture bugs, not outcomes under test.
-pub fn run_case(dir: &Path) -> Result<Vec<u8>, &'static str> {
-    let aa = pinned_key("aa");
-    let fip = pinned_key("fip");
-
-    let fetch_body = fs::read(dir.join("fetch_response.body"))
-        .unwrap_or_else(|e| panic!("read {}/fetch_response.body: {e}", dir.display()));
-    let fetch_jws = fs::read_to_string(dir.join("fetch_response.jws"))
-        .unwrap_or_else(|e| panic!("read {}/fetch_response.jws: {e}", dir.display()));
-    verify_detached(&fetch_jws, &fetch_body, std::slice::from_ref(&aa))
-        .map_err(|e| jws_layer_code(e, "bad_aa_signature"))?;
-
-    let consent_jws = fs::read_to_string(dir.join("consent.jws"))
-        .unwrap_or_else(|e| panic!("read {}/consent.jws: {e}", dir.display()));
-    let consent_payload = verify_compact(&consent_jws, std::slice::from_ref(&aa))
-        .map_err(|e| jws_layer_code(e, "bad_consent_signature"))?;
-    let consent: Value = serde_json::from_slice(&consent_payload)
-        .unwrap_or_else(|e| panic!("{}/consent.jws: payload is not JSON: {e}", dir.display()));
-    if consent.get("status").and_then(Value::as_str) != Some("ACTIVE") {
-        return Err("consent_invalid");
-    }
-
-    let fetch: Value = serde_json::from_slice(&fetch_body)
-        .unwrap_or_else(|e| panic!("{}/fetch_response.body: not JSON: {e}", dir.display()));
-    let fi_entry = fetch
-        .get("FI")
-        .and_then(|fi| fi.get(0))
-        .unwrap_or_else(|| panic!("{}: fetch_response.body has no FI[0]", dir.display()));
-    let key_material: KeyMaterial = serde_json::from_value(
-        fi_entry
-            .get("KeyMaterial")
-            .cloned()
-            .unwrap_or_else(|| panic!("{}: FI[0] has no KeyMaterial", dir.display())),
-    )
-    .unwrap_or_else(|e| panic!("{}: bad KeyMaterial: {e}", dir.display()));
-    let peer = key_material.peer_public_key().map_err(|e| e.code())?;
-    let their_nonce = key_material.nonce().map_err(|e| e.code())?;
-
-    let session = load_json(&dir.join("session.json"));
-    let mode = key_mode(
-        session
-            .get("mode")
-            .and_then(Value::as_str)
-            .unwrap_or_else(|| panic!("{}/session.json: missing mode", dir.display())),
-    );
-    let pair = enclave_key_pair(mode);
-    let shared = pair.shared_secret(&peer).map_err(|e| e.code())?;
-
-    let enclave_nonce_b64 = session
-        .get("enclave_nonce_b64")
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("{}/session.json: missing enclave_nonce_b64", dir.display()));
-    let enclave_nonce = Nonce::from_base64(enclave_nonce_b64).map_err(|e| e.code())?;
-
-    let session_key =
-        derive_session_key(&shared, &enclave_nonce, &their_nonce).map_err(|e| e.code())?;
-
-    let encrypted_fi = fi_entry
-        .get("data")
-        .and_then(|d| d.get(0))
-        .and_then(|d| d.get("encryptedFI"))
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("{}: FI[0].data[0].encryptedFI missing", dir.display()));
-    let plaintext = decrypt(&session_key, encrypted_fi).map_err(|e| e.code())?;
-
-    let envelope: Value = serde_json::from_slice(&plaintext)
-        .unwrap_or_else(|e| panic!("{}: decrypted plaintext is not JSON: {e}", dir.display()));
-    let fi_b64 = envelope
-        .get("fi")
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("{}: envelope missing fi", dir.display()));
-    let fip_jws = envelope
-        .get("jws")
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("{}: envelope missing jws", dir.display()));
-    let fi_bytes = STANDARD
-        .decode(fi_b64)
-        .unwrap_or_else(|e| panic!("{}: envelope.fi is not valid base64: {e}", dir.display()));
-    verify_detached(fip_jws, &fi_bytes, std::slice::from_ref(&fip))
-        .map_err(|e| jws_layer_code(e, "bad_fip_signature"))?;
-
-    Ok(fi_bytes)
+/// Runs the real pipeline on one case directory; the error is the stable
+/// code (`docs/FORMATS.md` §10).
+pub fn run_case(dir: &Path) -> Result<Evaluation, &'static str> {
+    CaseFixture::load(dir).evaluate().map_err(|e| e.code())
 }

@@ -40,7 +40,7 @@ same PR updates this file, both implementations and the regenerated vectors.
 |---|---|---|
 | Enclave signed message (§8) | domain tag `TIO-ATTEST-v1` | any change to the signed bytes or their order |
 | Enclave HTTP API (§10) | path prefix `/v1/` | a breaking request/response change (adding optional fields isn't breaking) |
-| Scoring policy (§6) | `"v": 1` | a policy schema change |
+| Scoring policy (§6) | `"v": 2` | a policy schema change |
 | Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
 | `proof_type` values (§7) | `1 = tee_nitro_oyster`; `2 = tee_nitro_aws` reserved | append-only; never reuse or renumber |
 | Enclave build | platform measurement (Oyster image id, or AWS PCR0 hash) + on-chain `measurement_id` | every enclave change (automatic); the release notes list it. **`measurement_id`s are append-only: an id is never reused, even after revoke** |
@@ -63,9 +63,12 @@ never seen by the enclave directly.
 }
 ```
 
-Three personas, fixed: `salaried_steady` → A, `trader_lumpy` → B,
-`stressed` → C or Reject (decide when the policy is final). 6–12 months of
-transactions each.
+Four personas, fixed, in this order: `salaried_steady` → A, `trader_lumpy` → B,
+`declining` → C (steady salary, then lower gig income in the recent months and one
+EMI bounce: full window B, recent window C), `stressed` → `"REJECT"` (weeks of
+overdraft, more bounces than any tier allows, and uncured EMI bounces; its loan is measured). 6–12 months of transactions each.
+`expected_tier` is `"A"`, `"B"`, `"C"` or `"REJECT"`; the generator fails if its
+independent scorer (§6.1) disagrees.
 
 ### Schema source
 ReBIT `deposit.xsd` (namespace `http://api.rebit.org.in/FISchema/deposit`,
@@ -123,17 +126,67 @@ number with at most 2 decimals, balances/limits as strings (as Finvu does).
 ### Parse rules (enclave) — lenient on shape, strict on meaning
 The data is signature-checked before parsing, so leniency here only affects
 correctness, not security. Accept:
-- an optional root wrapper `Account` / `account`;
-- element keys in any case (`Transactions` / `transactions`) — Setu-style
+- an optional root wrapper `Account` / `account` (a root with `account` and
+  no `type`);
+- member names in any case (`Transactions` / `transactions`) — Setu-style
   lowercase JSON exists in the ecosystem;
-- `Holder` and `Transaction` as object **or** array;
-- `type` case-insensitive (`DEPOSIT` / `deposit`);
+- `Transaction` as object **or** array, or absent (no transactions);
+- enum values in any ASCII case: FI `type` (`DEPOSIT` / `deposit`),
+  transaction `type`, `mode`;
+- `startDate` / `endDate` as `xs:date` (optionally with a zone: `Z`,
+  `±HH:MM`, `±HHMM`) or as a full timestamp; the written date is used and a
+  zone never shifts it;
+- members the scorer doesn't use, in any shape. `Profile` (holder PII), ids,
+  `reference` and `valueDate` are never read. `Summary` is read only for
+  `currency`: absent `Summary` or `currency` means INR;
 - money as JSON number **or** string. Parse from the raw JSON text into
-  integer **paise** (`i64`); never through `f64`. More than 2 decimals → reject.
+  integer **paise** (`i64`); never through `f64`, never rounded. ReBIT types
+  `amount` as `xs:float` and balances as `xs:string` with no pattern, so any
+  spelling of an **exact whole number of paise** is accepted: grammar
+  `[+|-] (digits ['.' [digits]] | '.' digits) [(e|E) [+|-] digits]`, ASCII
+  digits, e.g. `1.2E7`, `85000.0`, `1234.050`, `0012.5`, `.5`. Strings: no `\`
+  escapes; surrounding spaces are trimmed. Reject: anything else (`NaN`,
+  `INF`, `1,234.00`, `12.50 Dr`), a value that isn't whole paise
+  (`1234.567`), an exponent beyond ±30, a magnitude above `i64::MAX` paise
+  (the range is ±`i64::MAX`), and a negative `amount` (balances may be
+  negative; `-0` is zero). When several apply, the first in this order wins:
+  bad grammar, exponent range, not whole paise, magnitude, negative.
 
-Reject: unknown enum values, missing required fields the scorer uses
-(`type`, `mode`, `amount`, `currentBalance`, `transactionTimestamp`),
-more than 20,000 transactions.
+Narration is optional and is reduced to two flags, then wiped: split it on
+every non-ASCII-alphanumeric character and compare whole tokens ignoring
+ASCII case. `bounce` = any of `RTN RETURN RETURNED BOUNCE INSUFF`;
+`emi_word` = any of `EMI LOAN NACH ECS` (so `SECS` is not `ECS`).
+
+Reject with `bad_fi_data` unless noted. Checks run **top-down, one object
+at a time**; the first failing check wins:
+1. one leading UTF-8 byte-order mark is skipped; then XML (first non-space
+   byte `<`) → `unsupported_fi_format`;
+2. invalid JSON or UTF-8 anywhere in the document;
+3. the root: not an object, or two members whose names differ only by
+   case; then the `Account` wrapper, likewise;
+4. FI `type`: missing, not a string, or not DEPOSIT;
+5. `Summary` present but not an object or with a repeated member, or
+   `currency` not a string (shape errors); `currency` present and not `INR`
+   (any ASCII case) → `unsupported_currency`. Amounts become paise, so a
+   foreign-currency DEPOSIT account (EEFC or RFC current/savings) can't be
+   scored. An absent `currency` is read as INR: an accepted MVP risk for a
+   foreign-currency statement that omits it;
+6. `Transactions`: missing, not an object, or a repeated member; then
+   `startDate`, then `endDate` (missing, not a string, invalid), then
+   `startDate` after `endDate`;
+7. `Transaction`: not an object or array (`null` included); more than
+   20,000 items (counted before any is parsed);
+8. each transaction in input order: not an object or a repeated member;
+   then `type` (CREDIT|DEBIT), `mode` (CASH|ATM|CARD|UPI|FT|OTHERS),
+   `amount`, `currentBalance`, `transactionTimestamp`, `narration`, each
+   missing (except `narration`), an unknown enum value, a bad money value, or
+   a bad timestamp. For `type`, `mode`, `transactionTimestamp` and
+   `narration` a value of the wrong JSON type (`null` included) is a shape
+   error; for `amount` and `currentBalance` any value that isn't a number or
+   numeric string (`null` included) is a bad money value.
+
+So a problem inside a transaction is reported only after the statement-level
+checks pass, and an earlier transaction's error wins over a later one's.
 
 ---
 
@@ -395,6 +448,13 @@ Header: `x-jws-signature` = detached JWS by the AA key over these exact bytes.
 `KeyMaterial` sits on the `FI[]` entry (one per FIP), **not** inside each
 `data[]` item: this matches Finvu's sample. One FIP key serves all its accounts.
 
+**The enclave accepts exactly one `FI[]` entry with exactly one `data[]`
+item** (else `bad_fetch_response`). One `KeyMaterial` + our nonce derive one
+AES key **and one IV** (§3). Two `encryptedFI` values under the same key and
+IV break AES-GCM: the XOR of the plaintexts leaks and the GHASH key can be
+recovered (NIST SP 800-38D). Until a provider shows per-account keys or
+nonces, multi-account and multi-FIP responses are refused.
+
 **FIP signature (our sandbox; OPEN (a) for real FIPs):** the plaintext inside
 `encryptedFI` is a JSON envelope:
 
@@ -415,7 +475,22 @@ Payload (subset we rely on):
   "fiTypes": ["DEPOSIT"], "FIDataRange": { "from": "...", "to": "..." },
   "DataLife": { "unit": "DAY", "value": 0 } }
 ```
-- `window_from` / `window_to` come from `FIDataRange` (floor to UTC day, `u32` unix seconds).
+- The enclave requires: `consentId` = the id it put in its FI request,
+  `status` = `ACTIVE`, `fiTypes` contains `DEPOSIT`,
+  `consentStart ≤ now < consentExpiry`, and `FIDataRange.from < to`
+  (timestamps per §12). It also requires the range it requested (§5.1
+  `FIDataRange`) to lie inside the consent's `FIDataRange`. The binding of
+  accounts, FIU id and purpose is not checked yet.
+- `window_from` / `window_to` are the **statement's** `startDate` / `endDate`,
+  as written, at 00:00 UTC (`u32` unix seconds). They must lie inside the
+  requested range (§5.1), which lies inside the consent's (§10.1 check 15).
+  The requested range is still checked before decryption (§10.1 checks 8-10),
+  and the policy window checks (§6) run on both the requested and the
+  statement window (checks 9, 10, 15b, 15c). So the payload never claims more
+  than the statement covers (a short request under a long consent, or a stale
+  statement under a fresh request, can't get a window it doesn't have), and
+  the pool reads exactly what the enclave checked. The requested `to` may not
+  be after `now` (§10.1 check 10b).
 - `consent_hash = sha256(ASCII bytes of the whole compact JWS string)`.
 
 ---
@@ -426,18 +501,119 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 
 ```json
 {
-  "v": 1,
-  "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 3 },
+  "v": 2,
+  "recurrence": { "amount_tol_bps": 1000, "day_tol": 5, "min_occurrences": 2 },
+  "recent_months": 3,
+  "window": { "min_days": 180, "max_age_days": 7 },
   "tiers": [
     { "tier": "A", "foir_max_bps": 4000, "cv_max_bps": 1500, "bounces_max": 0 },
-    { "tier": "B", "foir_max_bps": 5500, "cv_max_bps": 3000, "bounces_max": 1 },
-    { "tier": "C", "foir_max_bps": 7000, "cv_max_bps": 3000, "bounces_max": 3 }
+    { "tier": "B", "foir_max_bps": 5500, "cv_max_bps": 5000, "bounces_max": 1 },
+    { "tier": "C", "foir_max_bps": 7000, "cv_max_bps": 6000, "bounces_max": 3 }
   ],
   "reject_if": { "od_days_min": 30 }
 }
 ```
-- Integers only (basis points, days, counts). Tiers are evaluated in order; first match wins; else Reject.
-- Unknown keys → reject the policy (no silent ignore).
+
+| Key | Meaning |
+|---|---|
+| `v` | schema version, must be `2` |
+| `recurrence.amount_tol_bps`, `.day_tol` | an EMI debit joins a recurring-obligation cluster if its amount is within ±bps and its day of month within ±days of the cluster's first debit (at most one debit per calendar month per cluster, §6.1) |
+| `recurrence.min_occurrences` | number of **distinct calendar months** with a matching debit that makes a cluster a loan (≥ 1) |
+| `recent_months` | the last N complete months are also scored alone; the worse tier wins (≥ 1) |
+| `window.min_days` | shortest consent window accepted |
+| `window.max_age_days` | how old the window's end may be when evaluated |
+| `tiers[]` | `tier` (`"A"`, `"B"`, `"C"`) + maxima `foir_max_bps`, `cv_max_bps`, `bounces_max` (a feature passes if ≤ its maximum) |
+| `reject_if.od_days_min` | this many overdraft days or more → Reject (≥ 1) |
+
+- Integers only (basis points, days, counts), each `0 ≤ n ≤ 2^32 − 1`. Tiers are evaluated in order; first match wins; else Reject.
+- **Strict parse** (any failure → `bad_policy`): at most 4096 bytes; the policy, `recurrence`, `window`,
+  `reject_if` and each `tiers[]` entry are JSON objects and `tiers` is an array (a positional array in place
+  of an object is rejected); unknown, repeated or missing keys; non-integer spellings
+  (`3.0`, `3e0`, `"3"`); `v ≠ 2`; `tiers` empty or not strictly ordered A, B, C (no repeats); each tier
+  at least as loose as the one before it in every limit and looser in at least one (so every tier can be
+  awarded and A is the strictest);
+  `recent_months`, `min_occurrences` or `od_days_min` equal to 0 (scoring would be undefined or reject everyone).
+- **Hash input.** Any JSON spelling of a valid policy is accepted (whitespace, key order, string escapes).
+  The hash is over the JCS bytes of the *parsed* policy, so every spelling gives the same `policy_hash`.
+
+## 6.1 Scoring algorithm — FROZEN
+
+`score(DepositFi, Policy) → { outcome, full, recent }` (`tio-core/src/score.rs`; independent TypeScript
+mirror in `sandbox-bank/src/scoring/`). Pure, no clock, **integers only**: money in paise (`i64`), ratios
+in basis points, overflow is an error (`bad_fi_data`), never a wrap.
+
+**Time basis: India calendar days.** `day(t) = floor((transactionTimestamp_unix + 19800) / 86400)`
+(IST = UTC+05:30, no daylight saving). `startDate` / `endDate` are the dates as written (`xs:date`, no
+zone in practice) and are read as India dates: an Indian FIP writes them in IST. Months and day of month
+come from these days. API instants (`FIDataRange`, `window_from/to`, §5/§7) are not scoring days and stay
+UTC. Transaction order = (`transactionTimestamp`, input index).
+
+0. **Bounds.** A transaction whose day is outside `[startDate, endDate]` → `window_mismatch`.
+1. **Classify.** DEBIT + bounce token → *bounce* (an *EMI bounce* if it also has an EMI token);
+   DEBIT + EMI token with an amount > 0 → *EMI candidate*; CREDIT without a bounce token → *income*;
+   anything else is ignored (a credit with a bounce token, e.g. a reversal, is not income; a ₹0 EMI
+   line is not a payment). Tokens: §1 parse rules.
+2. **Loans.** Walk EMI candidates in order. Each unassigned candidate `c` anchors a cluster; a later
+   unassigned candidate `d` joins iff no member is in `d`'s month yet, `|d − c| × 10000 ≤ c × amount_tol_bps`
+   and `|dom(d) − dom(c)| ≤ day_tol`. A cluster with ≥ `min_occurrences` members (= months) is a **loan**:
+   `scheduled` = median member amount, `first_day` = day of its first payment, `due_dom` = that
+   payment's day of month. Two equal EMIs in the same months are two loans.
+3. **Complete months** = calendar months wholly inside `[startDate, endDate]`. *Full* set = all of them;
+   *recent* set = the last `min(recent_months, count)`.
+4. **Monthly sums** per complete month: income = sum of income amounts; obligation = sum of `scheduled`
+   over loans with `first_day ≤` the month's last day. **A loan persists**: a missed or bounced month
+   still counts, until statement end.
+5. **Features of a set S** (each key as in §11):
+   - `months`; `income_median`, `obligation_median` (median: odd → middle, even → floor of the mean of
+     the middle two, empty → 0).
+   - `foir_bps` = `floor(obligation_median × 10000 / income_median)`; 0 if income is 0; values
+     ≥ 2³² − 1 are reported as 2³² − 1, which always rejects.
+   - `cv_bps` over the monthly incomes `x` (n months): `D = n·Σx² − (Σx)²`,
+     `cv_bps = floor(isqrt(10⁸ · D) / Σx)`, 0 if `Σx = 0`. Scaling before the root keeps it the exact floor
+     of `10⁴ · √D / Σx` (`[1,1,2]` → 3535, not 2500).
+   - `loans` = loans with `first_day ≤` S's last day; `bounces` = bounces on S's days.
+   - `unmatched_emi_bounces` = EMI bounces on S's days that no known loan explains. A loan can explain
+     a bounce if it (a) started by the end of the bounce's month, (b) has no payment in that month,
+     (c) is due within `day_tol` days of the bounce (`|due_dom − dom(bounce)| ≤ day_tol`), and
+     (d) is **cured**: it has a payment in a later month. Bounces are taken in time order; each takes
+     the eligible loan with the **earliest due day** (first on ties) not yet used for another bounce
+     that month. That greedy choice explains every bounce whenever some pairing can. Why these rules:
+     nothing in the reduced data names the loan a bounce belongs to (narration is reduced to flags;
+     the bounce line's amount is usually the return charge, not the EMI). A NACH bounce posts on the
+     due day, which ties it to loans due near that day, and a later payment proves the loan is alive,
+     so the miss was a gap in its own schedule. An uncured bounce could equally be a new, unseen
+     loan's first instalment, so it is never attributed. A small loan paid on time, a loan due on
+     another day, or a loan that has stopped paying can't hide a bounced unknown one.
+   - `od_days` = days of S whose end-of-day balance (the last transaction on or before that day) is
+     negative; days before the first transaction don't count.
+   - S's days: full = `[startDate, endDate]`, even with no complete months; recent = first to last
+     day of the recent months, and a recent set with no months has no days (its day-based counts are 0).
+6. **Outcome of a set**, first rule that fires: `months = 0` → Reject · `income_median = 0` → Reject ·
+   `foir_bps = 2³² − 1` → Reject · `unmatched_emi_bounces > 0` → Reject (unmeasurable debt never
+   counts as zero debt) · `od_days ≥ od_days_min` → Reject · else the first tier with `foir_bps ≤ foir_max_bps`,
+   `cv_bps ≤ cv_max_bps` and `bounces ≤ bounces_max`; none → Reject.
+7. **Final outcome** = the worse of full and recent (A < B < C < Reject).
+
+**Known limitations** (conservative by design, or out of scope):
+- A loan counts until statement end even if it was repaid (no closure detection).
+- A NACH retry that succeeds in the month of its bounce looks like an unknown loan → Reject.
+- An EMI bounce before a loan's first payment in the statement (e.g. the window's first instalment
+  bounced) is unmatched → Reject.
+- A bank that posts two bounce lines per miss (e.g. return charge + GST, both with EMI words) double-counts.
+- A bounce posted more than `day_tol` days after the due day (late re-presentation) is unmatched → Reject.
+- An uncured EMI bounce (no later payment of a matching loan, e.g. in the statement's last month) is
+  unmatched → Reject: a fresh, unresolved bounce. Periodic re-pulls re-check it once a payment follows.
+- Residual: a known loan that skips a month with no bounce line and pays later, while an unseen loan
+  due near the same day bounces that month, still has the bounce explained by the known loan.
+- A loan with fewer than `min_occurrences` payments in the statement (default 2: a single payment) is
+  not seen.
+- Income = every non-bounce credit, so self-transfers, loan proceeds and refunds count. FIP signatures prove
+  where the data came from, not that a credit is income.
+- `day_tol` has no month-end wrap (the 31st and the 1st are 30 days apart).
+- Transactions with equal timestamps keep input order; reordering them can change an end-of-day balance.
+- Not modelled: income regularity/timing, UPI patterns, ongoing monitoring.
+
+Clustering is O(c²) in EMI candidates: about 0.4 s for 20 000 candidates (release build, worst case).
 
 ---
 
@@ -453,8 +629,8 @@ Canonical JSON (JCS). `policy_hash = sha256(JCS(policy))`.
 | 3 | 32 | `policy_hash` | bytes | section 6 |
 | 35 | 32 | `consent_hash` | bytes | section 5.3 |
 | 67 | 8 | `issued_at` | i64 | unix seconds, enclave clock (checked on-chain) |
-| 75 | 4 | `window_from` | u32 | unix seconds |
-| 79 | 4 | `window_to` | u32 | unix seconds |
+| 75 | 4 | `window_from` | u32 | statement start date, 00:00 UTC, unix seconds |
+| 79 | 4 | `window_to` | u32 | statement end date, 00:00 UTC, unix seconds |
 
 SAS schema layout (SAS has no fixed-size arrays; each 32-byte hash is two U128s):
 `[U8, U8, U8, U128, U128, U128, U128, I64, U32, U32]`
@@ -547,6 +723,56 @@ string and verifies; any difference → reject.
   (startup: pinned JWK invalid or under 2048 bits), `sign_failed`. The
   evaluate pipeline reports a `bad_signature` as the code of the layer that
   failed (`bad_aa_signature`, `bad_fip_signature`, `bad_consent_signature`).
+- FI data codes (`tio-core`): `unsupported_fi_format` (the decrypted FI is
+  XML, not JSON), `unsupported_currency` (`Summary.currency` is not INR),
+  `bad_fi_data` (any other §1 parse-rule violation: shape,
+  repeated member, not DEPOSIT, missing or invalid member, bad money or
+  timestamp, too many transactions). The order is §1's reject list.
+- Policy code (`tio-core`): `bad_policy` (any §6 strict-parse rule).
+- Scoring codes (`tio-core`, §6.1): `window_mismatch` (a transaction's India day is outside the
+  statement's `[startDate, endDate]`), `bad_fi_data` (scoring arithmetic overflow).
+- Evaluate codes (`tio-core`, §10.1): `bad_fetch_response` (not an object, or not exactly one
+  `FI[]` with exactly one `data[]`, §5.2), `session_mismatch` (`txnid` or `consentId` differs from
+  the session's), `consent_invalid`, `window_mismatch` (requested range not inside the consent's,
+  statement not inside the requested range, or the requested end after `now`),
+  `window_too_short` (the requested window, or the statement itself, is shorter than
+  `window.min_days`), `window_stale` (the requested window, or the statement itself, ended
+  more than `window.max_age_days` before `now`),
+  `bad_fip_envelope` (decrypted plaintext is not `{fi, jws}` with unescaped string members and
+  base64 `fi`; any backslash in it is refused),
+  `bad_fi_data_range` (session range not `0 ≤ from < to ≤ 2³² − 1`).
+
+### 10.1 Evaluate check order — FROZEN
+
+`tio_core::evaluate` runs these in order; the first failure wins and names
+its check. Checks 1–10 run **before decryption**: a request that can't produce
+a valid result never touches plaintext.
+
+| # | Check | Code |
+|---|---|---|
+| 1 | AA detached JWS over the exact fetch-response bytes | JWS codes; a bad signature → `bad_aa_signature` |
+| 2 | Fetch-response shape (§5.2: one `FI[]`, one `data[]`; structural `KeyMaterial` errors: a missing member or a wrong type) | `bad_fetch_response` |
+| 3 | `txnid` = session's | `session_mismatch` |
+| 4 | Consent compact JWS | JWS codes; a bad signature → `bad_consent_signature` |
+| 5 | Consent payload parses (§5.3 members, timestamps, `from < to`) | `consent_invalid` |
+| 6 | `consentId` = session's | `session_mismatch` |
+| 7 | `ACTIVE`, `DEPOSIT`, `consentStart ≤ now < consentExpiry` | `consent_invalid` |
+| 8 | Requested range inside the consent's `FIDataRange` | `window_mismatch` |
+| 9 | `window_to − window_from < window.min_days` days (floored, §5.3) | `window_too_short` |
+| 10 | `now − window_to > window.max_age_days` days | `window_stale` |
+| 10b | The requested `to` (raw, not floored) is after `now` | `window_mismatch` |
+| 11 | `KeyMaterial` values, key exchange, decryption (§3) | key-exchange codes |
+| 12 | FIP envelope `{fi, jws}` (§5.2): string members, base64 `fi`, no escapes in the plaintext | `bad_fip_envelope` |
+| 13 | FIP detached JWS over the decoded `fi` bytes | JWS codes; a bad signature → `bad_fip_signature` |
+| 14 | FI parse (§1) | FI data codes |
+| 15 | Statement inside the requested range by India day: `startDate ≥ day(requested from)`, `endDate ≤ day(requested to)` (§6.1 time basis). The payload window is then the statement's: `window_from = startDate`, `window_to = endDate`, each at 00:00 UTC and a `u32` (§5.3) | `window_mismatch` |
+| 15b | Statement long enough: `window_to − window_from ≥ window.min_days` days (the payload length, so exactly what the pool reads; checked after 15's inside-window part) | `window_too_short` |
+| 15c | Statement fresh: `now − window_to ≤ window.max_age_days` days (the statement window, as check 10 does for the requested one) | `window_stale` |
+| 16 | Score (§6.1) | scoring codes |
+
+A tier yields the §7 payload (`issued_at` = the enclave's `now`) and the §8
+message; Reject yields neither. `now` is the enclave clock, which the host
+can influence, so the pool re-checks `issued_at` on-chain.
 
 ---
 
@@ -564,19 +790,35 @@ test-vectors/
     fetch_response.body     exact bytes
     fetch_response.jws      detached, AA key
     consent.jws             compact, AA key
-    expected.json           { policy_hash, consent_hash, window_from, window_to }
-                            (+ tier, features, payload_hex, msg_hex once scoring exists)
+    expected.json           { policy_hash, consent_hash, window_from, window_to, tier, features,
+                              payload_hex, msg_hex }   (both null for REJECT)
   negative/<case>/          same files, one thing broken; expected.json = { error_code }
   manifest.json             { generator_version, cases: [{ id, kind, dir, persona_id, expected }] }
 ```
 
 `session.json`: `{ case_id, persona_id, mode, aa_alg, enclave_key, enclave_nonce_b64,
-session_id, txnid, now_unix, key_expiry_unix, fi_data_range: { from, to } }`
-(+ `wallet` once the §9 intent and §8 message are generated). `enclave_key`
+session_id, txnid, consent_id, wallet, now_unix, key_expiry_unix, fi_data_range: { from, to },
+attest: { oracle_program_id, sas_credential, sas_schema, proof_type, measurement_id, expiry_unix } }`.
+`fi_data_range` is the range the enclave requested (§5.3); `consent_id` is the id in its FI
+request; `wallet` and the `attest` ids are base58; `now_unix` is also the payload's `issued_at`
+and `expiry_unix` the §8 message expiry. `enclave_key`
 points at `keys/enclave.test-private.json`; its Curve25519 scalar is used as-is by
-`SessionKeyPair::generate` (which clamps it). Positive case ids: the three personas
+`SessionKeyPair::generate` (which clamps it). Positive case ids: the four personas
 (`wei25519`, RS256), `rs512_aa` (AA signs the fetch response and consent with RS512) and
 `x25519_mode` (§3 second mode), both on `salaried_steady`.
+
+Positive `expected.json` (and the manifest's `expected`) also carry the §6.1 result from the
+generator's independent TypeScript scorer: `tier` (`"A"`, `"B"`, `"C"` or `"REJECT"`) and
+`features: { full, recent }`, each `{ months, income_median_paise, obligation_median_paise,
+foir_bps, cv_bps, loans, bounces, unmatched_emi_bounces, od_days }` (paise as JSON integers,
+at most 2⁵³ − 1). `tio-core/tests/vectors.rs` must reproduce them exactly.
+
+**Hand-calculated scoring fixtures** live outside `test-vectors/` in
+`test-fixtures/scoring/hand-cases.json`: small statements whose expected features were worked
+out by hand from §6.1 (working in each case's `why`). They are written by people, never
+generated, and both scorers replay them (`tio-core/tests/scoring_hand.rs`,
+`sandbox-bank/src/scoring/hand-cases.test.ts`), which catches a mistake the two
+implementations could share.
 
 **Generated, deterministic.** `pnpm --filter @tio/sandbox-bank gen:keys` makes the RSA keys
 once (it refuses to overwrite). `gen:vectors` is a pure function of the keys: nonces,
@@ -601,6 +843,28 @@ Required negative cases:
 | `unpinned_aa_key` | fetch response validly signed by the rogue key (`kid` not pinned) | `unknown_kid` |
 | `alg_none` / `alg_hs256` | fetch-response header algorithm swapped | `bad_alg` |
 | `detached_no_crit` | `crit` removed from the fetch-response header, re-signed | `bad_header` |
+| `fetch_txnid_mismatch` | fetch-response `txnid` from another session, AA-signed | `session_mismatch` |
+| `consent_id_mismatch` | consent signed with another `consentId` | `session_mismatch` |
+| `consent_expired` | `ACTIVE`, `consentExpiry` before `now` | `consent_invalid` |
+| `consent_not_started` | `ACTIVE`, `consentStart` after `now` | `consent_invalid` |
+| `window_outside_consent` | consent `FIDataRange` starts 30 days after the requested `from` | `window_mismatch` |
+| `window_too_short` | requested and consent range 179 days | `window_too_short` |
+| `window_stale` | range ends 8 days before `now` | `window_stale` |
+| `statement_outside_window` | FI `startDate` one day before the requested `from`, FIP-signed | `window_mismatch` |
+| `statement_too_short` | FI `Transactions.startDate` = `endDate` − 29 days (a 30-day statement under a full-year request; transactions before the new start dropped, as check 15 runs before scoring), FIP-signed | `window_too_short` |
+| `statement_stale` | FI `Transactions.endDate` = the requested `to` date − 30 days (inside the request, long enough; the request itself is fresh); transactions after the new end dropped, FIP-signed | `window_stale` |
+| `multi_fip_response` | two `FI[]` entries | `bad_fetch_response` |
+| `multi_account_response` | one `FI[]` with two `data[]` items (shared `KeyMaterial`) | `bad_fetch_response` |
+| `fip_envelope_malformed` | envelope `fi` not base64, re-encrypted and re-signed | `bad_fip_envelope` |
+| `amount_three_decimals` | one `amount` `1234.567`, FIP-signed | `bad_fi_data` |
+| `amount_negative_string` | one `amount` `"-0.50"`, FIP-signed | `bad_fi_data` |
+| `fi_xml` | the FI bytes are XML, FIP-signed | `unsupported_fi_format` |
+| `order_txnid_before_decrypt` | `fetch_txnid_mismatch` **and** a flipped ciphertext byte | `session_mismatch` |
+| `order_stale_before_decrypt` | `window_stale` **and** a flipped ciphertext byte | `window_stale` |
+
+The two `order_*` cases break two layers on purpose, against the layering
+rule: they prove the §10.1 order (no decryption before the session and
+window checks), not just the verdict.
 
 Plus the positive RS512 case `rs512_aa`.
 
@@ -620,8 +884,8 @@ form above and **accept** these variants:
 | `KeyMaterial` labels | `cryptoAlg: null, curve: "ECDH", params: "Curve25519"` | Ignore labels; detect by `KeyValue` OID |
 | `KeyValue` PEM | Armour and base64 with no newlines | Strip armour and whitespace, then base64-decode |
 | Request `timestamp` | epoch-millis number (`1586430349059`) in one sample, ISO string elsewhere | Emit ISO string; accept both on input |
-| Response timestamps | `2020-04-09T11:05:49.059+0000` | Accept `+0000` |
-| `FIDataRange.from/to` | `2018-10-31T04:10:12.898` (no zone) | **OPEN:** UTC or IST? Treat as UTC until Finvu confirms; we emit `Z` |
+| Response timestamps | `2020-04-09T11:05:49.059+0000` | Accept `+0000`. FI timestamps: `YYYY-MM-DD'T'HH:MM:SS[.1–9 digits][Z\|±HH:MM\|±HHMM]`, uppercase `T`/`Z`; an offset such as `+05:30` is converted to UTC; no zone = UTC; the fraction is truncated |
+| `FIDataRange.from/to` | `2018-10-31T04:10:12.898` (no zone) | ReBIT AA API 2.0.0 / 2.1.0 type these (and `consentStart`, `consentExpiry`, `timestamp`) as `string`, `format: date-time` (RFC 3339: zone required; every spec example uses `Z`), so the zone-less sample breaks the spec. We emit `Z` and treat a zone-less value as UTC. Statement dates (`startDate`, `endDate`: `xs:date`, usually zone-less) are read as India dates for scoring (§6.1). **OPEN** only for live Finvu: confirm their FI dates are IST |
 | `valueDate` | full datetime in Finvu sample, `xs:date` in XSD | Accept both; use the date part |
 | FI `type` | `DEPOSIT` (XSD fixes `deposit`) | Case-insensitive |
 | FI `version` | `1.1` in Finvu sample | Record, don't reject |

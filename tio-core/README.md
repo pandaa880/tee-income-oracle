@@ -60,7 +60,7 @@ itself (RFC 7515): our code reproduces it byte for byte.
 ### The practice exams
 
 A separate generator, written in TypeScript (`sandbox-bank`), produces fake
-statements for three made-up borrowers, their sealed envelopes, and
+statements for four made-up borrowers, the tier each should score to, their sealed envelopes, and
 deliberately broken copies (one byte changed, wrong signer, missing seal).
 `tests/vectors.rs` feeds every one of them through the box: it must accept
 the good ones and reject each broken one *for the right reason*, with the
@@ -82,7 +82,13 @@ catch each other's mistakes.
 | `cipher` | 32-byte nonces; `HKDF-SHA256(shared, salt = xn[0..20])`, `iv = xn[20..32]`; AES-256-GCM decrypt |
 | `key_material` | ReBIT `KeyMaterial` JSON: build ours, read a peer's |
 | `jws` | RS256/RS512 verify of detached (RFC 7797, `b64:false`) and compact JWS against pinned keys only; strict header rules; blinded RS256 signing with the enclave's FIU key |
-| `time` | Unix seconds to ReBIT ISO-8601 UTC |
+| `money` | Raw JSON money text → exact integer paise (`Paise`); any exact spelling accepted, never `f64`, never rounded |
+| `rebit` | Decrypted ReBIT DEPOSIT FI → `DepositFi` (integers + bounce/EMI flags); lenient shape, strict meaning; PII never read |
+| `policy` | Scoring policy JSON → validated `Policy`; strict parse, canonical JCS bytes, `policy_hash` |
+| `score` | `DepositFi` + `Policy` → outcome (tier A/B/C or Reject) + features: loans, FOIR, income CV, bounces, overdraft days, over all and recent months, on India calendar days; integers only |
+| `evaluate` | The whole pipeline in a fixed order (FORMATS §10.1): AA signature, response tied to the session (`txnid`, `consentId`), consent valid now, window inside the consent and neither too short, stale nor in the future, all **before** decryption; then decrypt, FIP signature, parse, statement inside the window, score |
+| `attest` | The 83-byte attestation payload (§7) and the 232-byte message the enclave signs (§8); a Reject can't be written (the type has no such tier) |
+| `time` | Unix seconds ↔ ReBIT ISO-8601: format ours; parse FI timestamps (offsets converted) and dates |
 | `encoding` | PEM and base64 helpers |
 
 Rules it follows: `#![forbid(unsafe_code)]`, secrets in `Zeroizing`, no
@@ -93,14 +99,17 @@ panics in library code (enforced by clippy), stable error codes via the
 cargo test -p tio-core
 ```
 
-- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §3 (key exchange), §4 (JWS)
+- Formats: [`docs/FORMATS.md`](../docs/FORMATS.md) §1 (money, FI data), §3 (key exchange), §4 (JWS), §5 (ReBIT messages), §6 (policy), §6.1 (scoring), §7 (payload), §8 (signed message), §10.1 (evaluate check order), §12 (interop)
 - Security model: [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
 - Where it fits: [system diagram](../README.md#how-it-fits-together);
   the order it runs its checks, with error codes:
   [check order](../test-vectors/README.md#check-order-and-error-codes)
 - Reference vectors: [`test-vectors/golden/rahasya/`](../test-vectors/golden/rahasya/),
   [`test-vectors/golden/rfc7515/`](../test-vectors/golden/rfc7515/)
-- Generated vectors: [`tests/vectors.rs`](tests/vectors.rs) replays every case in
+- Generated vectors: [`tests/vectors.rs`](tests/vectors.rs) runs every case in
   [`test-vectors/manifest.json`](../test-vectors/manifest.json) (made by the
-  independent TypeScript generator in `sandbox-bank`). Positive cases must pass
-  every layer; each negative must fail with exactly its expected code.
+  independent TypeScript generator in `sandbox-bank`) through `evaluate`.
+  Positive cases must reproduce the generator's tier, features, payload and
+  message bytes; each negative must fail with exactly its expected code.
+  [`tests/evaluate_boundaries.rs`](tests/evaluate_boundaries.rs) moves the
+  clock and session values across each check's boundary.

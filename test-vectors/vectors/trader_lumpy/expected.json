@@ -1,6 +1,33 @@
 {
-  "policy_hash": "0238e36354148e3a9c7fde9946540592fc62b3017d14c5418ba211d4b11aaa71",
+  "policy_hash": "81112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1c",
   "consent_hash": "d2f8850e24ef8982af5cc02dcb3e2c0ffae3e6edbee7e936482daa4f6ccd24fa",
-  "window_from": 1758844800,
-  "window_to": 1790380800
+  "window_from": 1766707200,
+  "window_to": 1790380800,
+  "tier": "B",
+  "features": {
+    "full": {
+      "months": 8,
+      "income_median_paise": 45014868,
+      "obligation_median_paise": 2500000,
+      "foir_bps": 555,
+      "cv_bps": 4262,
+      "loans": 1,
+      "bounces": 0,
+      "unmatched_emi_bounces": 0,
+      "od_days": 0
+    },
+    "recent": {
+      "months": 3,
+      "income_median_paise": 45754339,
+      "obligation_median_paise": 2500000,
+      "foir_bps": 546,
+      "cv_bps": 1992,
+      "loans": 1,
+      "bounces": 0,
+      "unmatched_emi_bounces": 0,
+      "od_days": 0
+    }
+  },
+  "payload_hex": "02010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cd2f8850e24ef8982af5cc02dcb3e2c0ffae3e6edbee7e936482daa4f6ccd24faa097b76a0000000000d04d69000bb76a",
+  "msg_hex": "54494f2d4154544553542d7631f62d4dadf8399028569a8e992456b68bfe4255bc46df267f4a64b42320348da1a95ee65dc8bdc2bc768e59a3f042d803e745566dd29af98bc1ef6f48aedfffe94c370533c60cd5189b08b52d2e34eb3f6aecef6556f792b548732db94bc79f7717d8fb2de4bbeac6c2d10ac6c7c14a4d111fa7c32c9a53cea68597e46ad5f5cc02010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cd2f8850e24ef8982af5cc02dcb3e2c0ffae3e6edbee7e936482daa4f6ccd24faa097b76a0000000000d04d69000bb76af899b76a00000000"
 }

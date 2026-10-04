@@ -9,13 +9,10 @@ mod key;
 
 pub use key::{FiuSigningKey, PinnedKey};
 
-use serde::{
-    de::{DeserializeOwned, IgnoredAny},
-    Deserialize, Deserializer, Serialize,
-};
+use serde::{de::IgnoredAny, Deserialize, Deserializer, Serialize};
 
 use crate::{
-    encoding::{b64url_decode, b64url_encode},
+    encoding::{b64url_decode, b64url_encode, from_json_object},
     ErrorCode,
 };
 use key::{verify_signature, Alg};
@@ -98,16 +95,6 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
-/// Deserializes `bytes` only if the JSON value is an object. serde's derived
-/// struct visitor also accepts an array (members by position), which no JOSE
-/// implementation does: a header only we accept is a parser differential.
-fn from_json_object<T: DeserializeOwned>(bytes: &[u8]) -> Option<T> {
-    if bytes.trim_ascii_start().first() != Some(&b'{') {
-        return None;
-    }
-    serde_json::from_slice(bytes).ok()
-}
-
 /// The header we emit for detached signatures. Field order is the byte
 /// order on the wire.
 #[derive(Serialize)]
@@ -141,8 +128,9 @@ pub fn verify_detached(jws: &str, body: &[u8], keys: &[PinnedKey]) -> Result<(),
     if !segments.payload.is_empty() {
         return Err(JwsError::Malformed);
     }
-    let signing_input = detached_signing_input(segments.header, body);
-    verify_segments(&segments, Form::Detached, &signing_input, keys)
+    // Hashed in parts, never joined: `body` may be the decrypted statement.
+    let parts = [segments.header.as_bytes(), b".", body];
+    verify_segments(&segments, Form::Detached, &parts, keys)
 }
 
 /// Verifies a compact JWS and returns its decoded payload. The payload is
@@ -155,8 +143,12 @@ pub fn verify_compact(jws: &str, keys: &[PinnedKey]) -> Result<Vec<u8>, JwsError
     if segments.payload.is_empty() {
         return Err(JwsError::Malformed);
     }
-    let signing_input = format!("{}.{}", segments.header, segments.payload);
-    verify_segments(&segments, Form::Compact, signing_input.as_bytes(), keys)?;
+    let parts = [
+        segments.header.as_bytes(),
+        b".",
+        segments.payload.as_bytes(),
+    ];
+    verify_segments(&segments, Form::Compact, &parts, keys)?;
     b64url_decode(segments.payload).map_err(|_| JwsError::Malformed)
 }
 
@@ -177,7 +169,7 @@ fn split(jws: &str) -> Result<Segments<'_>, JwsError> {
 fn verify_segments(
     segments: &Segments<'_>,
     form: Form,
-    signing_input: &[u8],
+    signing_input: &[&[u8]],
     keys: &[PinnedKey],
 ) -> Result<(), JwsError> {
     let header_bytes = b64url_decode(segments.header).map_err(|_| JwsError::Malformed)?;
@@ -216,7 +208,9 @@ fn check_form(header: &Header, form: Form) -> Result<(), JwsError> {
     Ok(())
 }
 
-/// `ASCII(header segment) ‖ "." ‖ body` (RFC 7797 §3).
+/// `ASCII(header segment) ‖ "." ‖ body` (RFC 7797 §3), for signing only:
+/// `sign_detached` signs our FI request, which is not bank data. Verifying
+/// hashes the same three parts without joining them.
 fn detached_signing_input(header_b64: &str, body: &[u8]) -> Vec<u8> {
     [header_b64.as_bytes(), b".", body].concat()
 }

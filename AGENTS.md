@@ -52,8 +52,9 @@ real ReBIT protocol with test keys: "simulated bank, real protocol".
 programs/oracle/      Anchor. Enclave registry (image id → attester), verifies the
                       enclave signature via secp256k1 precompile, CPIs SAS.
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
-tio-core/             Rust lib, no I/O. Key exchange, decryption, JWS (later: parsing,
-                      scoring, payload). Everything trusted that isn't HTTP.
+tio-core/             Rust lib, no I/O. Key exchange, decryption, JWS, money and FI (DEPOSIT)
+                      parsing, scoring policy and scoring, the evaluate pipeline and the
+                      attestation payload. Everything trusted that isn't HTTP.
 enclave/              Rust. Runs in the Oyster CVM. HTTP wrapper around tio-core.
                       Built with Docker + docker-compose (images pinned by digest).
 gateway/              Node/TS, untrusted orchestrator + tx relayer (formerly proxy/).
@@ -75,7 +76,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 
 ## Commands
 
-The repo is early: `tio-core` has key exchange, decryption and JWS; `sandbox-bank`
+The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
 has the test-vector generator; the programs are empty skeletons; most other packages
 hold only READMEs. Update the status as each one starts working.
 
@@ -84,7 +85,7 @@ hold only READMEs. Update the status as each one starts working.
 | Build (Rust) | `cargo build` | works (empty program skeletons + `tio-core`) |
 | Build (programs) | `anchor build` | works (empty skeletons) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
-| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, layered negatives) |
+| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` — localnet | not yet |
 | Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, also in CI) |
@@ -156,5 +157,12 @@ Add a line whenever an agent makes the same mistake twice.
 - **Breaking a wire/security contract** means bumping its protocol id
   (`docs/FORMATS.md` → Version identifiers) and a `feat!:` PR title.
 - Keep this repo technical. Don't add business, pitch or planning material.
+- **Sync the docs with every change, on the same branch.** Before opening a
+  PR, grep the repo for whatever the change replaced or introduced (tool and
+  function names, versions, commands, "planned"/"not yet" lines), and update:
+  `README.md` (Status, diagrams), this file (Commands table, Toolchain,
+  Gotchas), `CONTRIBUTING.md`, `docs/CODING-GUIDELINES.md`,
+  `docs/FORMATS.md`, `docs/ARCHITECTURE.md`, the package READMEs, and
+  `.github/pull_request_template.md`. Say in the PR which docs you checked.
 - Explain crypto reasoning in comments where it isn't obvious (why a check
   exists, what it prevents), not what the code does line by line.

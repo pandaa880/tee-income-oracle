@@ -84,7 +84,9 @@ scope. See `AGENTS.md` for the full wording.
 ### Parsing untrusted input
 - **Wire JSON must be an object.** serde's derived struct visitor also
   accepts a JSON array (fields by position), which no other implementation
-  does. Check for `{` before deserializing (`tio-core::jws::from_json_object`).
+  does. Check for `{` before deserializing (`tio-core::encoding::from_json_object`).
+  Nested structs too: a `deserialize_with` that re-parses a `RawValue` goes
+  through `from_json_object` (`tio-core::policy`).
 - **"Must not appear" means present, even as `null`.** A plain `Option<T>`
   reads `null` as absent. Use a presence-detecting `deserialize_with`
   (`tio-core::jws::present`) with `#[serde(default)]`.
@@ -167,7 +169,8 @@ scope. See `AGENTS.md` for the full wording.
   verified — the verify page checks on its own.
 
 ### Tooling
-- `pnpm` (workspace). ESLint + Prettier; `tsc --noEmit` in CI.
+- `pnpm` (workspace). oxlint (`--type-aware`) + oxfmt, configured in the root
+  `.oxlintrc.json` / `.oxfmtrc.json`; `tsc --noEmit` in CI.
 - Tests with `vitest`.
 
 ## 4. Python (tooling and test scripts)
@@ -217,7 +220,11 @@ Stdlib only unless a dependency is agreed.
 - **Every prefix, template or OID check gets its own negative test with an
   input of the correct length**, so an earlier length check can't mask it.
 - **Mutation-check security checks:** disable each check in turn; at least one
-  test must fail. A check no test notices is untested.
+  test must fail. A check no test notices is untested. For a condition built
+  with `&&`, delete each part separately.
+- **A new rule that returns an existing error needs a fixture that breaks
+  only the old rule.** Otherwise fixtures that now break both rules make the
+  old check invisible: deleting it keeps every test green.
 - **A strictness claim needs input the lenient variant would accept.** For
   a strict decoder: correctly padded base64, and non-canonical trailing bits
   with the signature taken over that exact text, so only the decoder can
@@ -225,6 +232,12 @@ Stdlib only unless a dependency is agreed.
 - **Repeated members:** every header/JWK member that a rule depends on, and
   especially one read through `deserialize_with`, gets a duplicate-member
   test expecting the specific error.
+- **Accepted spellings pair with an escaped duplicate.** When a test accepts
+  an alternate spelling (escapes, key order), add a duplicate-key test using
+  the escaped spelling of the same key (`"v":2,"\u0076":2`): a last-wins
+  parser would accept it.
+- **Normalization tests assert `input != canonical` first**, so a lost escape
+  (e.g. `\u0041` written as `A`) can't turn the test into a no-op.
 - **Check order is tested.** When the docs fix an order ("`alg` before
   `kid`"), a test combines two faults and asserts the one reported first.
   The documented order names every early return in the code path.

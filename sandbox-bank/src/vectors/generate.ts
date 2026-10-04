@@ -34,6 +34,7 @@ interface CaseDef {
 const POSITIVE_CASES: readonly CaseDef[] = [
   { id: 'salaried_steady', personaId: 'salaried_steady', mode: 'wei25519', aaAlg: 'RS256' },
   { id: 'trader_lumpy', personaId: 'trader_lumpy', mode: 'wei25519', aaAlg: 'RS256' },
+  { id: 'declining', personaId: 'declining', mode: 'wei25519', aaAlg: 'RS256' },
   { id: 'stressed', personaId: 'stressed', mode: 'wei25519', aaAlg: 'RS256' },
   { id: 'rs512_aa', personaId: 'salaried_steady', mode: 'wei25519', aaAlg: 'RS512' },
   { id: 'x25519_mode', personaId: 'salaried_steady', mode: 'x25519', aaAlg: 'RS256' },
