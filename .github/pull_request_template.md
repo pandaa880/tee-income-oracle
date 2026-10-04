@@ -29,7 +29,7 @@
      cross-implementation checks. -->
 
 - [ ] Rust: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test -p tio-core`
-- [ ] TS: `pnpm --filter @tio/sandbox-bank typecheck`, `lint`, `format:check`, `test`
+- [ ] TS: `pnpm --filter <@tio/sandbox-bank or @tio/ops> typecheck`, `lint`, `format:check`, `test` (each package touched)
 - [ ] Vectors: `pnpm gen:vectors` leaves `git diff test-vectors/` empty (or the format change is intended)
 - [ ] Code review done; blocking findings fixed
 

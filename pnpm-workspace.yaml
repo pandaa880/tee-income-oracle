@@ -1,5 +1,6 @@
 packages:
   - "gateway"
+  - "ops"
   - "sandbox-bank"
   - "verifier"
   - "web"
