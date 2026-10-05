@@ -86,18 +86,18 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector generator; `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry (FORMATS §13), `demo-pool` is an empty skeleton; most other packages
+has the test-vector generator; `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` is an empty skeleton; most other packages
 hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
 |---|---|---|
 | Build (Rust) | `cargo build` | works (programs + `tio-core`) |
-| Build (programs) | `anchor build` | works (`oracle` registry; `demo-pool` skeleton) |
+| Build (programs) | `anchor build` | works (`oracle` registry + `submit_attestation`; `demo-pool` skeleton) |
 | Generate program client | `pnpm --filter @tio/oracle-client generate` after `anchor build` — must leave `git diff clients/` empty | works (CI regenerates and diffs) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
-| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives) |
+| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives); `cargo test -p oracle`: precompile/message layouts and clock rules |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
-| Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests test`, embedded offline surfpool) | works (`oracle` registry; also in CI) |
+| Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; also in CI) |
 | Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary, `oracle-tests` after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
 | Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops or @tio/oracle-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
@@ -147,6 +147,13 @@ Add a line whenever an agent makes the same mistake twice.
 - Crypto function names quoted in comments, `Cargo.toml` or FORMATS go
   stale when the code changes (`try_sign_with_rng` vs `sign_with_rng`).
   Grep each cited name against the code before a PR.
+- Strip ANSI colour codes before grepping gate output
+  (`sed 's/\x1b\[[0-9;]*m//g'`): coloured `tsc` errors once slipped past
+  `grep "error TS"`.
+- Mutation checks: restore files with plain `cp`, not `cp -p`, or cargo
+  reuses the mutated build (CODING-GUIDELINES §5).
+- `surfnet_timeTravel`'s `absoluteTimestamp` is in **milliseconds** and
+  only moves forward; the surfnet clock stands still between transactions.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent
   settings don't reach other contributors. Shared guidance goes here.
 

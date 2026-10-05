@@ -11,3 +11,4 @@ export * from "./initialize";
 export * from "./proposeAdmin";
 export * from "./registerEnclave";
 export * from "./revokeEnclave";
+export * from "./submitAttestation";

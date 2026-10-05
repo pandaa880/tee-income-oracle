@@ -17,6 +17,7 @@ import {
   SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
   SolanaError,
   type Address,
+  type ClientWithPayer,
   type ClientWithRpc,
   type ClientWithTransactionPlanning,
   type ClientWithTransactionSending,
@@ -47,11 +48,13 @@ import {
   getProposeAdminInstructionAsync,
   getRegisterEnclaveInstructionAsync,
   getRevokeEnclaveInstructionAsync,
+  getSubmitAttestationInstructionAsync,
   parseAcceptAdminInstruction,
   parseInitializeInstruction,
   parseProposeAdminInstruction,
   parseRegisterEnclaveInstruction,
   parseRevokeEnclaveInstruction,
+  parseSubmitAttestationInstruction,
   type AcceptAdminAsyncInput,
   type InitializeAsyncInput,
   type ParsedAcceptAdminInstruction,
@@ -59,11 +62,18 @@ import {
   type ParsedProposeAdminInstruction,
   type ParsedRegisterEnclaveInstruction,
   type ParsedRevokeEnclaveInstruction,
+  type ParsedSubmitAttestationInstruction,
   type ProposeAdminAsyncInput,
   type RegisterEnclaveAsyncInput,
   type RevokeEnclaveAsyncInput,
+  type SubmitAttestationAsyncInput,
 } from "../instructions";
-import { findConfigPda, findEnclaveEntryPda } from "../pdas";
+import {
+  findConfigPda,
+  findEnclaveEntryPda,
+  findSasEventAuthorityPda,
+  findSasSignerPda,
+} from "../pdas";
 
 export const ORACLE_PROGRAM_ADDRESS =
   "HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8" as Address<"HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8">;
@@ -111,6 +121,7 @@ export enum OracleInstruction {
   ProposeAdmin,
   RegisterEnclave,
   RevokeEnclave,
+  SubmitAttestation,
 }
 
 export function identifyOracleInstruction(
@@ -172,6 +183,17 @@ export function identifyOracleInstruction(
   ) {
     return OracleInstruction.RevokeEnclave;
   }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([238, 220, 255, 105, 183, 211, 40, 83]),
+      ),
+      0,
+    )
+  ) {
+    return OracleInstruction.SubmitAttestation;
+  }
   throw new SolanaError(
     SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
     { instructionData: data, programName: "oracle" },
@@ -195,7 +217,10 @@ export type ParsedOracleInstruction<
     } & ParsedRegisterEnclaveInstruction<TProgram>)
   | ({
       instructionType: OracleInstruction.RevokeEnclave;
-    } & ParsedRevokeEnclaveInstruction<TProgram>);
+    } & ParsedRevokeEnclaveInstruction<TProgram>)
+  | ({
+      instructionType: OracleInstruction.SubmitAttestation;
+    } & ParsedSubmitAttestationInstruction<TProgram>);
 
 export function parseOracleInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
@@ -235,6 +260,13 @@ export function parseOracleInstruction<TProgram extends string>(
       return {
         instructionType: OracleInstruction.RevokeEnclave,
         ...parseRevokeEnclaveInstruction(instruction),
+      };
+    }
+    case OracleInstruction.SubmitAttestation: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: OracleInstruction.SubmitAttestation,
+        ...parseSubmitAttestationInstruction(instruction),
       };
     }
     default:
@@ -282,16 +314,23 @@ export type OraclePluginInstructions = {
     input: RevokeEnclaveAsyncInput,
   ) => ReturnType<typeof getRevokeEnclaveInstructionAsync> &
     SelfPlanAndSendFunctions;
+  submitAttestation: (
+    input: MakeOptional<SubmitAttestationAsyncInput, "payer">,
+  ) => ReturnType<typeof getSubmitAttestationInstructionAsync> &
+    SelfPlanAndSendFunctions;
 };
 
 export type OraclePluginPdas = {
   config: typeof findConfigPda;
   enclaveEntry: typeof findEnclaveEntryPda;
+  sasSigner: typeof findSasSignerPda;
+  sasEventAuthority: typeof findSasEventAuthorityPda;
 };
 
 export type OraclePluginRequirements = ClientWithRpc<
   GetAccountInfoApi & GetMultipleAccountsApi
 > &
+  ClientWithPayer &
   ClientWithTransactionPlanning &
   ClientWithTransactionSending;
 
@@ -331,8 +370,21 @@ export function oracleProgram() {
               client,
               getRevokeEnclaveInstructionAsync(input),
             ),
+          submitAttestation: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSubmitAttestationInstructionAsync({
+                ...input,
+                payer: input.payer ?? client.payer,
+              }),
+            ),
         },
-        pdas: { config: findConfigPda, enclaveEntry: findEnclaveEntryPda },
+        pdas: {
+          config: findConfigPda,
+          enclaveEntry: findEnclaveEntryPda,
+          sasSigner: findSasSignerPda,
+          sasEventAuthority: findSasEventAuthorityPda,
+        },
         identifyAccount: identifyOracleAccount,
         identifyInstruction: identifyOracleInstruction,
         parseInstruction: parseOracleInstruction,
@@ -340,3 +392,5 @@ export function oracleProgram() {
     });
   };
 }
+
+type MakeOptional<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>;

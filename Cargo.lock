@@ -851,6 +851,8 @@ name = "oracle"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "solana-instructions-sysvar",
+ "solana-sdk-ids",
 ]
 
 [[package]]

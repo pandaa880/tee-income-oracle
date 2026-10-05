@@ -36,15 +36,66 @@ export const ORACLE_ERROR__ZERO_ADMIN = 0x1778; // 6008
 export const ORACLE_ERROR__ZERO_ATTESTATION_DOC_HASH = 0x1779; // 6009
 /** NotPendingAdmin: signer is not the pending admin */
 export const ORACLE_ERROR__NOT_PENDING_ADMIN = 0x177a; // 6010
+/** PrecompileNotFound: instruction before this one is not a secp256k1 precompile instruction */
+export const ORACLE_ERROR__PRECOMPILE_NOT_FOUND = 0x177b; // 6011
+/** InvalidPrecompileLayout: secp256k1 precompile data is not the fixed single-signature layout */
+export const ORACLE_ERROR__INVALID_PRECOMPILE_LAYOUT = 0x177c; // 6012
+/** WrongDomainTag: signed message does not start with the TIO-ATTEST-v1 domain tag */
+export const ORACLE_ERROR__WRONG_DOMAIN_TAG = 0x177d; // 6013
+/** WrongProgramId: signed message names a different oracle program */
+export const ORACLE_ERROR__WRONG_PROGRAM_ID = 0x177e; // 6014
+/** CredentialMismatch: credential account is not the one in the signed message */
+export const ORACLE_ERROR__CREDENTIAL_MISMATCH = 0x177f; // 6015
+/** SchemaMismatch: schema account is not the one in the signed message */
+export const ORACLE_ERROR__SCHEMA_MISMATCH = 0x1780; // 6016
+/** AttestationAddressMismatch: attestation account is not the SAS PDA for credential, schema and wallet */
+export const ORACLE_ERROR__ATTESTATION_ADDRESS_MISMATCH = 0x1781; // 6017
+/** EnclaveEntryMismatch: enclave entry is not the one named by the payload's measurement_id */
+export const ORACLE_ERROR__ENCLAVE_ENTRY_MISMATCH = 0x1782; // 6018
+/** EnclaveRevoked: enclave entry is revoked */
+export const ORACLE_ERROR__ENCLAVE_REVOKED = 0x1783; // 6019
+/** AttesterMismatch: signature was not made by the enclave entry's attester key */
+export const ORACLE_ERROR__ATTESTER_MISMATCH = 0x1784; // 6020
+/** ProofTypeMismatch: payload proof_type does not match the entry's measurement_kind */
+export const ORACLE_ERROR__PROOF_TYPE_MISMATCH = 0x1785; // 6021
+/** InvalidTier: payload tier must be 1 (A), 2 (B) or 3 (C) */
+export const ORACLE_ERROR__INVALID_TIER = 0x1786; // 6022
+/** IssuedInFuture: payload issued_at is too far in the future */
+export const ORACLE_ERROR__ISSUED_IN_FUTURE = 0x1787; // 6023
+/** SignatureExpired: signed expiry has passed */
+export const ORACLE_ERROR__SIGNATURE_EXPIRED = 0x1788; // 6024
+/** ExpiryTooFar: signed expiry is not within the allowed lifetime after issued_at */
+export const ORACLE_ERROR__EXPIRY_TOO_FAR = 0x1789; // 6025
+/** StaleAttestation: attestation is not newer than the stored one */
+export const ORACLE_ERROR__STALE_ATTESTATION = 0x178a; // 6026
+/** InvalidExistingAttestation: account at the attestation address is not a SAS attestation */
+export const ORACLE_ERROR__INVALID_EXISTING_ATTESTATION = 0x178b; // 6027
 
 export type OracleError =
   | typeof ORACLE_ERROR__ALREADY_REVOKED
+  | typeof ORACLE_ERROR__ATTESTATION_ADDRESS_MISMATCH
+  | typeof ORACLE_ERROR__ATTESTER_MISMATCH
+  | typeof ORACLE_ERROR__CREDENTIAL_MISMATCH
+  | typeof ORACLE_ERROR__ENCLAVE_ENTRY_MISMATCH
+  | typeof ORACLE_ERROR__ENCLAVE_REVOKED
+  | typeof ORACLE_ERROR__EXPIRY_TOO_FAR
+  | typeof ORACLE_ERROR__INVALID_EXISTING_ATTESTATION
+  | typeof ORACLE_ERROR__INVALID_PRECOMPILE_LAYOUT
+  | typeof ORACLE_ERROR__INVALID_TIER
+  | typeof ORACLE_ERROR__ISSUED_IN_FUTURE
   | typeof ORACLE_ERROR__NOT_ADMIN
   | typeof ORACLE_ERROR__NOT_PENDING_ADMIN
   | typeof ORACLE_ERROR__NOT_UPGRADE_AUTHORITY
+  | typeof ORACLE_ERROR__PRECOMPILE_NOT_FOUND
   | typeof ORACLE_ERROR__PROGRAM_DATA_MISMATCH
+  | typeof ORACLE_ERROR__PROOF_TYPE_MISMATCH
   | typeof ORACLE_ERROR__REGISTRY_FULL
+  | typeof ORACLE_ERROR__SCHEMA_MISMATCH
+  | typeof ORACLE_ERROR__SIGNATURE_EXPIRED
+  | typeof ORACLE_ERROR__STALE_ATTESTATION
   | typeof ORACLE_ERROR__UNKNOWN_MEASUREMENT_KIND
+  | typeof ORACLE_ERROR__WRONG_DOMAIN_TAG
+  | typeof ORACLE_ERROR__WRONG_PROGRAM_ID
   | typeof ORACLE_ERROR__ZERO_ADMIN
   | typeof ORACLE_ERROR__ZERO_ATTESTATION_DOC_HASH
   | typeof ORACLE_ERROR__ZERO_ATTESTER
@@ -54,12 +105,29 @@ let oracleErrorMessages: Record<OracleError, string> | undefined;
 if (process.env["NODE_ENV"] !== "production") {
   oracleErrorMessages = {
     [ORACLE_ERROR__ALREADY_REVOKED]: `enclave entry is already revoked`,
+    [ORACLE_ERROR__ATTESTATION_ADDRESS_MISMATCH]: `attestation account is not the SAS PDA for credential, schema and wallet`,
+    [ORACLE_ERROR__ATTESTER_MISMATCH]: `signature was not made by the enclave entry's attester key`,
+    [ORACLE_ERROR__CREDENTIAL_MISMATCH]: `credential account is not the one in the signed message`,
+    [ORACLE_ERROR__ENCLAVE_ENTRY_MISMATCH]: `enclave entry is not the one named by the payload's measurement_id`,
+    [ORACLE_ERROR__ENCLAVE_REVOKED]: `enclave entry is revoked`,
+    [ORACLE_ERROR__EXPIRY_TOO_FAR]: `signed expiry is not within the allowed lifetime after issued_at`,
+    [ORACLE_ERROR__INVALID_EXISTING_ATTESTATION]: `account at the attestation address is not a SAS attestation`,
+    [ORACLE_ERROR__INVALID_PRECOMPILE_LAYOUT]: `secp256k1 precompile data is not the fixed single-signature layout`,
+    [ORACLE_ERROR__INVALID_TIER]: `payload tier must be 1 (A), 2 (B) or 3 (C)`,
+    [ORACLE_ERROR__ISSUED_IN_FUTURE]: `payload issued_at is too far in the future`,
     [ORACLE_ERROR__NOT_ADMIN]: `signer is not the registry admin`,
     [ORACLE_ERROR__NOT_PENDING_ADMIN]: `signer is not the pending admin`,
     [ORACLE_ERROR__NOT_UPGRADE_AUTHORITY]: `signer is not the program's upgrade authority`,
+    [ORACLE_ERROR__PRECOMPILE_NOT_FOUND]: `instruction before this one is not a secp256k1 precompile instruction`,
     [ORACLE_ERROR__PROGRAM_DATA_MISMATCH]: `program_data is not this program's ProgramData account`,
+    [ORACLE_ERROR__PROOF_TYPE_MISMATCH]: `payload proof_type does not match the entry's measurement_kind`,
     [ORACLE_ERROR__REGISTRY_FULL]: `registry is full: all 255 measurement ids are used`,
+    [ORACLE_ERROR__SCHEMA_MISMATCH]: `schema account is not the one in the signed message`,
+    [ORACLE_ERROR__SIGNATURE_EXPIRED]: `signed expiry has passed`,
+    [ORACLE_ERROR__STALE_ATTESTATION]: `attestation is not newer than the stored one`,
     [ORACLE_ERROR__UNKNOWN_MEASUREMENT_KIND]: `measurement_kind must be 1 (Oyster image id) or 2 (AWS PCR0 hash)`,
+    [ORACLE_ERROR__WRONG_DOMAIN_TAG]: `signed message does not start with the TIO-ATTEST-v1 domain tag`,
+    [ORACLE_ERROR__WRONG_PROGRAM_ID]: `signed message names a different oracle program`,
     [ORACLE_ERROR__ZERO_ADMIN]: `admin is the all-zero address`,
     [ORACLE_ERROR__ZERO_ATTESTATION_DOC_HASH]: `attestation document hash is all zeros`,
     [ORACLE_ERROR__ZERO_ATTESTER]: `attester address is all zeros`,

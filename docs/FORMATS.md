@@ -672,10 +672,38 @@ schema, schema_name, schema_version`.
   - data length that doesn't match the layout (82 bytes) → error `0x6`;
   - a second attestation for the same (credential, schema, nonce) → the
     system program's "account already in use". **Refreshing a borrower's
-    attestation needs `close_attestation` first.**
+    attestation needs `close_attestation` first**; `submit_attestation` does
+    that itself (§13).
 - The attestation address equals `["attestation", credential, schema, nonce]`
   as derived by `deriveAttestationPda`, and the stored `nonce` is the borrower
   wallet.
+
+**How the oracle writes it** (SAS source at commit `12582e23d4`, which matches
+the devnet binary in `test-fixtures/sas/`; create and close are unchanged in
+SAS 2.0). Tested on surfpool against that binary.
+- Instructions, built by hand (the published Rust client pins
+  solana-program 2.x): `CreateAttestation` = `[6] ‖ nonce 32 ‖ u32 len ‖ data
+  ‖ expiry i64`, accounts payer (w, s), authority (s), credential, schema,
+  attestation (w), system program. `CloseAttestation` = `[7]`, accounts payer
+  (w), authority (s), credential, attestation (w), event authority (PDA
+  `["__event_authority"]` under SAS), system program, SAS program.
+- **SAS `expiry`** = `issued_at + 30 days` (oracle constant
+  `ATTESTATION_TTL_SECS`; the enclave doesn't sign it). SAS rejects an expiry
+  in the past with `0x6` too, not only a bad data length; `0` would mean
+  "never expires".
+- **Close refunds whatever account is passed as `payer`**, unchecked by SAS.
+  The oracle always passes its own payer (the relayer), who also pays the new
+  rent, so a refresh costs about nothing. The first payer's rent goes to
+  whoever relays the refresh.
+- **Stored account** (256 B): `disc u8 (= 2) ‖ nonce 32 ‖ credential 32 ‖
+  schema 32 ‖ u32 len ‖ data 83 ‖ signer 32 ‖ expiry i64 ‖ token_account 32`.
+  The payload starts at byte 101, so `issued_at` is at byte 168. The oracle
+  reads an existing account only after checking owner = SAS, length 256 and
+  discriminator 2. It doesn't re-check the stored `signer`: the admin sets
+  the credential's signers, and an admin who added another signer could
+  write attestations directly anyway.
+- Anyone can send lamports to an attestation address before it exists. SAS
+  creates over them (tops up below rent), so this can't block a wallet.
 
 ---
 
@@ -694,6 +722,38 @@ sig = secp256k1_sign_recoverable(keccak256(msg))  → 65 B r‖s‖v
 ```
 The Solana secp256k1 precompile hashes `msg` with keccak256 itself and checks
 the recovered 20-byte eth address.
+
+**Precompile instruction** (program `KeccakSecp256k11111111111111111111111111111`,
+no accounts). It must be the instruction directly before
+`submit_attestation`, at transaction index `P`, with exactly this 329-byte
+layout:
+
+| Offset | Size | Content |
+|---|---|---|
+| 0 | 1 | signature count = `1` |
+| 1 | 11 | offsets, LE: signature `32`, ix `P` · eth address `12`, ix `P` · message `97`, size `232`, ix `P` |
+| 12 | 20 | enclave eth address |
+| 32 | 64 | `r ‖ s` |
+| 96 | 1 | recovery id `v` (`0` or `1`; the precompile rejects 27/28) |
+| 97 | 232 | `msg` |
+
+The precompile's instruction-index fields are plain one-byte transaction
+indexes with no "this instruction" value, so the oracle compares the whole
+offsets block, built for `P`, byte for byte (CODING-GUIDELINES §2). The
+precompile accepts high-s signatures, so a signature's bytes are never used
+as a replay key; replay is stopped by the strictly increasing `issued_at`
+(§13).
+
+**Clock rules** (Solana clock `now`, oracle constants):
+`issued_at ≤ now + 300` (`MAX_SKEW_SECS`), `now ≤ expiry`, and
+`0 < expiry − issued_at ≤ 600` (`MAX_SIGNATURE_LIFETIME_SECS`). The
+enclave's clock comes from its untrusted host; together the rules bound how
+early or late a signature can be used. The enclave sets `expiry = now + 600`.
+Solana's `Clock::unix_timestamp` is the stake-weighted median of validator
+vote timestamps, bounded to ±25% of the expected time since the epoch start
+(under Alpenglow the leader sets it, never below its parent's). If it lags
+real time by more than 300 s, submissions fail with `IssuedInFuture` until it
+catches up: a liveness risk, never a wrong acceptance.
 
 ---
 
@@ -954,12 +1014,59 @@ little-endian, each account starts with Anchor's 8-byte discriminator. Account
 | `revoke_enclave(measurement_id)` | `admin` | sets `revoked_at`; event `EnclaveRevoked`. One-way | account not initialized (3012), `NotAdmin` (6001), entry not the PDA of `measurement_id` (2006), `AlreadyRevoked` (6006) |
 | `propose_admin(new_admin)` | `admin` | sets `pending_admin` (replacing any earlier proposal); event `AdminProposed` | `NotAdmin` (6001), `ZeroAdmin` (6008) |
 | `accept_admin()` | the pending admin | `admin` = signer, `pending_admin` = `None`; event `AdminChanged` | `NotPendingAdmin` (6010; also when nothing is pending) |
+| `submit_attestation()` | anyone (the relayer pays) | checks the enclave signature and writes the §7 payload to SAS as `sas_signer`; replaces an older attestation for the same wallet; event `AttestationSubmitted` | see below |
 
 Errors are listed in check order. Anchor loads accounts and creates `init`
 accounts before it checks other constraints, so "already in use" and "not
 initialized" come first; a failed later check still aborts the whole
 transaction. An enclave restart gets a new attester key, so it is registered
 as a new entry and the old one is revoked.
+
+**`submit_attestation`.** No instruction arguments: every value comes from
+the §8 message inside the secp256k1 precompile instruction right before it
+(§8 layout), so the bytes checked are the bytes signed.
+
+Accounts: `payer` (signer, w; pays rent, receives the refund on refresh),
+`sas_signer` (PDA `["sas_signer"]`, no data), `credential`, `schema`,
+`attestation` (w), `enclave_entry`, `instructions` (the instructions sysvar),
+`sas_event_authority` (PDA `["__event_authority"]` under SAS), `sas_program`,
+`system_program`.
+
+Check order:
+
+| # | Check | Error |
+|---|---|---|
+| — | Anchor: entry not initialized; `sas_signer` / event authority not the PDA; wrong sysvar / SAS program | 3012; 2006; 2012 |
+| 1 | instruction at current − 1 is the secp256k1 precompile (and current isn't 0) | `PrecompileNotFound` (6011) |
+| 2 | precompile data is exactly the §8 layout for its own index | `InvalidPrecompileLayout` (6012) |
+| 3 | message starts with `TIO-ATTEST-v1` | `WrongDomainTag` (6013) |
+| 4 | message program id = this program | `WrongProgramId` (6014) |
+| 5 | `credential` = message credential | `CredentialMismatch` (6015) |
+| 6 | `schema` = message schema | `SchemaMismatch` (6016) |
+| 7 | `attestation` = SAS PDA of (credential, schema, wallet), checked before it is read | `AttestationAddressMismatch` (6017) |
+| 8 | `enclave_entry.measurement_id` = payload `measurement_id` | `EnclaveEntryMismatch` (6018) |
+| 9 | entry active | `EnclaveRevoked` (6019) |
+| 10 | precompile eth address = `entry.attester` | `AttesterMismatch` (6020) |
+| 11 | payload `proof_type` = `entry.measurement_kind` | `ProofTypeMismatch` (6021) |
+| 12 | tier ∈ {1, 2, 3} | `InvalidTier` (6022) |
+| 13 | `issued_at ≤ now + 300` | `IssuedInFuture` (6023) |
+| 14 | `now ≤ expiry` | `SignatureExpired` (6024) |
+| 15 | `0 < expiry − issued_at ≤ 600` | `ExpiryTooFar` (6025) |
+| 16 | existing account (non-empty) is a SAS attestation: owner SAS, 256 B, discriminator 2 | `InvalidExistingAttestation` (6027) |
+| 17 | new `issued_at` > stored `issued_at` | `StaleAttestation` (6026) |
+
+Then, for an existing attestation, CPI SAS `close_attestation`, and CPI SAS
+`create_attestation` (nonce = wallet, data = payload, expiry =
+`issued_at + 30 days`, §7). A bad signature fails in the precompile before
+the oracle runs (precompile error `2`, InvalidSignature).
+
+**Replay and refresh.** Strictly increasing `issued_at` per wallet stops an
+exact replay and stops an older, still-unexpired signature from replacing a
+newer tier. Refreshing is close + create inside one instruction.
+
+Event `AttestationSubmitted { subject, measurement_id, tier, issued_at,
+refreshed }`. Measured on surfpool: 17,575 CU to create, 22,968 to refresh;
+the transaction (compute-budget ix + precompile + submit) is 882 bytes.
 
 **Id budget.** Ids are never reused, so every registration (each enclave
 restart or image update) spends one of the 255 for the life of this

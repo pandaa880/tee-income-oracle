@@ -8,3 +8,5 @@
 
 export * from "./config";
 export * from "./enclaveEntry";
+export * from "./sasEventAuthority";
+export * from "./sasSigner";

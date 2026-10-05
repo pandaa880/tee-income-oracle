@@ -6,6 +6,10 @@
   "engines": {
     "node": ">=24"
   },
+  "exports": {
+    "./sas-schema": "./src/sas-schema.ts",
+    "./sas-setup": "./src/sas-setup.ts"
+  },
   "scripts": {
     "sas:setup": "node src/sas-setup-cli.ts",
     "typecheck": "tsc --noEmit",

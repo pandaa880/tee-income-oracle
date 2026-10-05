@@ -1,8 +1,10 @@
 use anchor_lang::prelude::*;
 
+pub mod attest;
 pub mod error;
 pub mod events;
 pub mod instructions;
+pub mod sas;
 pub mod state;
 
 use instructions::*;
@@ -43,5 +45,14 @@ pub mod oracle {
     /// registry can't be handed to a key nobody controls.
     pub fn accept_admin(ctx: Context<AcceptAdmin>) -> Result<()> {
         handle_accept_admin(ctx)
+    }
+
+    /// Write an enclave result to SAS. Anyone can relay it: the transaction
+    /// must carry the enclave's signature in a secp256k1 precompile
+    /// instruction right before this one, and the signer must be an active
+    /// registry entry (FORMATS §8, §13). Replaces an older attestation for
+    /// the same wallet.
+    pub fn submit_attestation(ctx: Context<SubmitAttestation>) -> Result<()> {
+        handle_submit_attestation(ctx)
     }
 }
