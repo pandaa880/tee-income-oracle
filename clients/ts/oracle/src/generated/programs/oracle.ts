@@ -42,16 +42,24 @@ import {
   type EnclaveEntryArgs,
 } from "../accounts";
 import {
+  getAcceptAdminInstructionAsync,
   getInitializeInstructionAsync,
+  getProposeAdminInstructionAsync,
   getRegisterEnclaveInstructionAsync,
   getRevokeEnclaveInstructionAsync,
+  parseAcceptAdminInstruction,
   parseInitializeInstruction,
+  parseProposeAdminInstruction,
   parseRegisterEnclaveInstruction,
   parseRevokeEnclaveInstruction,
+  type AcceptAdminAsyncInput,
   type InitializeAsyncInput,
+  type ParsedAcceptAdminInstruction,
   type ParsedInitializeInstruction,
+  type ParsedProposeAdminInstruction,
   type ParsedRegisterEnclaveInstruction,
   type ParsedRevokeEnclaveInstruction,
+  type ProposeAdminAsyncInput,
   type RegisterEnclaveAsyncInput,
   type RevokeEnclaveAsyncInput,
 } from "../instructions";
@@ -98,7 +106,9 @@ export function identifyOracleAccount(
 }
 
 export enum OracleInstruction {
+  AcceptAdmin,
   Initialize,
+  ProposeAdmin,
   RegisterEnclave,
   RevokeEnclave,
 }
@@ -111,12 +121,34 @@ export function identifyOracleInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([112, 42, 45, 90, 116, 181, 13, 170]),
+      ),
+      0,
+    )
+  ) {
+    return OracleInstruction.AcceptAdmin;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237]),
       ),
       0,
     )
   ) {
     return OracleInstruction.Initialize;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([121, 214, 199, 212, 87, 39, 117, 234]),
+      ),
+      0,
+    )
+  ) {
+    return OracleInstruction.ProposeAdmin;
   }
   if (
     containsBytes(
@@ -150,8 +182,14 @@ export type ParsedOracleInstruction<
   TProgram extends string = "HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8",
 > =
   | ({
+      instructionType: OracleInstruction.AcceptAdmin;
+    } & ParsedAcceptAdminInstruction<TProgram>)
+  | ({
       instructionType: OracleInstruction.Initialize;
     } & ParsedInitializeInstruction<TProgram>)
+  | ({
+      instructionType: OracleInstruction.ProposeAdmin;
+    } & ParsedProposeAdminInstruction<TProgram>)
   | ({
       instructionType: OracleInstruction.RegisterEnclave;
     } & ParsedRegisterEnclaveInstruction<TProgram>)
@@ -164,11 +202,25 @@ export function parseOracleInstruction<TProgram extends string>(
 ): ParsedOracleInstruction<TProgram> {
   const instructionType = identifyOracleInstruction(instruction);
   switch (instructionType) {
+    case OracleInstruction.AcceptAdmin: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: OracleInstruction.AcceptAdmin,
+        ...parseAcceptAdminInstruction(instruction),
+      };
+    }
     case OracleInstruction.Initialize: {
       assertIsInstructionWithAccounts(instruction);
       return {
         instructionType: OracleInstruction.Initialize,
         ...parseInitializeInstruction(instruction),
+      };
+    }
+    case OracleInstruction.ProposeAdmin: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: OracleInstruction.ProposeAdmin,
+        ...parseProposeAdminInstruction(instruction),
       };
     }
     case OracleInstruction.RegisterEnclave: {
@@ -210,9 +262,17 @@ export type OraclePluginAccounts = {
 };
 
 export type OraclePluginInstructions = {
+  acceptAdmin: (
+    input: AcceptAdminAsyncInput,
+  ) => ReturnType<typeof getAcceptAdminInstructionAsync> &
+    SelfPlanAndSendFunctions;
   initialize: (
     input: InitializeAsyncInput,
   ) => ReturnType<typeof getInitializeInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  proposeAdmin: (
+    input: ProposeAdminAsyncInput,
+  ) => ReturnType<typeof getProposeAdminInstructionAsync> &
     SelfPlanAndSendFunctions;
   registerEnclave: (
     input: RegisterEnclaveAsyncInput,
@@ -246,10 +306,20 @@ export function oracleProgram() {
           enclaveEntry: addSelfFetchFunctions(client, getEnclaveEntryCodec()),
         },
         instructions: {
+          acceptAdmin: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getAcceptAdminInstructionAsync(input),
+            ),
           initialize: (input) =>
             addSelfPlanAndSendFunctions(
               client,
               getInitializeInstructionAsync(input),
+            ),
+          proposeAdmin: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getProposeAdminInstructionAsync(input),
             ),
           registerEnclave: (input) =>
             addSelfPlanAndSendFunctions(

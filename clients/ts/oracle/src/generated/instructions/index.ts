@@ -6,6 +6,8 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./acceptAdmin";
 export * from "./initialize";
+export * from "./proposeAdmin";
 export * from "./registerEnclave";
 export * from "./revokeEnclave";

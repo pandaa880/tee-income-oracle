@@ -4,8 +4,10 @@
 // programs/oracle/src/events.rs.
 import { readFileSync } from 'node:fs';
 import {
+  type Address,
   type ReadonlyUint8Array,
   fixDecoderSize,
+  getAddressDecoder,
   getBytesDecoder,
   getStructDecoder,
   getU8Decoder,
@@ -74,4 +76,26 @@ export function parseEnclaveRegisteredEvent(payload: Uint8Array): EnclaveRegiste
 
 export function parseEnclaveRevokedEvent(payload: Uint8Array): EnclaveRevokedEvent {
   return enclaveRevokedDecoder.decode(eventBody('EnclaveRevoked', payload, ENCLAVE_REVOKED_LEN));
+}
+
+export type AdminProposedEvent = { admin: Address; pendingAdmin: Address };
+export type AdminChangedEvent = { oldAdmin: Address; newAdmin: Address };
+
+const adminProposedDecoder = getStructDecoder([
+  ['admin', getAddressDecoder()],
+  ['pendingAdmin', getAddressDecoder()],
+]);
+const adminChangedDecoder = getStructDecoder([
+  ['oldAdmin', getAddressDecoder()],
+  ['newAdmin', getAddressDecoder()],
+]);
+// Both admin events are two Pubkeys.
+const ADMIN_EVENT_LEN = 64;
+
+export function parseAdminProposedEvent(payload: Uint8Array): AdminProposedEvent {
+  return adminProposedDecoder.decode(eventBody('AdminProposed', payload, ADMIN_EVENT_LEN));
+}
+
+export function parseAdminChangedEvent(payload: Uint8Array): AdminChangedEvent {
+  return adminChangedDecoder.decode(eventBody('AdminChanged', payload, ADMIN_EVENT_LEN));
 }

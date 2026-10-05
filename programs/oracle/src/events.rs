@@ -14,3 +14,17 @@ pub struct EnclaveRegistered {
 pub struct EnclaveRevoked {
     pub measurement_id: u8,
 }
+
+/// The admin proposed a new admin (who must still accept).
+#[event]
+pub struct AdminProposed {
+    pub admin: Pubkey,
+    pub pending_admin: Pubkey,
+}
+
+/// The pending admin accepted and is now the admin.
+#[event]
+pub struct AdminChanged {
+    pub old_admin: Pubkey,
+    pub new_admin: Pubkey,
+}

@@ -34,10 +34,13 @@ export const ORACLE_ERROR__PROGRAM_DATA_MISMATCH = 0x1777; // 6007
 export const ORACLE_ERROR__ZERO_ADMIN = 0x1778; // 6008
 /** ZeroAttestationDocHash: attestation document hash is all zeros */
 export const ORACLE_ERROR__ZERO_ATTESTATION_DOC_HASH = 0x1779; // 6009
+/** NotPendingAdmin: signer is not the pending admin */
+export const ORACLE_ERROR__NOT_PENDING_ADMIN = 0x177a; // 6010
 
 export type OracleError =
   | typeof ORACLE_ERROR__ALREADY_REVOKED
   | typeof ORACLE_ERROR__NOT_ADMIN
+  | typeof ORACLE_ERROR__NOT_PENDING_ADMIN
   | typeof ORACLE_ERROR__NOT_UPGRADE_AUTHORITY
   | typeof ORACLE_ERROR__PROGRAM_DATA_MISMATCH
   | typeof ORACLE_ERROR__REGISTRY_FULL
@@ -52,6 +55,7 @@ if (process.env["NODE_ENV"] !== "production") {
   oracleErrorMessages = {
     [ORACLE_ERROR__ALREADY_REVOKED]: `enclave entry is already revoked`,
     [ORACLE_ERROR__NOT_ADMIN]: `signer is not the registry admin`,
+    [ORACLE_ERROR__NOT_PENDING_ADMIN]: `signer is not the pending admin`,
     [ORACLE_ERROR__NOT_UPGRADE_AUTHORITY]: `signer is not the program's upgrade authority`,
     [ORACLE_ERROR__PROGRAM_DATA_MISMATCH]: `program_data is not this program's ProgramData account`,
     [ORACLE_ERROR__REGISTRY_FULL]: `registry is full: all 255 measurement ids are used`,

@@ -13,6 +13,17 @@ Anchor program. The on-chain trust anchor.
     (Oyster image id or AWS PCR0 hash), the **secp256k1 attester address**,
     and the hash of the attestation document.
   - `revoke_enclave`: one-way; sets `revoked_at`.
+  - `propose_admin` / `accept_admin`: two-step admin change. The new key
+    must sign to take over, so the registry can't be handed to a key nobody
+    controls.
+  - **Admin key recovery.** Compromised or retiring key: the admin proposes
+    a new one (ideally a Squads multisig) and it accepts. Lost key: no admin
+    action is possible, so the only fix is a program upgrade; keep the
+    program upgradeable, with its upgrade authority stored safely, until
+    `admin` is a multisig.
+  - **Id budget:** 255 registrations for the life of a deployment, since ids
+    are never reused and every enclave restart takes one. Running out needs
+    a migration (FORMATS §13 "Id budget").
   - **Ids are append-only.** The entry address is keyed by the id and the
     counter only goes up, so a revoked id is never reassigned. Otherwise a
     revoked enclave's attestations would silently validate against a new

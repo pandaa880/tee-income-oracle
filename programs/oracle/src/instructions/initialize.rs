@@ -36,6 +36,7 @@ pub fn handle_initialize(ctx: Context<Initialize>, admin: Pubkey) -> Result<()> 
         version: ACCOUNT_VERSION,
         bump: ctx.bumps.config,
         admin,
+        pending_admin: None,
         next_measurement_id: 0,
     });
     Ok(())

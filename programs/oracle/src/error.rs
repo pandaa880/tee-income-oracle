@@ -22,4 +22,6 @@ pub enum OracleError {
     ZeroAdmin,
     #[msg("attestation document hash is all zeros")]
     ZeroAttestationDocHash,
+    #[msg("signer is not the pending admin")]
+    NotPendingAdmin,
 }

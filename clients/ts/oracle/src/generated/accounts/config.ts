@@ -19,6 +19,8 @@ import {
   getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getOptionDecoder,
+  getOptionEncoder,
   getStructDecoder,
   getStructEncoder,
   getU8Decoder,
@@ -26,14 +28,16 @@ import {
   transformEncoder,
   type Account,
   type Address,
+  type Codec,
+  type Decoder,
   type EncodedAccount,
+  type Encoder,
   type FetchAccountConfig,
   type FetchAccountsConfig,
-  type FixedSizeCodec,
-  type FixedSizeDecoder,
-  type FixedSizeEncoder,
   type MaybeAccount,
   type MaybeEncodedAccount,
+  type Option,
+  type OptionOrNullable,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 
@@ -52,6 +56,11 @@ export type Config = {
   /** Registers and revokes enclave builds (the MVP trust anchor, ARCHITECTURE G5). */
   admin: Address;
   /**
+   * Proposed next admin; becomes `admin` only when that key signs
+   * `accept_admin`, so a typo can't hand the registry to an unusable key.
+   */
+  pendingAdmin: Option<Address>;
+  /**
    * Id the next `register_enclave` assigns. Only ever increases, so an id
    * is never reused, even after revoke. 255 is never assigned.
    */
@@ -64,6 +73,11 @@ export type ConfigArgs = {
   /** Registers and revokes enclave builds (the MVP trust anchor, ARCHITECTURE G5). */
   admin: Address;
   /**
+   * Proposed next admin; becomes `admin` only when that key signs
+   * `accept_admin`, so a typo can't hand the registry to an unusable key.
+   */
+  pendingAdmin: OptionOrNullable<Address>;
+  /**
    * Id the next `register_enclave` assigns. Only ever increases, so an id
    * is never reused, even after revoke. 255 is never assigned.
    */
@@ -71,13 +85,14 @@ export type ConfigArgs = {
 };
 
 /** Gets the encoder for {@link ConfigArgs} account data. */
-export function getConfigEncoder(): FixedSizeEncoder<ConfigArgs> {
+export function getConfigEncoder(): Encoder<ConfigArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["version", getU8Encoder()],
       ["bump", getU8Encoder()],
       ["admin", getAddressEncoder()],
+      ["pendingAdmin", getOptionEncoder(getAddressEncoder())],
       ["nextMeasurementId", getU8Encoder()],
     ]),
     (value) => ({ ...value, discriminator: CONFIG_DISCRIMINATOR }),
@@ -85,18 +100,19 @@ export function getConfigEncoder(): FixedSizeEncoder<ConfigArgs> {
 }
 
 /** Gets the decoder for {@link Config} account data. */
-export function getConfigDecoder(): FixedSizeDecoder<Config> {
+export function getConfigDecoder(): Decoder<Config> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["version", getU8Decoder()],
     ["bump", getU8Decoder()],
     ["admin", getAddressDecoder()],
+    ["pendingAdmin", getOptionDecoder(getAddressDecoder())],
     ["nextMeasurementId", getU8Decoder()],
   ]);
 }
 
 /** Gets the codec for {@link Config} account data. */
-export function getConfigCodec(): FixedSizeCodec<ConfigArgs, Config> {
+export function getConfigCodec(): Codec<ConfigArgs, Config> {
   return combineCodec(getConfigEncoder(), getConfigDecoder());
 }
 
@@ -151,8 +167,4 @@ export async function fetchAllMaybeConfig(
 ): Promise<MaybeAccount<Config>[]> {
   const maybeAccounts = await fetchEncodedAccounts(rpc, addresses, config);
   return maybeAccounts.map((maybeAccount) => decodeConfig(maybeAccount));
-}
-
-export function getConfigSize(): number {
-  return 43;
 }

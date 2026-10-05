@@ -33,4 +33,15 @@ pub mod oracle {
     pub fn revoke_enclave(ctx: Context<RevokeEnclave>, measurement_id: u8) -> Result<()> {
         handle_revoke_enclave(ctx, measurement_id)
     }
+
+    /// Step 1 of an admin change: the admin names the next admin.
+    pub fn propose_admin(ctx: Context<ProposeAdmin>, new_admin: Pubkey) -> Result<()> {
+        handle_propose_admin(ctx, new_admin)
+    }
+
+    /// Step 2: the proposed admin signs to take over. Two steps, so the
+    /// registry can't be handed to a key nobody controls.
+    pub fn accept_admin(ctx: Context<AcceptAdmin>) -> Result<()> {
+        handle_accept_admin(ctx)
+    }
 }

@@ -18,6 +18,9 @@ pub struct Config {
     pub bump: u8,
     /// Registers and revokes enclave builds (the MVP trust anchor, ARCHITECTURE G5).
     pub admin: Pubkey,
+    /// Proposed next admin; becomes `admin` only when that key signs
+    /// `accept_admin`, so a typo can't hand the registry to an unusable key.
+    pub pending_admin: Option<Pubkey>,
     /// Id the next `register_enclave` assigns. Only ever increases, so an id
     /// is never reused, even after revoke. 255 is never assigned.
     pub next_measurement_id: u8,

@@ -928,6 +928,7 @@ little-endian, each account starts with Anchor's 8-byte discriminator. Account
 | `version` | u8 | `1` |
 | `bump` | u8 | PDA bump |
 | `admin` | Pubkey | registers and revokes enclave builds; never the all-zero address |
+| `pending_admin` | Option\<Pubkey\> (1-byte tag + 32) | proposed next admin, `None` unless a change is in progress |
 | `next_measurement_id` | u8 | id the next registration gets. Only increases; `255` is never assigned (max 255 entries) |
 
 **`EnclaveEntry`**, PDA `["enclave", [measurement_id]]` (one byte):
@@ -951,9 +952,24 @@ little-endian, each account starts with Anchor's 8-byte discriminator. Account
 | `initialize(admin)` | the program's upgrade authority | creates `Config` with `admin`, counter `0` | account already in use (system 0), `ProgramDataMismatch` (6007), `NotUpgradeAuthority` (6000), `ZeroAdmin` (6008) |
 | `register_enclave(kind, measurement, attester, attestation_doc_hash)` | `admin` | creates the entry at `next_measurement_id`, then increments it; event `EnclaveRegistered` | entry not the PDA of `next_measurement_id` (2006; e.g. two registrations built from the same counter, the second fails), `NotAdmin` (6001), `UnknownMeasurementKind` (6002), `ZeroMeasurement` (6003), `ZeroAttester` (6004), `ZeroAttestationDocHash` (6009), `RegistryFull` (6005) |
 | `revoke_enclave(measurement_id)` | `admin` | sets `revoked_at`; event `EnclaveRevoked`. One-way | account not initialized (3012), `NotAdmin` (6001), entry not the PDA of `measurement_id` (2006), `AlreadyRevoked` (6006) |
+| `propose_admin(new_admin)` | `admin` | sets `pending_admin` (replacing any earlier proposal); event `AdminProposed` | `NotAdmin` (6001), `ZeroAdmin` (6008) |
+| `accept_admin()` | the pending admin | `admin` = signer, `pending_admin` = `None`; event `AdminChanged` | `NotPendingAdmin` (6010; also when nothing is pending) |
 
 Errors are listed in check order. Anchor loads accounts and creates `init`
 accounts before it checks other constraints, so "already in use" and "not
 initialized" come first; a failed later check still aborts the whole
 transaction. An enclave restart gets a new attester key, so it is registered
 as a new entry and the old one is revoked.
+
+**Id budget.** Ids are never reused, so every registration (each enclave
+restart or image update) spends one of the 255 for the life of this
+deployment. Running out needs a migration: a new payload version with a
+wider `measurement_id` (§7, so a new SAS schema version), a new registry
+layout, and pools moving to the new schema. Fine for the hackathon; revisit
+before a long-running deployment.
+
+**Admin.** The two-step change lets a lost or compromised admin key be
+replaced without redeploying, as long as the current admin can still sign.
+Beyond the demo, `admin` should be a multisig (e.g. a Squads vault); if the
+admin key itself is lost, the only way out is a program upgrade, so keep the
+program upgradeable (and its upgrade authority safe) until then.
