@@ -464,16 +464,20 @@ IV break AES-GCM: the XOR of the plaintexts leaks and the GHASH key can be
 recovered (NIST SP 800-38D). Until a provider shows per-account keys or
 nonces, multi-account and multi-FIP responses are refused.
 
-**FIP signature (our sandbox; OPEN (a) for real FIPs):** the plaintext inside
+**FIP signature (sandbox extension, not part of ReBIT):** the plaintext inside
 `encryptedFI` is a JSON envelope:
 
 ```json
 { "fi": "<base64 of the FI JSON bytes>", "jws": "<detached JWS by the FIP key over those bytes>" }
 ```
 
-The enclave checks the FIP JWS over the decoded `fi` bytes. If real FIPs turn
-out not to sign, this envelope becomes optional and step 6 of the evaluate
-pipeline is skipped for them.
+The enclave checks the FIP JWS over the decoded `fi` bytes. The ReBIT spec
+defines no such signature for the FIU: `FIFetchResponse` carries only `fipID`,
+`encryptedFI` and `KeyMaterial`, signed as a whole by the AA, and the DEPOSIT
+schema has no signature element (checked 2026-10-05, AA 2.1.0 / FIP 2.2.0 /
+`deposit_v2.0.0.xsd`). For a real provider this envelope is therefore absent
+unless that provider adds one; it then becomes optional and step 6 of the
+evaluate pipeline is skipped, leaving the AA signature as the provenance check.
 
 ### 5.3 Consent artefact — compact JWS by the AA key
 
@@ -616,7 +620,7 @@ UTC. Transaction order = (`transactionTimestamp`, input index).
   due near the same day bounces that month, still has the bounce explained by the known loan.
 - A loan with fewer than `min_occurrences` payments in the statement (default 2: a single payment) is
   not seen.
-- Income = every non-bounce credit, so self-transfers, loan proceeds and refunds count. FIP signatures prove
+- Income = every non-bounce credit, so self-transfers, loan proceeds and refunds count. Signatures prove
   where the data came from, not that a credit is income.
 - `day_tol` has no month-end wrap (the 31st and the 1st are 30 days apart).
 - Transactions with equal timestamps keep input order; reordering them can change an end-of-day balance.
