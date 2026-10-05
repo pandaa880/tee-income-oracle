@@ -1,7 +1,36 @@
 use anchor_lang::prelude::*;
 
+pub mod error;
+pub mod events;
+pub mod instructions;
+pub mod state;
+
+use instructions::*;
+
 declare_id!("HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8");
 
-/// Empty skeleton. Instructions arrive in build step 3.
+/// The on-chain trust anchor: a registry of attested enclave builds.
+/// Account layouts: `docs/FORMATS.md` §13.
 #[program]
-pub mod oracle {}
+pub mod oracle {
+    use super::*;
+
+    /// Create the registry config. Only the program's upgrade authority may
+    /// call it, so nobody can front-run deployment and make themselves admin.
+    pub fn initialize(ctx: Context<Initialize>, admin: Pubkey) -> Result<()> {
+        handle_initialize(ctx, admin)
+    }
+
+    /// Register an enclave build checked off-chain; assigns the next id.
+    pub fn register_enclave(
+        ctx: Context<RegisterEnclave>,
+        args: RegisterEnclaveArgs,
+    ) -> Result<()> {
+        handle_register_enclave(ctx, args)
+    }
+
+    /// Revoke an entry for good. Its id is never reassigned.
+    pub fn revoke_enclave(ctx: Context<RevokeEnclave>, measurement_id: u8) -> Result<()> {
+        handle_revoke_enclave(ctx, measurement_id)
+    }
+}

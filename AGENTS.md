@@ -51,6 +51,8 @@ real ReBIT protocol with test keys: "simulated bank, real protocol".
 ```
 programs/oracle/      Anchor. Enclave registry (image id → attester), verifies the
                       enclave signature via secp256k1 precompile, CPIs SAS.
+                      tests/ = TS program tests (vitest on embedded surfpool).
+clients/ts/oracle/    Codama-generated kit client for the oracle (from the IDL; committed).
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
 tio-core/             Rust lib, no I/O. Key exchange, decryption, JWS, money and FI (DEPOSIT)
                       parsing, scoring policy and scoring, the evaluate pipeline and the
@@ -84,20 +86,21 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector generator; `ops` has the SAS credential/schema setup; the programs are empty skeletons; most other packages
+has the test-vector generator; `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry (FORMATS §13), `demo-pool` is an empty skeleton; most other packages
 hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
 |---|---|---|
-| Build (Rust) | `cargo build` | works (empty program skeletons + `tio-core`) |
-| Build (programs) | `anchor build` | works (empty skeletons) |
+| Build (Rust) | `cargo build` | works (programs + `tio-core`) |
+| Build (programs) | `anchor build` | works (`oracle` registry; `demo-pool` skeleton) |
+| Generate program client | `pnpm --filter @tio/oracle-client generate` after `anchor build` — must leave `git diff clients/` empty | works (CI regenerates and diffs) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
 | Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
-| Test (programs) | `anchor test` — localnet | not yet |
-| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary; also in CI) |
+| Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests test`, embedded offline surfpool) | works (`oracle` registry; also in CI) |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary, `oracle-tests` after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank or @tio/ops> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops or @tio/oracle-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
 | SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet; not yet run on devnet |
 | Run | — | nothing runnable yet |
@@ -120,8 +123,19 @@ hold only READMEs. Update the status as each one starts working.
 
 Add a line whenever an agent makes the same mistake twice.
 
-- `Anchor.toml`: the `test` script is `echo "no tests yet"` — a green
-  `anchor test` proves nothing yet. `cluster` is still `localnet`.
+- `Anchor.toml`: `cluster` is still `localnet`.
+- Anchor check order isn't field order: it loads every account (3012), then
+  creates `init` accounts ("already in use", `init` seeds), then checks the
+  other constraints field by field, then runs the handler. Document error
+  order that way and pin it with a combined-fault test.
+- The program tests run the built `target/deploy/oracle.so`: run
+  `anchor build` first, then regenerate the client if the IDL changed
+  (account order counts: a stale client fails with Anchor error 3008).
+- The oracle client uses `@codama/renderers-js` 2.3.x, the last line for
+  `@solana/kit` 7. It ignores `importExtension`/`erasableSyntax` and doesn't
+  render events, so `clients/ts/oracle` and its tests use `Bundler`
+  resolution (vitest) rather than Node type stripping, and the tests decode
+  events themselves (`programs/oracle/tests/src/events.ts`).
 - Program keypairs live in `target/deploy/` (gitignored). Losing them changes
   the program ids; they are backed up outside the repo.
 - `rust-toolchain.toml` pins Rust 1.89.0 for the whole workspace, even though

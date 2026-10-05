@@ -75,6 +75,7 @@ layer and must fail with exactly its error code (see
 ```
 programs/oracle/     Anchor. Enclave registry, verifies the enclave's secp256k1
                      signature (precompile), writes the SAS attestation.
+clients/ts/oracle/   TypeScript client for the oracle, generated from its IDL (Codama).
 programs/demo-pool/  Anchor. Reads and checks the SAS attestation, lends testnet tokens.
 tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
 enclave/             Rust HTTP wrapper around tio-core. Runs in the Oyster CVM.
@@ -102,8 +103,9 @@ docs/                Architecture, formats, coding guidelines.
 
 Two build worlds:
 - **Rust/Anchor**: a Cargo workspace (`programs/*`, `tio-core`). See the root `Cargo.toml`.
-- **Node/TS**: a pnpm workspace (`gateway/`, `ops/`, `sandbox-bank/`, `verifier/`, `web/`).
-  Solana client code uses `@solana/kit` 7 and `sas-lib` 2.0.0-beta.1; local chain tests run
+- **Node/TS**: a pnpm workspace (`clients/ts/*`, `gateway/`, `ops/`, `programs/*/tests`,
+  `sandbox-bank/`, `verifier/`, `web/`). Solana client code uses `@solana/kit` 7 and
+  `sas-lib` 2.0.0-beta.1; the oracle client is generated with Codama; local chain tests run
   on embedded [surfpool](https://solana.com/docs/tools/surfpool) (`@solana/surfpool`).
 
 `enclave/` is not in the Cargo workspace. It builds as a Docker image, pinned
@@ -117,8 +119,10 @@ window, verifies, decrypts, parses and scores the statement, and builds the
 attestation payload and the message to sign. It is pinned to reference golden
 vectors and cross-checked against the TypeScript test-vector generator in
 `sandbox-bank`. `ops` creates and verifies the SAS credential and schema
-(tested on surfpool against the deployed SAS binary). Next: the programs,
-enclave, gateway and web.
+(tested on surfpool against the deployed SAS binary). The `oracle` program has
+its enclave registry (register and revoke attested enclave builds, ids never
+reused), tested on an embedded surfpool. Next: attestation submission, the
+demo pool, enclave, gateway and web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.
