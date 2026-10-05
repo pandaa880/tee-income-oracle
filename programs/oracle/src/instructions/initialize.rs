@@ -29,8 +29,8 @@ pub struct Initialize<'info> {
 }
 
 pub fn handle_initialize(ctx: Context<Initialize>, admin: Pubkey) -> Result<()> {
-    // initialize runs once and there is no admin transfer: a zero admin
-    // would brick the registry for good.
+    // initialize runs once, and only the admin can propose a successor: a
+    // zero admin can never sign, so the registry would be stuck for good.
     require!(admin != Pubkey::default(), OracleError::ZeroAdmin);
     ctx.accounts.config.set_inner(Config {
         version: ACCOUNT_VERSION,

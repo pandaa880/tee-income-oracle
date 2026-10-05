@@ -149,7 +149,7 @@ What a hostile gateway or host can do at each hop:
 | Tricking the precompile check | instruction-index fields must point at the precompile itself | a classic Solana bug class; tested explicitly |
 | Bug in enclave code | small code, public source, zeroize, one session at a time | attestation proves *which* code ran, not that it's correct |
 | Admin reusing a revoked registry id | ids are append-only | the id space is 255 for the life of a deployment (FORMATS §13 "Id budget") |
-| Admin key | public registry events; anyone can re-run the verifier | the MVP weak link (G5); later multisig, then ZK-verified attestation |
+| Admin key | public registry events; anyone can re-run the verifier; a compromised key is replaceable (`propose_admin` + `accept_admin`) | the MVP weak link (G5); a multisig beyond the demo, then ZK-verified attestation |
 | AWS | none | accepted: "trust AWS and the code" |
 
 ## 6. Guarantees and limitations

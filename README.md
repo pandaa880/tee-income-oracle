@@ -121,7 +121,7 @@ vectors and cross-checked against the TypeScript test-vector generator in
 `sandbox-bank`. `ops` creates and verifies the SAS credential and schema
 (tested on surfpool against the deployed SAS binary). The `oracle` program has
 its enclave registry (register and revoke attested enclave builds, ids never
-reused), tested on an embedded surfpool. Next: attestation submission, the
+reused, two-step admin change), tested on an embedded surfpool. Next: attestation submission, the
 demo pool, enclave, gateway and web.
 
 ## License
