@@ -22,6 +22,17 @@ pub struct AdminProposed {
     pub pending_admin: Pubkey,
 }
 
+/// An enclave result was written to SAS for `subject` (the SAS nonce).
+#[event]
+pub struct AttestationSubmitted {
+    pub subject: Pubkey,
+    pub measurement_id: u8,
+    pub tier: u8,
+    pub issued_at: i64,
+    /// True when an older attestation for the same wallet was replaced.
+    pub refreshed: bool,
+}
+
 /// The pending admin accepted and is now the admin.
 #[event]
 pub struct AdminChanged {

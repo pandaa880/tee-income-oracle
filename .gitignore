@@ -6,6 +6,7 @@ target/
 node_modules/
 dist/
 .next/
+.vitest/
 
 # Python
 __pycache__/

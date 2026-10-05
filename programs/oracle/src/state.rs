@@ -5,6 +5,9 @@ pub const ACCOUNT_VERSION: u8 = 1;
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const ENCLAVE_SEED: &[u8] = b"enclave";
+/// The credential's only authorized SAS signer. A PDA has no private key, so
+/// only `submit_attestation` can sign with it (FORMATS §7).
+pub const SAS_SIGNER_SEED: &[u8] = b"sas_signer";
 
 /// `measurement_kind` values. They match the payload's `proof_type` (FORMATS §7).
 pub const MEASUREMENT_KIND_OYSTER_IMAGE_ID: u8 = 1;

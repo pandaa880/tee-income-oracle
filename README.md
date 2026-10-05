@@ -121,8 +121,11 @@ vectors and cross-checked against the TypeScript test-vector generator in
 `sandbox-bank`. `ops` creates and verifies the SAS credential and schema
 (tested on surfpool against the deployed SAS binary). The `oracle` program has
 its enclave registry (register and revoke attested enclave builds, ids never
-reused, two-step admin change), tested on an embedded surfpool. Next: attestation submission, the
-demo pool, enclave, gateway and web.
+reused, two-step admin change) and accepts enclave results: it checks the
+enclave's secp256k1 signature through the precompile, the registry entry and
+the Solana clock, then writes the SAS attestation (refresh replaces only an
+older one). Both are tested on an embedded surfpool, the SAS writes against
+the deployed SAS binary. Next: the demo pool, enclave, gateway and web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

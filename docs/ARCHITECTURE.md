@@ -141,11 +141,12 @@ What a hostile gateway or host can do at each hop:
 |---|---|---|
 | Hostile gateway/host reading data | keys born inside (G2); ciphertext only | metadata: timing, sizes, and which wallet ran which session |
 | Hostile gateway/host forging data or tiers | pinned keys, verify before parse (G1); session binding: response `txnid` and consent `consentId` must be the enclave's own (FORMATS §10.1); attested signer (G4/G5) | censorship, delay |
-| Host lying about "today" | window = the statement's own dates, inside the enclave's requested range, inside the signed consent; refused if too short or stale (request and statement) or the request ends after `now`; `issued_at` checked against the Solana clock | ± 5 min skew window (`max_skew_secs`) |
+| Host lying about "today" | window = the statement's own dates, inside the enclave's requested range, inside the signed consent; refused if too short or stale (request and statement) or the request ends after `now`; `issued_at` checked against the Solana clock (≤ 300 s ahead), and the signature usable for at most 600 s after it (FORMATS §8) | ± 5 min skew window (`MAX_SKEW_SECS`) |
 | Borrower reusing another wallet's tier | SAS nonce = wallet; pool requires `borrower == nonce` | collusion (same as sybil) |
 | Borrower using a fresh wallet | none in the MVP | **sybil gap**: documented, never claimed solved |
 | Lender changing rules silently | `policy_hash` in the payload; pool pins it | — |
 | Replay of an enclave signature elsewhere | domain tag + program + credential + schema + wallet + expiry all signed | — |
+| Replaying a signature, or an older one replacing a newer tier | per wallet, a refresh needs a strictly newer `issued_at` (FORMATS §13) | — |
 | Tricking the precompile check | instruction-index fields must point at the precompile itself | a classic Solana bug class; tested explicitly |
 | Bug in enclave code | small code, public source, zeroize, one session at a time | attestation proves *which* code ran, not that it's correct |
 | Admin reusing a revoked registry id | ids are append-only | the id space is 255 for the life of a deployment (FORMATS §13 "Id budget") |

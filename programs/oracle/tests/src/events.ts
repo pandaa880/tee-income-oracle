@@ -8,7 +8,9 @@ import {
   type ReadonlyUint8Array,
   fixDecoderSize,
   getAddressDecoder,
+  getBooleanDecoder,
   getBytesDecoder,
+  getI64Decoder,
   getStructDecoder,
   getU8Decoder,
 } from '@solana/kit';
@@ -98,4 +100,28 @@ export function parseAdminProposedEvent(payload: Uint8Array): AdminProposedEvent
 
 export function parseAdminChangedEvent(payload: Uint8Array): AdminChangedEvent {
   return adminChangedDecoder.decode(eventBody('AdminChanged', payload, ADMIN_EVENT_LEN));
+}
+
+export type AttestationSubmittedEvent = {
+  subject: Address;
+  measurementId: number;
+  tier: number;
+  issuedAt: bigint;
+  refreshed: boolean;
+};
+
+const attestationSubmittedDecoder = getStructDecoder([
+  ['subject', getAddressDecoder()],
+  ['measurementId', getU8Decoder()],
+  ['tier', getU8Decoder()],
+  ['issuedAt', getI64Decoder()],
+  ['refreshed', getBooleanDecoder()],
+]);
+// Pubkey + u8 + u8 + i64 + bool.
+const ATTESTATION_SUBMITTED_LEN = 43;
+
+export function parseAttestationSubmittedEvent(payload: Uint8Array): AttestationSubmittedEvent {
+  return attestationSubmittedDecoder.decode(
+    eventBody('AttestationSubmitted', payload, ATTESTATION_SUBMITTED_LEN),
+  );
 }

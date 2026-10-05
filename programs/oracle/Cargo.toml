@@ -22,6 +22,9 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = "1.2.0"
+# Instruction introspection (secp256k1 precompile check); not re-exported by anchor-lang.
+solana-instructions-sysvar = "3.0.1"
+solana-sdk-ids = "3.1.0"
 
 
 [lints.rust]

@@ -36,6 +36,8 @@ import {
   getRegisterEnclaveInstruction,
   getRevokeEnclaveInstruction,
 } from '@tio/oracle-client';
+import { SAS_PROGRAM_ID, SAS_SO_PATH } from '@tio/ops/sas-schema';
+import { runSasSetup } from '@tio/ops/sas-setup';
 import { fileURLToPath } from 'node:url';
 
 export const ORACLE_SO_PATH = fileURLToPath(
@@ -63,7 +65,14 @@ export type Harness = {
   upgradeAuthority: KeyPairSigner;
   admin: KeyPairSigner;
   attacker: KeyPairSigner;
+  /** SAS credential and schema, present when started with `{ sas: true }`. */
+  sas?: { credential: Address; schema: Address };
   sendCount: number;
+};
+
+export type HarnessOptions = {
+  /** Deploy the SAS program and create the credential and schema for the oracle. */
+  sas?: boolean;
 };
 
 export async function programDataAddress(programId: Address): Promise<Address> {
@@ -96,9 +105,12 @@ export async function setUpgradeAuthority(
 }
 
 /** Fresh surfnet with the oracle deployed and `upgradeAuthority` as its upgrade authority. */
-export async function startHarness(): Promise<Harness> {
+export async function startHarness(options: HarnessOptions = {}): Promise<Harness> {
   const surfnet = Surfnet.start();
   surfnet.deploy({ programId: ORACLE_PROGRAM_ADDRESS, soPath: ORACLE_SO_PATH });
+  if (options.sas === true) {
+    surfnet.deploy({ programId: toAddress(SAS_PROGRAM_ID), soPath: SAS_SO_PATH });
+  }
   const harness: Harness = {
     surfnet,
     rpc: createSolanaRpc(surfnet.rpcUrl),
@@ -113,6 +125,19 @@ export async function startHarness(): Promise<Harness> {
     surfnet.fundSol(signer.address, 100 * LAMPORTS_PER_SOL);
   }
   await setUpgradeAuthority(harness, ORACLE_PROGRAM_ADDRESS, harness.upgradeAuthority.address);
+  if (options.sas === true) {
+    const { deployment } = await runSasSetup({
+      rpc: harness.rpc,
+      rpcSubscriptions: harness.rpcSubscriptions,
+      admin: harness.admin,
+      oracleProgramId: ORACLE_PROGRAM_ADDRESS,
+      cluster: 'localnet',
+    });
+    harness.sas = {
+      credential: toAddress(deployment.credential),
+      schema: toAddress(deployment.schema),
+    };
+  }
   return harness;
 }
 
@@ -125,18 +150,27 @@ function uniqueComputeLimit(harness: Harness): Instruction {
   return { programAddress: COMPUTE_BUDGET, data };
 }
 
-/** Sends and confirms; returns the signature. Rejects with the cluster's error on failure. */
+/**
+ * Sends and confirms; returns the signature. Rejects with the cluster's error on failure.
+ * A unique compute-budget instruction goes first (index 0) unless `bare` is set, in which
+ * case `instructions` are sent exactly as given.
+ */
 export async function send(
   harness: Harness,
   signer: KeyPairSigner,
   instructions: readonly Instruction[],
+  options: { bare?: boolean } = {},
 ): Promise<string> {
   const { value: blockhash } = await harness.rpc.getLatestBlockhash().send();
   const message = pipe(
     createTransactionMessage({ version: 0 }),
     (m) => setTransactionMessageFeePayerSigner(signer, m),
     (m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
-    (m) => appendTransactionMessageInstructions([uniqueComputeLimit(harness), ...instructions], m),
+    (m) =>
+      appendTransactionMessageInstructions(
+        options.bare === true ? instructions : [uniqueComputeLimit(harness), ...instructions],
+        m,
+      ),
   );
   const transaction = await signTransactionMessageWithSigners(message);
   assertIsTransactionWithBlockhashLifetime(transaction);
