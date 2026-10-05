@@ -89,7 +89,7 @@ keeps outbound calls out of the enclave: it *produces* signed requests and
 | FIU request key | RSA-2048 | Inside the enclave | Signing `FI/request`, which carries the session key material | Swap in its own DH key and read statements. **This is why it lives inside the enclave.** |
 | FIP / AA signing keys | RSA-2048 | Bank / AA (sandbox: demo keys, never committed) | Signing FI data, fetch responses, consent | Forge bank data. Public halves pinned in the image |
 | Oracle SAS signer | PDA `["sas_signer"]` | Derived; no private key | Only authorized signer on the SAS credential | Can't be stolen; only program logic uses it |
-| Admin | wallet (later multisig) | Operator | Register/revoke enclave builds | Register a fake enclave (G5) |
+| Admin | wallet for the demo; a multisig (e.g. Squads) beyond it. Replaceable by `propose_admin` + `accept_admin` | Operator | Register/revoke enclave builds | Register a fake enclave (G5). If lost: no revokes until a program upgrade |
 | Relayer | wallet | gateway | Paying fees | Spend its SOL; can't forge |
 | AWS Nitro root | ECDSA P-384 cert | AWS; pinned in the verifier | Root of the attestation chain | Everything: "trust AWS and the code" |
 
@@ -148,8 +148,8 @@ What a hostile gateway or host can do at each hop:
 | Replay of an enclave signature elsewhere | domain tag + program + credential + schema + wallet + expiry all signed | — |
 | Tricking the precompile check | instruction-index fields must point at the precompile itself | a classic Solana bug class; tested explicitly |
 | Bug in enclave code | small code, public source, zeroize, one session at a time | attestation proves *which* code ran, not that it's correct |
-| Admin reusing a revoked registry id | ids are append-only | — |
-| Admin key | public registry events; anyone can re-run the verifier | the MVP weak link (G5); later multisig, then ZK-verified attestation |
+| Admin reusing a revoked registry id | ids are append-only | the id space is 255 for the life of a deployment (FORMATS §13 "Id budget") |
+| Admin key | public registry events; anyone can re-run the verifier; a compromised key is replaceable (`propose_admin` + `accept_admin`) | the MVP weak link (G5); a multisig beyond the demo, then ZK-verified attestation |
 | AWS | none | accepted: "trust AWS and the code" |
 
 ## 6. Guarantees and limitations

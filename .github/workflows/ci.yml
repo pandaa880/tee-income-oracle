@@ -49,6 +49,50 @@ jobs:
       - run: pnpm --filter @tio/sandbox-bank gen:vectors
       - run: git diff --exit-code -- test-vectors/ && test -z "$(git status --porcelain -- test-vectors/)"
 
+  # Anchor programs: build the .so + IDL, check the generated TS client is
+  # current, then run the program tests on an embedded, offline surfpool.
+  programs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.local/share/solana
+            ~/.cache/solana
+            ~/.local/bin/anchor
+          key: solana-4.3.0-anchor-1.2.0
+      - name: Install Agave 4.3.0 and Anchor 1.2.0
+        run: |
+          if [ ! -x ~/.local/share/solana/install/active_release/bin/cargo-build-sbf ]; then
+            sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.0/install)"
+          fi
+          if [ ! -x ~/.local/bin/anchor ]; then
+            mkdir -p ~/.local/bin
+            curl -sSfL -o ~/.local/bin/anchor \
+              https://github.com/solana-foundation/anchor/releases/download/v1.2.0/anchor-1.2.0-x86_64-unknown-linux-gnu
+            # Pinned hash of the v1.2.0 release binary (checked 2026-10-04).
+            echo "0c9c41a3292c281cc6eadb78d6e1c8224d8324a34b0736a89d640fd314db05b7  $HOME/.local/bin/anchor" | sha256sum -c -
+            chmod +x ~/.local/bin/anchor
+          fi
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: anchor build -p oracle
+      - run: pnpm --filter @tio/oracle-client generate
+      - run: git diff --exit-code -- clients/ && test -z "$(git status --porcelain -- clients/)"
+      - run: pnpm --filter @tio/oracle-client typecheck
+      - run: pnpm --filter @tio/oracle-tests typecheck
+      - run: pnpm --filter @tio/oracle-tests lint
+      - run: pnpm --filter @tio/oracle-tests format:check
+      - run: pnpm --filter @tio/oracle-tests test
+
   golden-vectors:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,0 +1,27 @@
+{
+  "name": "@tio/oracle-client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/generated/index.ts"
+  },
+  "scripts": {
+    "generate": "node scripts/generate.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solana/kit": "7.1.1",
+    "@solana/program-client-core": "7.1.1"
+  },
+  "devDependencies": {
+    "@codama/nodes-from-anchor": "1.5.6",
+    "@codama/renderers-js": "2.3.1",
+    "@types/node": "24.19.0",
+    "codama": "1.11.0",
+    "typescript": "7.0.2"
+  }
+}

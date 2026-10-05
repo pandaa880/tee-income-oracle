@@ -44,7 +44,7 @@ same PR updates this file, both implementations and the regenerated vectors.
 | Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
 | `proof_type` values (§7) | `1 = tee_nitro_oyster`; `2 = tee_nitro_aws` reserved | append-only; never reuse or renumber |
 | Enclave build | platform measurement (Oyster image id, or AWS PCR0 hash) + on-chain `measurement_id` | every enclave change (automatic); the release notes list it. **`measurement_id`s are append-only: an id is never reused, even after revoke** |
-| Anchor programs | program id + IDL; every account starts with `version: u8` | an account layout change → migration path |
+| Anchor programs | program id + IDL; every account starts with `version: u8` (oracle accounts: §13) | an account layout change → migration path |
 | Test vectors (§11) | `manifest.json` generator version | a vector file-format change |
 
 ---
@@ -912,3 +912,64 @@ form above and **accept** these variants:
 | `amount` | JSON number; balances as strings | Accept number or string, parse to paise without floats |
 | Decrypted FI format | Finvu sample shows JSON | **OPEN:** some FIPs may send XML. MVP is JSON-only; XML → reject with `unsupported_fi_format` |
 
+
+---
+
+## 13. Oracle accounts (registry) — FROZEN
+
+Program `oracle`, id `HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8`. Borsh,
+little-endian, each account starts with Anchor's 8-byte discriminator. Account
+`version` is `1` (§0.1).
+
+**`Config`**, PDA `["config"]`, one per program:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | u8 | `1` |
+| `bump` | u8 | PDA bump |
+| `admin` | Pubkey | registers and revokes enclave builds; never the all-zero address |
+| `pending_admin` | Option\<Pubkey\> (1-byte tag + 32) | proposed next admin, `None` unless a change is in progress |
+| `next_measurement_id` | u8 | id the next registration gets. Only increases; `255` is never assigned (max 255 entries) |
+
+**`EnclaveEntry`**, PDA `["enclave", [measurement_id]]` (one byte):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | u8 | `1` |
+| `bump` | u8 | PDA bump |
+| `measurement_id` | u8 | equals the PDA seed; the payload's `measurement_id` (§7) |
+| `measurement_kind` | u8 | `1` = Oyster image id, `2` = AWS PCR0 hash. Same numbers as `proof_type` (§7) |
+| `measurement` | [u8; 32] | the platform measurement; never all zeros |
+| `attester` | [u8; 20] | Ethereum-style address of the enclave's secp256k1 key (what the precompile recovers); never all zeros |
+| `attestation_doc_hash` | [u8; 32] | SHA-256 of the attestation document checked off-chain; never all zeros |
+| `registered_at` | i64 | unix seconds, Solana clock |
+| `revoked_at` | i64 | `0` = active, else unix seconds of the revoke. The only "active" flag |
+
+**Instructions:**
+
+| Instruction | Signer | Effect | Errors |
+|---|---|---|---|
+| `initialize(admin)` | the program's upgrade authority | creates `Config` with `admin`, counter `0` | account already in use (system 0), `ProgramDataMismatch` (6007), `NotUpgradeAuthority` (6000), `ZeroAdmin` (6008) |
+| `register_enclave(kind, measurement, attester, attestation_doc_hash)` | `admin` | creates the entry at `next_measurement_id`, then increments it; event `EnclaveRegistered` | entry not the PDA of `next_measurement_id` (2006; e.g. two registrations built from the same counter, the second fails), `NotAdmin` (6001), `UnknownMeasurementKind` (6002), `ZeroMeasurement` (6003), `ZeroAttester` (6004), `ZeroAttestationDocHash` (6009), `RegistryFull` (6005) |
+| `revoke_enclave(measurement_id)` | `admin` | sets `revoked_at`; event `EnclaveRevoked`. One-way | account not initialized (3012), `NotAdmin` (6001), entry not the PDA of `measurement_id` (2006), `AlreadyRevoked` (6006) |
+| `propose_admin(new_admin)` | `admin` | sets `pending_admin` (replacing any earlier proposal); event `AdminProposed` | `NotAdmin` (6001), `ZeroAdmin` (6008) |
+| `accept_admin()` | the pending admin | `admin` = signer, `pending_admin` = `None`; event `AdminChanged` | `NotPendingAdmin` (6010; also when nothing is pending) |
+
+Errors are listed in check order. Anchor loads accounts and creates `init`
+accounts before it checks other constraints, so "already in use" and "not
+initialized" come first; a failed later check still aborts the whole
+transaction. An enclave restart gets a new attester key, so it is registered
+as a new entry and the old one is revoked.
+
+**Id budget.** Ids are never reused, so every registration (each enclave
+restart or image update) spends one of the 255 for the life of this
+deployment. Running out needs a migration: a new payload version with a
+wider `measurement_id` (§7, so a new SAS schema version), a new registry
+layout, and pools moving to the new schema. Fine for the hackathon; revisit
+before a long-running deployment.
+
+**Admin.** The two-step change lets a lost or compromised admin key be
+replaced without redeploying, as long as the current admin can still sign.
+Beyond the demo, `admin` should be a multisig (e.g. a Squads vault); if the
+admin key itself is lost, the only way out is a program upgrade, so keep the
+program upgradeable (and its upgrade authority safe) until then.
