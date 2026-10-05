@@ -6,6 +6,12 @@
   "engines": {
     "node": ">=24"
   },
+  "exports": {
+    "./attest": "./src/attest.ts",
+    "./attest-fixture": "./src/attest-fixture.ts",
+    "./events": "./src/events.ts",
+    "./harness": "./src/harness.ts"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../../../.oxlintrc.json --type-aware --deny-warnings src",

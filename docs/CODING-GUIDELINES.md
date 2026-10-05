@@ -126,6 +126,12 @@ scope. See `AGENTS.md` for the full wording.
   size and discriminator before deserializing. A field that a check could use
   but deliberately doesn't (e.g. the stored SAS `signer`) is named in
   `docs/FORMATS.md` with the reason.
+- A `seeds` constraint on an `Account<T>` that this program only ever
+  creates at that PDA repeats the owner + discriminator check. Keep it only
+  with a comment that says so: no test can show it is there.
+- A program that takes a caller-chosen mint decides what the mint's
+  `freeze_authority` (and, for Token-2022, each extension) means for it, and
+  `docs/FORMATS.md` records the decision.
 - Precompile introspection: the signature, address and message
   instruction-index fields in the secp256k1 offsets must all point at the
   precompile instruction itself. Otherwise an attacker can make the precompile
@@ -133,6 +139,10 @@ scope. See `AGENTS.md` for the full wording.
 
 ### Tooling
 - `cargo fmt` and `cargo clippy --all-targets -- -D warnings` must pass.
+  Read clippy's exit code, not filtered output.
+- A check that must fail closed on `None` is written
+  `x.is_none_or(|v| bad(v))`. Clippy rejects `!x.is_some_and(..)`
+  (`nonminimal_bool`).
 - `Cargo.lock` committed. Pin versions; no `*` or git dependencies without a
   pinned rev.
 - Keep dependencies minimal in the enclave — every crate is inside the trust
@@ -264,6 +274,13 @@ Stdlib only unless a dependency is agreed.
   a test where the address already holds lamports, once below rent and once
   at or above it. Anyone can send lamports to an address before it exists,
   and the two balances take different code paths.
+- **Each `has_one` and token constraint gets a negative test in every
+  instruction that declares it.** Another program (SPL Token) often rejects
+  the same input with a different code, which keeps the tests green after
+  the constraint is deleted.
+- **Shared test constants are exported once.** Framework error codes and
+  account offsets live in one module and are imported, not redeclared per
+  test file.
 - **Mutation restores use plain `cp`** (not `cp -p`). Keeping the old
   timestamp makes cargo reuse the mutated build, so the next mutant is
   tested against the wrong binary.

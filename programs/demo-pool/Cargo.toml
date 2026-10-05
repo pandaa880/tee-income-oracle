@@ -14,7 +14,7 @@ default = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-log-ix-name = []
-idl-build = ["anchor-lang/idl-build"]
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build", "oracle/idl-build"]
 anchor-debug = []
 custom-heap = []
 custom-panic = []
@@ -22,6 +22,13 @@ custom-panic = []
 
 [dependencies]
 anchor-lang = "1.2.0"
+# SPL Token accounts and CPI. The pool lends classic SPL Token mints only and
+# uses the `token` types; `token_2022` is on because Anchor's `init` for a
+# token account calls `token_interface::initialize_account3`.
+anchor-spl = { version = "1.2.0", default-features = false, features = ["token", "token_2022"] }
+# `EnclaveEntry` and the SAS / payload layouts (FORMATS §7, §13), as a library:
+# `cpi` turns off the oracle's entrypoint.
+oracle = { path = "../oracle", features = ["cpi"] }
 
 
 [lints.rust]

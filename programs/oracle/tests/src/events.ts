@@ -17,9 +17,9 @@ import {
 
 const IDL_PATH = new URL('../../../../target/idl/oracle.json', import.meta.url);
 
-/** The 8-byte discriminator of an event, read from the Anchor IDL. */
-function idlDiscriminator(name: string): readonly number[] {
-  const idl: unknown = JSON.parse(readFileSync(IDL_PATH, 'utf8'));
+/** The 8-byte discriminator of an event, read from the Anchor IDL at `idlPath`. */
+function idlDiscriminator(idlPath: URL, name: string): readonly number[] {
+  const idl: unknown = JSON.parse(readFileSync(idlPath, 'utf8'));
   const events: unknown =
     typeof idl === 'object' && idl !== null && 'events' in idl ? idl.events : [];
   for (const event of Array.isArray(events) ? (events as unknown[]) : []) {
@@ -53,9 +53,17 @@ const enclaveRegisteredDecoder = getStructDecoder([
 
 const enclaveRevokedDecoder = getStructDecoder([['measurementId', getU8Decoder()]]);
 
-/** Strip and check the 8-byte event discriminator; throws if it is another event. */
-function eventBody(name: string, payload: Uint8Array, bodyLength: number): Uint8Array {
-  const expected = idlDiscriminator(name);
+/**
+ * Strip and check the 8-byte discriminator of event `name` of the program
+ * whose IDL is at `idlPath`; throws if it is another event.
+ */
+export function eventBodyOf(
+  idlPath: URL,
+  name: string,
+  payload: Uint8Array,
+  bodyLength: number,
+): Uint8Array {
+  const expected = idlDiscriminator(idlPath, name);
   if (payload.length !== 8 + bodyLength) {
     throw new Error(`${name} payload is ${payload.length} bytes, expected ${8 + bodyLength}`);
   }
@@ -64,6 +72,10 @@ function eventBody(name: string, payload: Uint8Array, bodyLength: number): Uint8
     throw new Error(`payload is not a ${name} event`);
   }
   return payload.subarray(8);
+}
+
+function eventBody(name: string, payload: Uint8Array, bodyLength: number): Uint8Array {
+  return eventBodyOf(IDL_PATH, name, payload, bodyLength);
 }
 
 // Body sizes: u8 + u8 + 32 + 20 + 32, and u8.

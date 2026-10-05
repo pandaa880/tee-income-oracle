@@ -7,7 +7,7 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
 
-use crate::attest::PAYLOAD_LEN;
+use crate::attest::{parse_payload, ISSUED_AT_OFFSET, PAYLOAD_LEN};
 use crate::error::OracleError;
 
 pub const SAS_PROGRAM_ID: Pubkey = pubkey!("22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG");
@@ -28,8 +28,50 @@ pub const ATTESTATION_DISCRIMINATOR: u8 = 2;
 pub const ATTESTATION_ACCOUNT_LEN: usize = 256;
 /// Where the payload starts inside the account.
 pub const ATTESTATION_DATA_OFFSET: usize = 1 + 32 + 32 + 32 + 4;
-/// `issued_at` (i64 LE) is at payload offset 67 (FORMATS §7).
-pub const STORED_ISSUED_AT_OFFSET: usize = ATTESTATION_DATA_OFFSET + 67;
+/// Where the payload's `issued_at` (i64 LE) sits inside the account.
+pub const STORED_ISSUED_AT_OFFSET: usize = ATTESTATION_DATA_OFFSET + ISSUED_AT_OFFSET;
+
+/// The credential signer that wrote the attestation follows the payload.
+pub const ATTESTATION_SIGNER_OFFSET: usize = ATTESTATION_DATA_OFFSET + PAYLOAD_LEN;
+/// SAS `expiry` (i64 LE) follows the signer.
+pub const ATTESTATION_EXPIRY_OFFSET: usize = ATTESTATION_SIGNER_OFFSET + 32;
+// payload ‖ signer ‖ expiry ‖ token account fill the account exactly.
+const _: () = assert!(ATTESTATION_EXPIRY_OFFSET + 8 + 32 == ATTESTATION_ACCOUNT_LEN);
+
+/// What a reader needs from one of our stored attestations (FORMATS §7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoredAttestation<'a> {
+    pub payload: &'a [u8; PAYLOAD_LEN],
+    /// The credential signer SAS recorded. Ours is always the oracle's
+    /// `sas_signer` PDA; a reader that lends on the result must check it.
+    pub signer: Pubkey,
+    /// Unix seconds; SAS treats 0 as "never expires".
+    pub expiry: i64,
+}
+
+/// Splits `data` into the fields of one of our attestations, or `None` if
+/// the account isn't one: SAS must own it, and it must have our size and
+/// SAS's attestation discriminator.
+pub fn parse_attestation<'a>(owner: &Pubkey, data: &'a [u8]) -> Option<StoredAttestation<'a>> {
+    // Anyone can send lamports to an attestation address, and only SAS can
+    // give it data. Owner, size and discriminator together say SAS wrote it
+    // as one of our attestations.
+    let is_ours = *owner == SAS_PROGRAM_ID
+        && data.len() == ATTESTATION_ACCOUNT_LEN
+        && data.first() == Some(&ATTESTATION_DISCRIMINATOR);
+    if !is_ours {
+        return None;
+    }
+    let fields = data.get(ATTESTATION_DATA_OFFSET..)?;
+    let (payload, fields) = fields.split_first_chunk::<PAYLOAD_LEN>()?;
+    let (signer, fields) = fields.split_first_chunk::<32>()?;
+    let (expiry, _token_account) = fields.split_first_chunk::<8>()?;
+    Some(StoredAttestation {
+        payload,
+        signer: Pubkey::new_from_array(*signer),
+        expiry: i64::from_le_bytes(*expiry),
+    })
+}
 
 /// SAS address of the attestation for (`credential`, `schema`, `nonce`).
 pub fn attestation_address(credential: &Pubkey, schema: &Pubkey, nonce: &Pubkey) -> Pubkey {
@@ -46,21 +88,10 @@ pub fn attestation_address(credential: &Pubkey, schema: &Pubkey, nonce: &Pubkey)
 }
 
 /// `issued_at` of an existing attestation account, after checking it really
-/// is a SAS attestation of our size.
+/// is one of our SAS attestations.
 pub fn stored_issued_at(owner: &Pubkey, data: &[u8]) -> Result<i64> {
-    // The address is already checked to be the SAS PDA, but anyone can send
-    // lamports to it, and only SAS can give it data. Owner, size and
-    // discriminator together say SAS wrote it as one of our attestations.
-    let is_ours = *owner == SAS_PROGRAM_ID
-        && data.len() == ATTESTATION_ACCOUNT_LEN
-        && data.first() == Some(&ATTESTATION_DISCRIMINATOR);
-    let issued_at = data
-        .get(STORED_ISSUED_AT_OFFSET..STORED_ISSUED_AT_OFFSET + 8)
-        .and_then(|bytes| <[u8; 8]>::try_from(bytes).ok());
-    match (is_ours, issued_at) {
-        (true, Some(bytes)) => Ok(i64::from_le_bytes(bytes)),
-        _ => err!(OracleError::InvalidExistingAttestation),
-    }
+    let stored = parse_attestation(owner, data).ok_or(OracleError::InvalidExistingAttestation)?;
+    Ok(parse_payload(stored.payload).issued_at)
 }
 
 /// Accounts both SAS instructions take, in the roles SAS names them.

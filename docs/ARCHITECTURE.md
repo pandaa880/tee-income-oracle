@@ -133,7 +133,7 @@ What a hostile gateway or host can do at each hop:
 | Fetch | AES-GCM ciphertext, signed envelopes | store it | decrypt it, or alter it (GCM tag + signatures) |
 | Evaluate | raw bytes in, signed payload out | replay old bytes | get them accepted (one-time session nonce) |
 | Submit | Solana transaction | censor it | change the tier (signature breaks) |
-| Borrow | — | — | use another wallet's attestation (PDA nonce = borrower) |
+| Borrow | — | — | use another wallet's attestation (the pool derives the address from the signing borrower), one the oracle's signer didn't write, an expired or stale one, or one from an enclave build the pool hasn't approved or the registry revoked (FORMATS §14) |
 
 ## 5. Threat model
 
@@ -142,7 +142,9 @@ What a hostile gateway or host can do at each hop:
 | Hostile gateway/host reading data | keys born inside (G2); ciphertext only | metadata: timing, sizes, and which wallet ran which session |
 | Hostile gateway/host forging data or tiers | pinned keys, verify before parse (G1); session binding: response `txnid` and consent `consentId` must be the enclave's own (FORMATS §10.1); attested signer (G4/G5) | censorship, delay |
 | Host lying about "today" | window = the statement's own dates, inside the enclave's requested range, inside the signed consent; refused if too short or stale (request and statement) or the request ends after `now`; `issued_at` checked against the Solana clock (≤ 300 s ahead), and the signature usable for at most 600 s after it (FORMATS §8) | ± 5 min skew window (`MAX_SKEW_SECS`) |
-| Borrower reusing another wallet's tier | SAS nonce = wallet; pool requires `borrower == nonce` | collusion (same as sybil) |
+| Borrower reusing another wallet's tier | SAS nonce = wallet; the pool derives the attestation address from the signing borrower | collusion (same as sybil) |
+| Attestation not written by the oracle (a foreign credential, or a signer added to ours) | pool pins credential + schema through the address and requires the stored SAS signer to be the oracle's PDA | — |
+| Borrower reusing an old result | SAS expiry (30 days) and the pool's own limits on attestation age, statement age and statement length | anything inside those limits |
 | Borrower using a fresh wallet | none in the MVP | **sybil gap**: documented, never claimed solved |
 | Lender changing rules silently | `policy_hash` in the payload; pool pins it | — |
 | Replay of an enclave signature elsewhere | domain tag + program + credential + schema + wallet + expiry all signed | — |

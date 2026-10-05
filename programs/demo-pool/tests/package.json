@@ -1,0 +1,30 @@
+{
+  "name": "@tio/demo-pool-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c ../../../.oxlintrc.json --type-aware --deny-warnings src",
+    "format": "oxfmt -c ../../../.oxfmtrc.json src",
+    "format:check": "oxfmt -c ../../../.oxfmtrc.json --check src",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@solana-program/token": "0.15.0",
+    "@solana/kit": "7.1.1",
+    "@solana/surfpool": "1.6.0",
+    "@tio/demo-pool-client": "workspace:*",
+    "@tio/oracle-client": "workspace:*",
+    "@tio/oracle-tests": "workspace:*",
+    "@types/node": "24.19.0",
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}

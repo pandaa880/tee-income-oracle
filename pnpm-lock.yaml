@@ -166,6 +166,31 @@ importers:
 
   .: {}
 
+  clients/ts/demo-pool:
+    dependencies:
+      '@solana/kit':
+        specifier: 7.1.1
+        version: 7.1.1(typescript@7.0.2)
+      '@solana/program-client-core':
+        specifier: 7.1.1
+        version: 7.1.1(typescript@7.0.2)
+    devDependencies:
+      '@codama/nodes-from-anchor':
+        specifier: 1.5.6
+        version: 1.5.6(typescript@7.0.2)
+      '@codama/renderers-js':
+        specifier: 2.3.1
+        version: 2.3.1(typescript@7.0.2)
+      '@types/node':
+        specifier: 24.19.0
+        version: 24.19.0
+      codama:
+        specifier: 1.11.0
+        version: 1.11.0
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   clients/ts/oracle:
     dependencies:
       '@solana/kit':
@@ -206,6 +231,45 @@ importers:
       '@solana/surfpool':
         specifier: 1.6.0
         version: 1.6.0(@solana/kit@7.1.1(typescript@7.0.2))
+      '@types/node':
+        specifier: 24.19.0
+        version: 24.19.0
+      oxfmt:
+        specifier: 0.70.0
+        version: 0.70.0
+      oxlint:
+        specifier: 1.85.0
+        version: 1.85.0(oxlint-tsgolint@7.0.2003)
+      oxlint-tsgolint:
+        specifier: 7.0.2003
+        version: 7.0.2003
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@24.19.0)(vite@8.3.1(@types/node@24.19.0))
+
+  programs/demo-pool/tests:
+    devDependencies:
+      '@solana-program/token':
+        specifier: 0.15.0
+        version: 0.15.0(@solana/kit@7.1.1(typescript@7.0.2))
+      '@solana/kit':
+        specifier: 7.1.1
+        version: 7.1.1(typescript@7.0.2)
+      '@solana/surfpool':
+        specifier: 1.6.0
+        version: 1.6.0(@solana/kit@7.1.1(typescript@7.0.2))
+      '@tio/demo-pool-client':
+        specifier: workspace:*
+        version: link:../../../clients/ts/demo-pool
+      '@tio/oracle-client':
+        specifier: workspace:*
+        version: link:../../../clients/ts/oracle
+      '@tio/oracle-tests':
+        specifier: workspace:*
+        version: link:../../oracle/tests
       '@types/node':
         specifier: 24.19.0
         version: 24.19.0
@@ -716,6 +780,17 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@solana-program/system@0.13.0':
+    resolution: {integrity: sha512-Id6QQxCG7ByImXPD5X/c3Ag2kySD+49aJ9waIkfxyUFyokhMQgxYQAx2rKuaygaBlaBQY6VVfBS46pqxZV+99A==}
+    peerDependencies:
+      '@solana/kit': ^7.0.0
+
+  '@solana-program/token@0.15.0':
+    resolution: {integrity: sha512-SeLm08EYIfT453I6lo7wTGgfMbz1s7bJ1jSHFHBFebSJHD3xF46zRgMxq3YKRlr/RM8jN0cG8SjZVu+IDvMxEA==}
+    engines: {node: '>=24.0.0'}
+    peerDependencies:
+      '@solana/kit': ^7.0.0
 
   '@solana/accounts@7.1.1':
     resolution: {integrity: sha512-7sy9VIFMdmu/7+2kVBRMU6mEvYx/DDjfam8DsBXbh+JszaTNZH3V8FutQYHRxrca3jxiumVfsy5USwKfVg8ElQ==}
@@ -2060,6 +2135,15 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.1': {}
+
+  '@solana-program/system@0.13.0(@solana/kit@7.1.1(typescript@7.0.2))':
+    dependencies:
+      '@solana/kit': 7.1.1(typescript@7.0.2)
+
+  '@solana-program/token@0.15.0(@solana/kit@7.1.1(typescript@7.0.2))':
+    dependencies:
+      '@solana-program/system': 0.13.0(@solana/kit@7.1.1(typescript@7.0.2))
+      '@solana/kit': 7.1.1(typescript@7.0.2)
 
   '@solana/accounts@7.1.1(typescript@7.0.2)':
     dependencies:

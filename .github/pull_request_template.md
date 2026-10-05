@@ -28,8 +28,8 @@
 <!-- Gates run and their results (AGENTS.md → Commands), plus any manual or
      cross-implementation checks. -->
 
-- [ ] Rust: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test -p tio-core`
-- [ ] TS: `pnpm --filter <package> typecheck`, `lint`, `format:check`, `test` for each package touched (`@tio/sandbox-bank`, `@tio/ops`, `@tio/oracle-tests`; `@tio/oracle-client` is generated: rerun `generate`, no diff)
+- [ ] Rust: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test -p tio-core -p oracle -p demo-pool`
+- [ ] TS: `pnpm --filter <package> typecheck`, `lint`, `format:check`, `test` for each package touched (`@tio/sandbox-bank`, `@tio/ops`, `@tio/oracle-tests`, `@tio/demo-pool-tests`; `@tio/oracle-client` and `@tio/demo-pool-client` are generated: rerun `generate`, no diff)
 - [ ] Vectors: `pnpm gen:vectors` leaves `git diff test-vectors/` empty (or the format change is intended)
 - [ ] Code review done; blocking findings fixed
 
