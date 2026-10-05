@@ -77,6 +77,7 @@ programs/oracle/     Anchor. Enclave registry, verifies the enclave's secp256k1
                      signature (precompile), writes the SAS attestation.
 clients/ts/oracle/   TypeScript client for the oracle, generated from its IDL (Codama).
 programs/demo-pool/  Anchor. Reads and checks the SAS attestation, lends testnet tokens.
+clients/ts/demo-pool/  TypeScript client for the demo pool, generated the same way.
 tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
 enclave/             Rust HTTP wrapper around tio-core. Runs in the Oyster CVM.
 gateway/             Node/TS, untrusted. Orchestrates sessions, relays signed bytes,
@@ -105,7 +106,7 @@ Two build worlds:
 - **Rust/Anchor**: a Cargo workspace (`programs/*`, `tio-core`). See the root `Cargo.toml`.
 - **Node/TS**: a pnpm workspace (`clients/ts/*`, `gateway/`, `ops/`, `programs/*/tests`,
   `sandbox-bank/`, `verifier/`, `web/`). Solana client code uses `@solana/kit` 7 and
-  `sas-lib` 2.0.0-beta.1; the oracle client is generated with Codama; local chain tests run
+  `sas-lib` 2.0.0-beta.1; the program clients are generated with Codama; local chain tests run
   on embedded [surfpool](https://solana.com/docs/tools/surfpool) (`@solana/surfpool`).
 
 `enclave/` is not in the Cargo workspace. It builds as a Docker image, pinned
@@ -124,8 +125,13 @@ its enclave registry (register and revoke attested enclave builds, ids never
 reused, two-step admin change) and accepts enclave results: it checks the
 enclave's secp256k1 signature through the precompile, the registry entry and
 the Solana clock, then writes the SAS attestation (refresh replaces only an
-older one). Both are tested on an embedded surfpool, the SAS writes against
-the deployed SAS binary. Next: the demo pool, enclave, gateway and web.
+older one). The `demo-pool` program lends test tokens on that attestation,
+read inside its own instruction: it checks that the oracle's signer wrote
+it, that it is fresh, and that the enclave build behind it is approved by
+the pool and not revoked, then lends up to the tier's limit (one open loan
+per borrower; `repay` closes it). All of them are tested on an embedded
+surfpool, the SAS writes against the deployed SAS binary. Next: the enclave,
+gateway and web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

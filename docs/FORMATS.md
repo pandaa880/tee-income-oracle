@@ -44,7 +44,7 @@ same PR updates this file, both implementations and the regenerated vectors.
 | Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
 | `proof_type` values (§7) | `1 = tee_nitro_oyster`; `2 = tee_nitro_aws` reserved | append-only; never reuse or renumber |
 | Enclave build | platform measurement (Oyster image id, or AWS PCR0 hash) + on-chain `measurement_id` | every enclave change (automatic); the release notes list it. **`measurement_id`s are append-only: an id is never reused, even after revoke** |
-| Anchor programs | program id + IDL; every account starts with `version: u8` (oracle accounts: §13) | an account layout change → migration path |
+| Anchor programs | program id + IDL; every account starts with `version: u8` (oracle accounts: §13, demo pool: §14) | an account layout change → migration path |
 | Test vectors (§11) | `manifest.json` generator version | a vector file-format change |
 
 ---
@@ -701,7 +701,9 @@ SAS 2.0). Tested on surfpool against that binary.
   reads an existing account only after checking owner = SAS, length 256 and
   discriminator 2. It doesn't re-check the stored `signer`: the admin sets
   the credential's signers, and an admin who added another signer could
-  write attestations directly anyway.
+  write attestations directly anyway. A program that lends on an
+  attestation is different: it must check the stored `signer` (byte 184;
+  `expiry` is at byte 216), as the demo pool does (§14).
 - Anyone can send lamports to an attestation address before it exists. SAS
   creates over them (tops up below rent), so this can't block a wallet.
 
@@ -1080,3 +1082,145 @@ replaced without redeploying, as long as the current admin can still sign.
 Beyond the demo, `admin` should be a multisig (e.g. a Squads vault); if the
 admin key itself is lost, the only way out is a program upgrade, so keep the
 program upgradeable (and its upgrade authority safe) until then.
+
+---
+
+## 14. Demo pool accounts — FROZEN
+
+Program `demo_pool`, id `DvDkXcQFJAvCvrMfoujKu2BWfWqVYRmL8WW9hpMgW8KC`. Borsh,
+little-endian, each account starts with Anchor's 8-byte discriminator. Account
+`version` is `1` (§0.1). A minimal lender that shows how a program reads the
+§7 attestation inside its own instruction (no CPI). It lends classic SPL
+Token mints only.
+
+**`Pool`**, PDA `["pool", admin, [pool_id]]`, 240 bytes. One per lender and
+`pool_id`; the admin is a seed, so nobody can take another lender's address:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | u8 | `1` |
+| `bump` | u8 | PDA bump |
+| `vault_bump` | u8 | bump of the vault PDA |
+| `pool_id` | u8 | seed; lets one admin run several pools |
+| `admin` | Pubkey | the creator; the only key that may `update_pool` |
+| `mint` | Pubkey | the lent token; never changes |
+| `credential`, `schema` | Pubkey ×2 | SAS accounts whose attestations the pool accepts (§0.1: a pool pins the schema version it reads); never change |
+| `params.policy_hash` | [u8; 32] | scoring policy the pool requires (§6) |
+| `params.tier_limits` | [u64; 3] | largest principal for tier A, B, C in the mint's base units; `0` = the pool doesn't lend to that tier. `A > 0` and `A ≥ B ≥ C` |
+| `params.max_age_secs` | u32 | oldest attestation: `now − issued_at` |
+| `params.max_window_age_secs` | u32 | oldest statement: `issued_at − window_to` |
+| `params.min_window_secs` | u32 | shortest statement: `window_to − window_from` |
+| `params.approved_measurements` | [u8; 32] | enclave builds the pool trusts: bit `id` set = registry entry `id` approved (byte `id / 8`, bit `id % 8` from the least significant) |
+
+`params` (`PoolParams`, 100 bytes) is everything `update_pool` replaces.
+
+**`Loan`**, PDA `["loan", pool, borrower]`, 131 bytes. Exists while the loan is
+open, so a borrower has at most one per pool:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | u8 | `1` |
+| `bump` | u8 | PDA bump |
+| `tier` | u8 | tier of the attestation used (1 = A, 2 = B, 3 = C) |
+| `pool`, `borrower` | Pubkey ×2 | the seeds |
+| `rent_payer` | Pubkey | who paid this account's rent; `repay` refunds it there |
+| `amount` | u64 | principal, base units |
+| `borrowed_at` | i64 | unix seconds, Solana clock |
+| `attestation_issued_at` | i64 | `issued_at` of the attestation used |
+
+**Vault**: an SPL token account at PDA `["vault", pool]`, mint = `pool.mint`,
+authority = the `Pool` PDA, so only `borrow` can move tokens out. It is
+funded with a plain token transfer; there is no deposit or withdraw
+instruction.
+
+**Instructions:**
+
+| Instruction | Signers | Effect | Errors |
+|---|---|---|---|
+| `create_pool(pool_id, credential, schema, params)` | `admin` (pays) | creates `Pool` and the vault; event `PoolCreated` | account already in use (system 0), pool or vault not the PDA (2006), `InvalidTierLimits` (6001) |
+| `update_pool(params)` | `admin` | replaces `params`; event `PoolUpdated` | pool not initialized (3012), `NotAdmin` (6000), `InvalidTierLimits` (6001) |
+| `borrow(amount)` | `payer`, `borrower` | checks below, then sends `amount` from the vault to the borrower's token account and creates `Loan`; event `Borrowed` | see below |
+| `repay()` | `borrower` | sends `loan.amount` from the borrower's token account to the vault and closes `Loan` to `rent_payer`; event `Repaid` | loan not initialized (3012; no open loan), `mint` not the pool's (2001), vault or loan not the PDA (2006), token account of another mint / owner (2014 / 2015), `rent_payer` not the stored one (2001), SPL Token insufficient funds (`1`) |
+
+`credential` and `schema` are not checked to be SAS accounts at `create_pool`:
+`borrow` derives the attestation address from them and only SAS can own that
+address, so a wrong value gives a pool that never lends.
+
+**`borrow`.** Accounts: `payer` (signer, w; pays the `Loan` rent, may be a
+relayer), `borrower` (signer), `pool`, `mint`, `vault` (w), `borrower_token`
+(w; any token account of `mint` owned by `borrower`, created by the client),
+`loan` (w, created here), `attestation` (the SAS PDA
+`["attestation", pool.credential, pool.schema, borrower]`, §7),
+`enclave_entry` (the oracle's `EnclaveEntry` for the payload's
+`measurement_id`, §13), `token_program`, `system_program`.
+
+The borrower must sign and the attestation address is derived from that
+key, so a wallet can only borrow on its own attestation.
+
+Check order:
+
+| # | Check | Error |
+|---|---|---|
+| — | Anchor: account not initialized / owned by another program / wrong type; `borrower` or `payer` not a signer; open loan (`loan` exists); `pool`, `vault`, `loan`, `attestation` not the PDA; `mint` not the pool's; token account of another mint / owner | 3012 / 3007 / 3002; 3010; system 0; 2006; 2001; 2014 / 2015 |
+| 1 | `amount > 0` | `ZeroAmount` (6002) |
+| 2 | attestation: owner = SAS, 256 bytes, discriminator 2 (also fails when there is no attestation) | `InvalidAttestation` (6003) |
+| 3 | stored `signer` = the oracle's PDA `["sas_signer"]` | `WrongAttestationSigner` (6004) |
+| 4 | `now < expiry`; an `expiry` of `0` is rejected | `AttestationExpired` (6005) |
+| 5 | tier ∈ {1, 2, 3} and its limit > 0 | `TierNotAccepted` (6006) |
+| 6 | `amount ≤` the tier's limit | `AmountOverTierLimit` (6007) |
+| 7 | payload `policy_hash` = `params.policy_hash` | `PolicyMismatch` (6008) |
+| 8 | `now − issued_at ≤ max_age_secs` | `AttestationTooOld` (6009) |
+| 9 | `issued_at − window_to ≤ max_window_age_secs` | `WindowTooOld` (6010) |
+| 10 | `window_to − window_from ≥ min_window_secs`; a window that ends before it starts fails | `WindowTooShort` (6011) |
+| 11 | bit `measurement_id` set in `approved_measurements` | `MeasurementNotApproved` (6012) |
+| 12 | `enclave_entry.measurement_id` = payload `measurement_id` | `EnclaveEntryMismatch` (6013) |
+| 13 | `enclave_entry.revoked_at == 0` | `EnclaveRevoked` (6014) |
+
+Then the token transfer (a vault short of funds fails in the SPL Token
+program with `1`) and the `Loan` account. An open loan is reported by the
+system program (`0`, "already in use") when Anchor creates `loan`.
+
+Why each group is there:
+- **2–3, the attestation is the oracle's.** SAS lets anyone create
+  attestations under their own credential, and a credential's authority can
+  add signers. Only the oracle's PDA signs after checking an enclave
+  signature (§13), so the pool pins the credential and schema through the
+  address and then requires that signer.
+- **4, 8–10, freshness.** SAS expiry is `issued_at + 30 days` (§7); the pool's
+  own limits can be tighter and also cover the statement window, which stops
+  a borrower from reusing an old result or one scored on an old or short
+  statement. Arithmetic that overflows fails the rule. An `issued_at` ahead
+  of the cluster clock (at most 300 s, §8) passes the age rule.
+- **7, the lender's rules.** A tier only means something under the policy
+  that produced it.
+- **11–13, the enclave build.** The pool approves builds itself (it doesn't
+  have to trust every future registration), and the registry can revoke one.
+  Revoking an entry stops lending on every attestation it produced;
+  borrowers attest again with the new build. Open loans are not affected.
+
+**Not checked, on purpose:**
+- Stored `nonce`, `credential`, `schema`: implied by the attestation address,
+  because SAS only creates an attestation at the PDA of those three values.
+- The stored data length: fixed by the 256-byte account size.
+- `proof_type`: the oracle checked it against the registry entry (§13).
+- `consent_hash`, `token_account`: not used by a lender.
+- The SAS schema's "paused" flag: it stops new attestations, not reads.
+- The mint's `freeze_authority`: the pool accepts any classic SPL Token
+  mint. Whoever holds a freeze authority can freeze the vault or a
+  borrower's token account; `repay` then fails and that loan stays open. No
+  tokens can be taken. A lender picks a mint whose freeze authority it
+  trusts.
+
+**Limits of the demo.** Principal only: no interest, tenor, liquidation or
+withdrawal of vault funds. No admin change, pause or close.
+
+**Cost**, measured on surfpool: `borrow` 23,690 CU in a 526-byte transaction,
+`repay` 13,204 CU in 419 bytes (each with one compute-budget instruction).
+Both derive PDAs on chain, so the exact number varies with the addresses.
+
+**Token program.** The pool uses the classic SPL Token account types. Moving
+to Anchor's `token_interface` types (Token and Token-2022) later is a code
+change only: `Pool` and `Loan` store just the mint and the vault address,
+and existing vaults stay valid. Token-2022 mints need an explicit decision
+per extension first (transfer fee, transfer hook, permanent delegate,
+default frozen state).

@@ -21,7 +21,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: cargo test --locked -p tio-core
+      - run: cargo test --locked -p tio-core -p oracle -p demo-pool
 
   # TS test-vector generator (sandbox-bank). Regenerating must reproduce the
   # committed test-vectors/ byte for byte: vectors are generated, never
@@ -84,14 +84,20 @@ jobs:
           node-version-file: .nvmrc
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: anchor build -p oracle
+      - run: anchor build
       - run: pnpm --filter @tio/oracle-client generate
+      - run: pnpm --filter @tio/demo-pool-client generate
       - run: git diff --exit-code -- clients/ && test -z "$(git status --porcelain -- clients/)"
       - run: pnpm --filter @tio/oracle-client typecheck
+      - run: pnpm --filter @tio/demo-pool-client typecheck
       - run: pnpm --filter @tio/oracle-tests typecheck
       - run: pnpm --filter @tio/oracle-tests lint
       - run: pnpm --filter @tio/oracle-tests format:check
       - run: pnpm --filter @tio/oracle-tests test
+      - run: pnpm --filter @tio/demo-pool-tests typecheck
+      - run: pnpm --filter @tio/demo-pool-tests lint
+      - run: pnpm --filter @tio/demo-pool-tests format:check
+      - run: pnpm --filter @tio/demo-pool-tests test
 
   golden-vectors:
     runs-on: ubuntu-latest

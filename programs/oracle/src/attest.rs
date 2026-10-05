@@ -11,6 +11,12 @@ use crate::error::OracleError;
 pub const DOMAIN_TAG: &[u8; 13] = b"TIO-ATTEST-v1";
 /// Length of the §7 payload.
 pub const PAYLOAD_LEN: usize = 83;
+/// Offsets of the multi-byte payload fields (§7). `consent_hash` (35..67)
+/// sits between the policy hash and `issued_at`.
+pub const POLICY_HASH_OFFSET: usize = 3;
+pub const ISSUED_AT_OFFSET: usize = 67;
+pub const WINDOW_FROM_OFFSET: usize = 75;
+pub const WINDOW_TO_OFFSET: usize = 79;
 /// Length of the §8 signed message.
 pub const MESSAGE_LEN: usize = 232;
 
@@ -47,13 +53,18 @@ pub struct SignedMessage<'a> {
     pub expiry: i64,
 }
 
-/// The §7 payload fields the oracle checks. The rest is copied to SAS as is.
+/// The §7 payload fields a program checks: the oracle before it writes the
+/// payload to SAS, a lender when it reads it back. `consent_hash` is the
+/// only field left out; nothing on chain uses it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PayloadHeader {
     pub tier: u8,
     pub proof_type: u8,
     pub measurement_id: u8,
+    pub policy_hash: [u8; 32],
     pub issued_at: i64,
+    pub window_from: u32,
+    pub window_to: u32,
 }
 
 // The §8 field sizes add up to the message length, so `take` below never
@@ -124,20 +135,27 @@ pub fn parse_message(message: &[u8; MESSAGE_LEN]) -> Result<SignedMessage<'_>, O
     })
 }
 
-/// Reads tier, proof type, measurement id and `issued_at` from the payload.
+/// Reads every payload field a program checks (§7).
 pub fn parse_payload(payload: &[u8; PAYLOAD_LEN]) -> PayloadHeader {
-    // Irrefutable patterns on the fixed-size array: the payload starts with
-    // the three one-byte fields and ends with `issued_at` (8), `window_from`
-    // (4) and `window_to` (4), §7.
     let [tier, proof_type, measurement_id, ..] = *payload;
-    #[rustfmt::skip]
-    let [.., i0, i1, i2, i3, i4, i5, i6, i7, _, _, _, _, _, _, _, _] = *payload;
     PayloadHeader {
         tier,
         proof_type,
         measurement_id,
-        issued_at: i64::from_le_bytes([i0, i1, i2, i3, i4, i5, i6, i7]),
+        policy_hash: field::<POLICY_HASH_OFFSET, 32>(payload),
+        issued_at: i64::from_le_bytes(field::<ISSUED_AT_OFFSET, 8>(payload)),
+        window_from: u32::from_le_bytes(field::<WINDOW_FROM_OFFSET, 4>(payload)),
+        window_to: u32::from_le_bytes(field::<WINDOW_TO_OFFSET, 4>(payload)),
     }
+}
+
+/// The `N` payload bytes at `OFFSET`. The const assert turns a field that
+/// doesn't fit into a compile error, so the indexing can never panic. It is
+/// evaluated when the function is instantiated: `cargo build` and
+/// `cargo test` report it, `cargo check` doesn't.
+fn field<const OFFSET: usize, const N: usize>(payload: &[u8; PAYLOAD_LEN]) -> [u8; N] {
+    const { assert!(OFFSET + N <= PAYLOAD_LEN) };
+    core::array::from_fn(|i| payload[OFFSET + i])
 }
 
 /// Tier must be 1 (A), 2 (B) or 3 (C). SAS checks only the data length, so

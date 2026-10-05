@@ -54,6 +54,8 @@ programs/oracle/      Anchor. Enclave registry (image id → attester), verifies
                       tests/ = TS program tests (vitest on embedded surfpool).
 clients/ts/oracle/    Codama-generated kit client for the oracle (from the IDL; committed).
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
+                      tests/ = TS program tests (reuse the oracle test harness).
+clients/ts/demo-pool/ Codama-generated kit client for the demo pool (committed).
 tio-core/             Rust lib, no I/O. Key exchange, decryption, JWS, money and FI (DEPOSIT)
                       parsing, scoring policy and scoring, the evaluate pipeline and the
                       attestation payload. Everything trusted that isn't HTTP.
@@ -86,21 +88,21 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector generator; `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` is an empty skeleton; most other packages
+has the test-vector generator; `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
 hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
 |---|---|---|
 | Build (Rust) | `cargo build` | works (programs + `tio-core`) |
-| Build (programs) | `anchor build` | works (`oracle` registry + `submit_attestation`; `demo-pool` skeleton) |
-| Generate program client | `pnpm --filter @tio/oracle-client generate` after `anchor build` — must leave `git diff clients/` empty | works (CI regenerates and diffs) |
+| Build (programs) | `anchor build` | works (`oracle`, `demo-pool`) |
+| Generate program clients | `pnpm --filter @tio/oracle-client generate` and `pnpm --filter @tio/demo-pool-client generate` after `anchor build` — must leave `git diff clients/` empty | works (CI regenerates and diffs) |
 | Build (enclave) | `docker compose build` in `enclave/` | not yet |
-| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives); `cargo test -p oracle`: precompile/message layouts and clock rules |
+| Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives); `cargo test -p oracle`: precompile/message layouts, attestation readers and clock rules; `cargo test -p demo-pool`: the pool's lending rules (all three also in CI) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
-| Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; also in CI) |
-| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary, `oracle-tests` after `anchor build`; also in CI) |
+| Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests --filter @tio/demo-pool-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; `demo-pool` against the real oracle, SAS and SPL Token; also in CI) |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary, `oracle-tests` and `demo-pool-tests` after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops or @tio/oracle-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
 | SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet; not yet run on devnet |
 | Run | — | nothing runnable yet |
@@ -154,6 +156,17 @@ Add a line whenever an agent makes the same mistake twice.
   reuses the mutated build (CODING-GUIDELINES §5).
 - `surfnet_timeTravel`'s `absoluteTimestamp` is in **milliseconds** and
   only moves forward; the surfnet clock stands still between transactions.
+- Read clippy's exit code before calling it clean; piping it through a
+  filter once hid three errors. It runs on the pinned 1.89 toolchain, the
+  same as CI.
+- Program tests share one surfnet clock per file, and every `freshClock`
+  (so every helper that issues an attestation) moves it 10 000 s forward.
+  An attestation prepared first is that much older when it is used:
+  prepare the one that must still be fresh last, or give the pool a long
+  `max_age_secs`.
+- `anchor-spl` needs the `token_2022` feature even for classic Token
+  accounts: Anchor's `init` for a token account calls
+  `token_interface::initialize_account3`.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent
   settings don't reach other contributors. Shared guidance goes here.
 

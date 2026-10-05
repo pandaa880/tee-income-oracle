@@ -39,13 +39,13 @@ export const MAX_SIGNATURE_LIFETIME_SECS = 600n;
 export const ATTESTATION_TTL_SECS = 30n * 86_400n;
 
 // Byte offsets inside the SAS attestation account (256 bytes).
-const SAS_NONCE_OFFSET = 1;
-const SAS_CREDENTIAL_OFFSET = 33;
-const SAS_SCHEMA_OFFSET = 65;
-const SAS_DATA_LEN_OFFSET = 97;
-const SAS_DATA_OFFSET = 101;
-const SAS_SIGNER_OFFSET = 184;
-const SAS_EXPIRY_OFFSET = 216;
+export const SAS_NONCE_OFFSET = 1;
+export const SAS_CREDENTIAL_OFFSET = 33;
+export const SAS_SCHEMA_OFFSET = 65;
+export const SAS_DATA_LEN_OFFSET = 97;
+export const SAS_DATA_OFFSET = 101;
+export const SAS_SIGNER_OFFSET = 184;
+export const SAS_EXPIRY_OFFSET = 216;
 
 // --- keys -------------------------------------------------------------
 

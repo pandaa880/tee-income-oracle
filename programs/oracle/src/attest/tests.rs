@@ -4,8 +4,8 @@ use anchor_lang::error::Error as AnchorError;
 
 use super::*;
 use crate::sas::{
-    stored_issued_at, ATTESTATION_ACCOUNT_LEN, ATTESTATION_DISCRIMINATOR, SAS_PROGRAM_ID,
-    STORED_ISSUED_AT_OFFSET,
+    parse_attestation, stored_issued_at, ATTESTATION_ACCOUNT_LEN, ATTESTATION_DISCRIMINATOR,
+    ATTESTATION_EXPIRY_OFFSET, ATTESTATION_SIGNER_OFFSET, SAS_PROGRAM_ID, STORED_ISSUED_AT_OFFSET,
 };
 
 const INDEX: u8 = 3;
@@ -543,4 +543,169 @@ fn stored_issued_at_rejects_discriminator_1() {
         &SAS_PROGRAM_ID,
         &data
     )));
+}
+
+// --- parse_payload: policy hash and statement window ---
+
+/// Every region gets its own recognisable bytes so a swapped offset shows.
+fn full_payload() -> [u8; PAYLOAD_LEN] {
+    let mut p = [0u8; PAYLOAD_LEN];
+    p[0] = 2; // tier
+    p[1] = 1; // proof type
+    p[2] = 9; // measurement id
+    p[3..35].fill(0xA1); // policy hash
+    p[35..67].fill(0xC2); // consent hash
+    p[67..75].copy_from_slice(&0x1122_3344_5566_7788i64.to_le_bytes());
+    p[75..79].copy_from_slice(&0x0A0B_0C0Du32.to_le_bytes());
+    p[79..83].copy_from_slice(&0x0E0F_1011u32.to_le_bytes());
+    p
+}
+
+#[test]
+fn parse_payload_reads_policy_hash_from_bytes_3_to_35() {
+    let mut p = full_payload();
+    for (byte, value) in p[3..35].iter_mut().zip(1u8..) {
+        *byte = value;
+    }
+    let expected: [u8; 32] = core::array::from_fn(|i| u8::try_from(i + 1).expect("fits"));
+    assert_eq!(parse_payload(&p).policy_hash, expected);
+}
+
+#[test]
+fn parse_payload_reads_window_from_little_endian_at_offset_75() {
+    assert_eq!(parse_payload(&full_payload()).window_from, 0x0A0B_0C0D);
+}
+
+#[test]
+fn parse_payload_reads_window_to_little_endian_at_offset_79() {
+    assert_eq!(parse_payload(&full_payload()).window_to, 0x0E0F_1011);
+}
+
+#[test]
+fn parse_payload_reads_every_field_of_a_full_payload() {
+    assert_eq!(
+        parse_payload(&full_payload()),
+        PayloadHeader {
+            tier: 2,
+            proof_type: 1,
+            measurement_id: 9,
+            policy_hash: [0xA1; 32],
+            issued_at: 0x1122_3344_5566_7788,
+            window_from: 0x0A0B_0C0D,
+            window_to: 0x0E0F_1011,
+        }
+    );
+}
+
+#[test]
+fn parse_payload_does_not_leak_consent_hash_into_any_field() {
+    let mut p = full_payload();
+    let before = parse_payload(&p);
+    p[35..67].fill(0x5E);
+    assert_eq!(parse_payload(&p), before);
+}
+
+#[test]
+fn parse_payload_does_not_read_policy_hash_from_neighbouring_bytes() {
+    let mut p = full_payload();
+    p[2] = 0x77;
+    p[35] = 0x77;
+    assert_eq!(parse_payload(&p).policy_hash, [0xA1; 32]);
+}
+
+#[test]
+fn parse_payload_does_not_read_window_from_neighbouring_bytes() {
+    let mut p = full_payload();
+    p[74] = 0x77;
+    p[79] = 0x77;
+    assert_eq!(parse_payload(&p).window_from, 0x0A0B_0C0D);
+}
+
+// --- sas::parse_attestation ---
+
+/// A valid 256-byte SAS attestation with distinct bytes per region.
+fn stored_attestation() -> Vec<u8> {
+    let mut data = vec![0u8; ATTESTATION_ACCOUNT_LEN];
+    data[0] = ATTESTATION_DISCRIMINATOR;
+    data[1..33].fill(0x11); // nonce
+    data[33..65].fill(0x22); // credential
+    data[65..97].fill(0x33); // schema
+    data[97..101].copy_from_slice(&83u32.to_le_bytes());
+    for (byte, value) in data[101..184].iter_mut().zip(0x40u8..) {
+        *byte = value; // payload
+    }
+    data[184..216].fill(0xBB); // signer
+    data[216..224].copy_from_slice(&0x0102_0304_0506_0708i64.to_le_bytes());
+    data[224..256].fill(0xEE); // token account
+    data
+}
+
+#[test]
+fn parse_attestation_layout_constants_match_the_sas_account() {
+    assert_eq!(ATTESTATION_SIGNER_OFFSET, 184);
+    assert_eq!(ATTESTATION_EXPIRY_OFFSET, 216);
+}
+
+#[test]
+fn parse_attestation_returns_payload_signer_and_expiry() {
+    let data = stored_attestation();
+    let parsed = parse_attestation(&SAS_PROGRAM_ID, &data).expect("valid attestation");
+    assert_eq!(parsed.payload.as_slice(), &data[101..184]);
+    assert_eq!(parsed.signer, Pubkey::new_from_array([0xBB; 32]));
+    assert_eq!(parsed.expiry, 0x0102_0304_0506_0708);
+}
+
+#[test]
+fn parse_attestation_reads_negative_and_zero_expiry() {
+    for expiry in [-7i64, 0] {
+        let mut data = stored_attestation();
+        data[216..224].copy_from_slice(&expiry.to_le_bytes());
+        let parsed = parse_attestation(&SAS_PROGRAM_ID, &data).expect("valid attestation");
+        assert_eq!(parsed.expiry, expiry);
+    }
+}
+
+#[test]
+fn parse_attestation_rejects_wrong_owner() {
+    let data = stored_attestation();
+    assert!(parse_attestation(&Pubkey::new_unique(), &data).is_none());
+}
+
+#[test]
+fn parse_attestation_rejects_system_program_owner() {
+    let data = stored_attestation();
+    assert!(parse_attestation(&anchor_lang::system_program::ID, &data).is_none());
+}
+
+#[test]
+fn parse_attestation_rejects_length_255() {
+    let mut data = stored_attestation();
+    data.pop();
+    assert!(parse_attestation(&SAS_PROGRAM_ID, &data).is_none());
+}
+
+#[test]
+fn parse_attestation_rejects_length_257() {
+    let mut data = stored_attestation();
+    data.push(0);
+    assert!(parse_attestation(&SAS_PROGRAM_ID, &data).is_none());
+}
+
+#[test]
+fn parse_attestation_rejects_discriminator_1() {
+    let mut data = stored_attestation();
+    data[0] = 1;
+    assert!(parse_attestation(&SAS_PROGRAM_ID, &data).is_none());
+}
+
+#[test]
+fn parse_attestation_rejects_discriminator_0() {
+    let mut data = stored_attestation();
+    data[0] = 0;
+    assert!(parse_attestation(&SAS_PROGRAM_ID, &data).is_none());
+}
+
+#[test]
+fn parse_attestation_rejects_empty_data() {
+    assert!(parse_attestation(&SAS_PROGRAM_ID, &[]).is_none());
 }
