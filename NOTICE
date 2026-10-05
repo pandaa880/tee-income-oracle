@@ -14,8 +14,10 @@ full license text.
 - Finvu's Curve25519/Diffie-Hellman reference implementation ("finvu-dh")
   https://github.com/finvu/finvu-dh
 
-- Solana Attestation Service
+- Solana Attestation Service (MIT)
   https://github.com/solana-foundation/solana-attestation-service
+  Its deployed program binary is redistributed as a test fixture in
+  test-fixtures/sas/, with its license in test-fixtures/sas/LICENSE.
 
 - Anchor
   https://github.com/coral-xyz/anchor

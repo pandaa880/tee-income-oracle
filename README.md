@@ -84,9 +84,13 @@ sandbox-bank/        Node/TS mock FIP + AA speaking ReBIT with test keys. Also t
                      test-vector generator.
 verifier/            TS. Checks the Nitro attestation to AWS's root, the image id,
                      and the attester key on chain.
+ops/                 TS admin scripts. Creates the SAS credential and schema.
+deployments/         Public addresses per cluster, written by ops.
 web/                 Next.js. Borrower flow, lender dashboard, verify page.
 test-vectors/        Generated fixtures, including golden vectors from Sahamati's
                      reference implementation.
+test-fixtures/       Hand-calculated scoring cases; the SAS program binary dumped
+                     from devnet for offline tests.
 docs/                Architecture, formats, coding guidelines.
 ```
 
@@ -98,7 +102,9 @@ docs/                Architecture, formats, coding guidelines.
 
 Two build worlds:
 - **Rust/Anchor**: a Cargo workspace (`programs/*`, `tio-core`). See the root `Cargo.toml`.
-- **Node/TS**: a pnpm workspace (`gateway/`, `sandbox-bank/`, `verifier/`, `web/`).
+- **Node/TS**: a pnpm workspace (`gateway/`, `ops/`, `sandbox-bank/`, `verifier/`, `web/`).
+  Solana client code uses `@solana/kit` 7 and `sas-lib` 2.0.0-beta.1; local chain tests run
+  on embedded [surfpool](https://solana.com/docs/tools/surfpool) (`@solana/surfpool`).
 
 `enclave/` is not in the Cargo workspace. It builds as a Docker image, pinned
 by digest and deployed with docker-compose on Marlin Oyster.
@@ -110,7 +116,9 @@ pipeline: it ties the response and consent to the session, checks the
 window, verifies, decrypts, parses and scores the statement, and builds the
 attestation payload and the message to sign. It is pinned to reference golden
 vectors and cross-checked against the TypeScript test-vector generator in
-`sandbox-bank`. Next: the programs, enclave, gateway and web.
+`sandbox-bank`. `ops` creates and verifies the SAS credential and schema
+(tested on surfpool against the deployed SAS binary). Next: the programs,
+enclave, gateway and web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

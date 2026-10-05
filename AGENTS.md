@@ -60,6 +60,10 @@ enclave/              Rust. Runs in the Oyster CVM. HTTP wrapper around tio-core
 gateway/              Node/TS, untrusted orchestrator + tx relayer (formerly proxy/).
 sandbox-bank/         Node/TS mock FIP + AA (ReBIT, demo keys) + test-vector generator.
 verifier/             TS. Nitro attestation doc → AWS root; image id; on-chain key match.
+ops/                  TS admin scripts (admin wallet). `sas:setup`: SAS credential + schema.
+deployments/          Public addresses per cluster (`<cluster>.json`), written by ops.
+test-fixtures/        Hand-calculated scoring cases; `sas/` = SAS binary dumped from devnet
+                      (+ SOURCE.md with sha256, LICENSE). Not generated, unlike test-vectors/.
 web/                  Next.js. Borrower flow, lender dashboard, verify page.
 test-vectors/         Generated fixtures + TEST-ONLY keys. Positive and negative cases.
 docs/                 ARCHITECTURE.md, FORMATS.md (wire formats, source of truth),
@@ -70,6 +74,9 @@ docs/                 ARCHITECTURE.md, FORMATS.md (wire formats, source of truth
 
 Rust 1.89.0 (pinned in `rust-toolchain.toml`, Anchor 1.2's toolchain) · Anchor 1.2.0 · Solana/Agave CLI 4.3.0 · pnpm 12.6.0 (corepack) ·
 Node 24 LTS (`.nvmrc`; runs TS directly via type stripping) · Docker. Chain: devnet (localnet for tests).
+Solana TS: `@solana/kit` 7.1.1 · `sas-lib` 2.0.0-beta.1 (renamed upstream to
+`@solana/attestation`, not on npm yet) · `@solana/surfpool` 1.6.0 (embedded `Surfnet`, offline;
+its kit plugin needs kit 8, so it isn't used).
 
 Two build worlds: Cargo workspace (`programs/*`, `tio-core`) and pnpm
 workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
@@ -77,7 +84,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector generator; the programs are empty skeletons; most other packages
+has the test-vector generator; `ops` has the SAS credential/schema setup; the programs are empty skeletons; most other packages
 hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
@@ -88,10 +95,11 @@ hold only READMEs. Update the status as each one starts working.
 | Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` — localnet | not yet |
-| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, also in CI) |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm --filter @tio/sandbox-bank typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank or @tio/ops> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
+| SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet; not yet run on devnet |
 | Run | — | nothing runnable yet |
 
 ## Engineering principles

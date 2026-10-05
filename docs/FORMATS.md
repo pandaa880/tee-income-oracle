@@ -640,6 +640,26 @@ The raw bytes are the same either way; `_lo` = bytes 0..16 of the hash.
 
 SAS attestation account total: 256 bytes.
 
+**Credential and schema.** Created once per cluster by `ops` (`sas:setup`,
+see `ops/README.md`), which verifies them on re-runs and never changes them:
+
+| Thing | Value |
+|---|---|
+| Credential name | `tee-income-oracle` (PDA seed, so ≤ 32 bytes) |
+| Credential authority | the admin wallet |
+| Credential authorized signers | exactly `[sas_signer]` = PDA `["sas_signer"]` of the oracle program. Any other signer could write attestations the oracle never checked |
+| Schema name / version | `tio-income-tier` / `1` |
+| Schema description | `TEE Income Oracle attestation payload v1 (FORMATS section 7)` |
+| Schema layout + field names | as above |
+
+Addresses: credential = `["credential", authority, name]`, schema =
+`["schema", credential, name, version_u8]` under the SAS program. They depend
+only on the admin wallet, names and version, so the same admin gets the same
+addresses on every cluster. `sas:setup` writes them to
+`deployments/<cluster>.json` (snake_case, public data):
+`cluster, sas_program, oracle_program, sas_signer, authority, credential,
+schema, schema_name, schema_version`.
+
 **Verified on devnet 2026-09-27** (throwaway spike, `sas-lib` 1.0.10, SAS
 `22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG`):
 - The schema layout above is accepted and stored as `0,0,0,4,4,4,4,8,2,2`.

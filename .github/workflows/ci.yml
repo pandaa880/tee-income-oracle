@@ -40,6 +40,12 @@ jobs:
       - run: pnpm --filter @tio/sandbox-bank lint
       - run: pnpm --filter @tio/sandbox-bank format:check
       - run: pnpm --filter @tio/sandbox-bank test
+      # Admin scripts (ops). The test suite includes an embedded, offline
+      # surfpool run that loads the committed SAS binary.
+      - run: pnpm --filter @tio/ops typecheck
+      - run: pnpm --filter @tio/ops lint
+      - run: pnpm --filter @tio/ops format:check
+      - run: pnpm --filter @tio/ops test
       - run: pnpm --filter @tio/sandbox-bank gen:vectors
       - run: git diff --exit-code -- test-vectors/ && test -z "$(git status --porcelain -- test-vectors/)"
 
