@@ -14,8 +14,9 @@ pub const SAS_PROGRAM_ID: Pubkey = pubkey!("22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8Dd
 pub const ATTESTATION_SEED: &[u8] = b"attestation";
 pub const EVENT_AUTHORITY_SEED: &[u8] = b"__event_authority";
 
-// The data length is written as a u32; the `as u32` below can't truncate.
-const _: () = assert!(PAYLOAD_LEN <= u32::MAX as usize);
+/// `PAYLOAD_LEN` as SAS's u32 data-length prefix.
+const PAYLOAD_LEN_U32: u32 = 83;
+const _: () = assert!(PAYLOAD_LEN_U32 as usize == PAYLOAD_LEN);
 
 const CREATE_ATTESTATION: u8 = 6;
 const CLOSE_ATTESTATION: u8 = 7;
@@ -82,7 +83,7 @@ pub fn create_attestation_ix(
     let mut ix_data = Vec::with_capacity(1 + 32 + 4 + PAYLOAD_LEN + 8);
     ix_data.push(CREATE_ATTESTATION);
     ix_data.extend_from_slice(nonce.as_ref());
-    ix_data.extend_from_slice(&(PAYLOAD_LEN as u32).to_le_bytes());
+    ix_data.extend_from_slice(&PAYLOAD_LEN_U32.to_le_bytes());
     ix_data.extend_from_slice(data);
     ix_data.extend_from_slice(&expiry.to_le_bytes());
     Instruction {

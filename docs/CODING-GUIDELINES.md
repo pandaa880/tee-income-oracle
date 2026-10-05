@@ -33,6 +33,9 @@ scope. See `AGENTS.md` for the full wording.
     as the code. Crypto text there names the exact crate that does each
     secret-dependent step, and error-variant docs in code match the FORMATS
     error-code list.
+11. **Errors about key or secret files name the file and the problem, never
+    the contents.** No key bytes, PEM text or parsed fields in an error,
+    log line or test failure message.
 
 ## 2. Rust
 
@@ -113,12 +116,16 @@ scope. See `AGENTS.md` for the full wording.
 ### Anchor programs
 - Every account constrained: `seeds` + `bump`, `has_one`, `owner`, `address`.
   No unchecked `AccountInfo` without a `/// CHECK:` comment that explains why.
-- Checked arithmetic only (`checked_add`, …). No `as` casts that can truncate.
+- Checked arithmetic only (`checked_add`, …). No `as` casts that can truncate
+  (`clippy::cast_possible_truncation` is denied in `programs/*`; for a
+  constant, declare it with the narrow type instead of casting).
 - One `#[error_code]` enum per program; messages say what failed.
 - Every program account starts with a `version: u8` field, so a future
   layout change can be detected and migrated (FORMATS → Version identifiers).
-- Reading a foreign account (the SAS attestation): check the owner program id
-  and discriminator before deserializing.
+- Reading a foreign account (the SAS attestation): check the owner program id,
+  size and discriminator before deserializing. A field that a check could use
+  but deliberately doesn't (e.g. the stored SAS `signer`) is named in
+  `docs/FORMATS.md` with the reason.
 - Precompile introspection: the signature, address and message
   instruction-index fields in the secp256k1 offsets must all point at the
   precompile instruction itself. Otherwise an attacker can make the precompile
@@ -153,6 +160,9 @@ scope. See `AGENTS.md` for the full wording.
   data) before use.
 - `bigint` for `u64`/`i64` values (lamports, token amounts, timestamps from
   chain). Never `number` for on-chain integers.
+- Generated PDA helpers for another program's PDA (`seeds::program`, e.g.
+  `findSasEventAuthorityPda`) default to *our* program id when called on
+  their own. Always pass `{ programAddress: <that program> }`.
 - Bytes are `Uint8Array`. Encode/decode explicitly (hex, base64, base64url,
   base58) with one helper module; no ad-hoc `Buffer.toString` scattered around.
 
@@ -240,7 +250,23 @@ Stdlib only unless a dependency is agreed.
   (e.g. `\u0041` written as `A`) can't turn the test into a no-op.
 - **Check order is tested.** When the docs fix an order ("`alg` before
   `kid`"), a test combines two faults and asserts the one reported first.
-  The documented order names every early return in the code path.
+  The documented order names every early return in the code path. Each pair
+  of neighbouring checks gets such a test.
+- **Seeds from an argument get a wrong-PDA test.** When a PDA's seeds come
+  from an instruction argument or from signed bytes, a test passes the PDA
+  of a different value and asserts the error.
+- **Failures outside our program assert where and what.** A test expecting
+  a precompile, system-program or SAS failure asserts the failing
+  instruction index and that program's error code, not just "not a custom
+  error": otherwise an unrelated failure (bad account, stale blockhash)
+  passes it.
+- **Pre-funded PDAs.** Every PDA a program creates, directly or by CPI, gets
+  a test where the address already holds lamports, once below rent and once
+  at or above it. Anyone can send lamports to an address before it exists,
+  and the two balances take different code paths.
+- **Mutation restores use plain `cp`** (not `cp -p`). Keeping the old
+  timestamp makes cargo reuse the mutated build, so the next mutant is
+  tested against the wrong binary.
 
 ## 6. Git, commits and PRs
 The workflow lives in `CONTRIBUTING.md` → **Git workflow** (single source).

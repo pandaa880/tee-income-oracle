@@ -29,3 +29,7 @@ solana-sdk-ids = "3.1.0"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
+# No `as` casts that can truncate (CODING-GUIDELINES §2).
+[lints.clippy]
+cast_possible_truncation = "deny"

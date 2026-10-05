@@ -22,8 +22,8 @@ fn precompile(index: u8) -> Vec<u8> {
     data[12..32].fill(0xE0);
     data[32..96].fill(0x5A);
     data[96] = 1;
-    for (i, byte) in data[97..329].iter_mut().enumerate() {
-        *byte = (i % 251) as u8;
+    for (byte, value) in data[97..329].iter_mut().zip((0..251u8).cycle()) {
+        *byte = value;
     }
     data
 }
@@ -35,8 +35,8 @@ fn message() -> [u8; MESSAGE_LEN] {
     m[45..77].fill(2); // credential
     m[77..109].fill(3); // schema
     m[109..141].fill(4); // wallet
-    for (i, byte) in m[141..224].iter_mut().enumerate() {
-        *byte = 0x80 + i as u8; // payload
+    for (byte, value) in m[141..224].iter_mut().zip(0x80u8..) {
+        *byte = value; // payload
     }
     m[224..232].copy_from_slice(&0x0102_0304_0506_0708i64.to_le_bytes());
     m

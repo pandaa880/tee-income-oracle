@@ -60,8 +60,9 @@ pub struct PayloadHeader {
 // runs out of bytes on a `[u8; MESSAGE_LEN]`.
 const _: () = assert!(13 + 32 + 32 + 32 + 32 + PAYLOAD_LEN + 8 == MESSAGE_LEN);
 const _: () = assert!(MESSAGE_OFFSET as usize + MESSAGE_LEN == PRECOMPILE_DATA_LEN);
-// The `as u16` below can't truncate.
-const _: () = assert!(MESSAGE_LEN <= u16::MAX as usize);
+/// `MESSAGE_LEN` as the precompile's u16 message-size field.
+const MESSAGE_LEN_U16: u16 = 232;
+const _: () = assert!(MESSAGE_LEN_U16 as usize == MESSAGE_LEN);
 
 /// The 11 offset bytes a well-formed precompile instruction at
 /// `precompile_index` must carry: signature, address and message offsets,
@@ -70,7 +71,7 @@ pub fn expected_offsets(precompile_index: u8) -> [u8; OFFSETS_LEN] {
     let [sig_lo, sig_hi] = SIGNATURE_OFFSET.to_le_bytes();
     let [eth_lo, eth_hi] = ETH_ADDRESS_OFFSET.to_le_bytes();
     let [msg_lo, msg_hi] = MESSAGE_OFFSET.to_le_bytes();
-    let [len_lo, len_hi] = (MESSAGE_LEN as u16).to_le_bytes();
+    let [len_lo, len_hi] = MESSAGE_LEN_U16.to_le_bytes();
     #[rustfmt::skip]
     let offsets = [
         sig_lo, sig_hi, precompile_index,

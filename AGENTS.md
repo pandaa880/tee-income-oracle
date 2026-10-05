@@ -147,6 +147,13 @@ Add a line whenever an agent makes the same mistake twice.
 - Crypto function names quoted in comments, `Cargo.toml` or FORMATS go
   stale when the code changes (`try_sign_with_rng` vs `sign_with_rng`).
   Grep each cited name against the code before a PR.
+- Strip ANSI colour codes before grepping gate output
+  (`sed 's/\x1b\[[0-9;]*m//g'`): coloured `tsc` errors once slipped past
+  `grep "error TS"`.
+- Mutation checks: restore files with plain `cp`, not `cp -p`, or cargo
+  reuses the mutated build (CODING-GUIDELINES §5).
+- `surfnet_timeTravel`'s `absoluteTimestamp` is in **milliseconds** and
+  only moves forward; the surfnet clock stands still between transactions.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent
   settings don't reach other contributors. Shared guidance goes here.
 
