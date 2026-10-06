@@ -11,7 +11,7 @@ anyone can check that the box ran the published code.**
 
 | Claim | What makes it true | What it does not cover |
 |---|---|---|
-| **Provenance**: the data came from the bank | AA and FIP signatures, checked inside the enclave against keys compiled into the image | Accounts the borrower chose not to link |
+| **Provenance**: a licensed AA states the data came from the bank | The AA's signature on the fetch response and on the consent, checked inside the enclave against keys compiled into the image. A FIP signature is checked too where one exists (sandbox only today, see §6) | Accounts the borrower chose not to link. A dishonest AA: it is in the trust base |
 | **Blind computation**: nobody, including the operator, saw the data | The decryption key and the FIU request-signing key are both created inside the enclave | AWS hardware and Marlin's base image are trusted |
 | **Verifiable output**: the tier came from this code | Nitro remote attestation binds the enclave's signing key to the image id of this repo's build; Solana stores the signed result | MVP: an admin registers the attested key on chain after checking it off-chain |
 
@@ -19,7 +19,7 @@ The security argument is a chain of six links:
 
 | Link | Guarantee | Mechanism |
 |---|---|---|
-| G1 | Input is genuine | Enclave verifies AA + FIP signatures with pinned keys, before parsing |
+| G1 | Input is genuine | Enclave verifies the AA signature with pinned keys, before parsing. It also verifies a FIP signature where the provider supplies one (sandbox only today, see §6) |
 | G2 | Only the enclave can decrypt | Session key and FIU request key are generated inside the enclave |
 | G3 | The code is the published code | Image id = measurement of the pinned docker-compose + images; reproducible from the repo |
 | G4 | The signing key belongs to that code | The Nitro attestation document carries the enclave's secp256k1 public key |
@@ -185,9 +185,16 @@ What a hostile gateway or host can do at each hop:
   the attested key after checking it off-chain (link G5).
 - **Encryption the AA rail doesn't already give.** AA already encrypts in
   transit; what this adds is *blind computation* and a *verifiable result*.
-- **A bank's signature on the data, in general.** The sandbox bank signs FI
-  data. Whether real FIPs sign it, or only encrypt it inside an AA-signed
-  session, is unconfirmed.
+- **A bank's signature on the data.** The sandbox bank signs FI data; that
+  is an extension of this repo. The ReBIT spec does not give the FIU one:
+  each hop signs its own HTTP body, the AA's `FIFetchResponse` carries only
+  `fipID`, `encryptedFI` and `KeyMaterial`, and the DEPOSIT schema has no
+  signature element (checked 2026-10-05 against AA 2.1.0, FIP 2.2.0 and
+  `deposit_v2.0.0.xsd`). Decryption proves nothing to a third party either,
+  because ECDH with AES-GCM is symmetric. So for real data the provenance
+  claim is "a licensed AA states that this FIP returned this statement", and
+  the AA joins the trust base. Whether a given AA forwards a FIP signature
+  outside the spec is unconfirmed.
 - **Sybil resistance.** One person with several wallets can get several
   tiers.
 - **High availability.** One enclave instance processes sessions one at a

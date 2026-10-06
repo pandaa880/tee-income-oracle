@@ -1,12 +1,13 @@
 # TEE Income Oracle
 
-A borrower consents through India's Account Aggregator (AA) rail. The signed,
-encrypted bank statement is decrypted, verified and scored **inside an AWS
-Nitro enclave** (hosted on Marlin Oyster), so no plaintext exists outside it,
-not even for the operator. The enclave signs a small risk-tier result with a
-key its remote attestation binds to this repo's code. That result is written
-to Solana through the Solana Attestation Service (SAS), where any lending
-program can read and check it.
+A borrower consents through India's Account Aggregator (AA) rail. The bank
+encrypts the statement to a key born inside the enclave, and the AA signs the
+response that carries it. That statement is decrypted, verified and scored
+**inside an AWS Nitro enclave** (hosted on Marlin Oyster), so no plaintext
+exists outside it, not even for the operator. The enclave signs a small
+risk-tier result with a key its remote attestation binds to this repo's code.
+That result is written to Solana through the Solana Attestation Service
+(SAS), where any lending program can read and check it.
 
 The hackathon build uses a **sandbox bank** that speaks the real ReBIT
 protocol with test keys: simulated bank, real protocol.
@@ -46,6 +47,16 @@ flowchart LR
   CORE -- "tier + enclave signature" --> GW
   GW -- "transaction" --> SOL
 ```
+
+**Who signs what.** On the real AA rail the enclave can check one signature
+on the data path: the AA's, over the fetch response. That response names the
+bank and carries its ciphertext and key material. The ReBIT spec gives it no
+field for a signature made by the bank, and the statement schema has none
+either. So for real data the provenance claim is "a licensed AA states that
+this bank returned this statement", and the AA is part of the trust base. The
+sandbox bank also signs the statement with a FIP key. That is an extension of
+this repo, kept so the enclave can check a bank signature wherever a provider
+supplies one. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6.
 
 ### How the code is tested
 
