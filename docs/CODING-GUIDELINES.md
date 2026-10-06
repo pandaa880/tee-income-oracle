@@ -106,8 +106,9 @@ scope. See `AGENTS.md` for the full wording.
   umbrella crate (e.g. `aes-gcm`) doesn't turn it on in the inner crates
   (`aes`, `ghash`/`polyval`, `crypto-bigint`). Check
   `cargo tree -p tio-core -e features -i zeroize`, and confirm the wiping
-  `Drop` actually runs on the enclave target (x86_64), not only on the dev
-  machine: autodetect backends can skip it. Residuals that can't be wiped get
+  `Drop` actually runs on the enclave target (arm64 on Oyster, built with
+  `--cfg polyval_force_soft`), not only on the dev machine: autodetect
+  backends can skip it. Residuals that can't be wiped get
   a `Known residual:` comment.
 - Use audited crates (RustCrypto: `curve25519-dalek`, `crypto-bigint`, `hkdf`,
   `aes-gcm`, `sha2`, `k256`, `rsa`). No hand-rolled primitives.
@@ -136,6 +137,22 @@ scope. See `AGENTS.md` for the full wording.
   instruction-index fields in the secp256k1 offsets must all point at the
   precompile instruction itself. Otherwise an attacker can make the precompile
   verify bytes stored in a different instruction.
+
+### Enclave HTTP server
+- Every limit is enforced in the enclave itself: its port is public, not
+  only reachable by the gateway.
+- A concurrency permit for work done in `spawn_blocking` is an owned permit
+  (`Arc<Semaphore>::acquire_owned`) **moved into the closure**. A permit held
+  by the handler is released when the client disconnects, while the blocking
+  work (and its buffers) keeps running.
+- Removing an item from a capped store frees its slot, so work that runs
+  after the removal needs its own limit.
+- Parse path parameters into their type (`Uuid`) before using or logging
+  them; log only the parsed value.
+- A test-only feature gets `compile_error!` under
+  `all(feature = "…", not(debug_assertions))`, so it can't reach a release
+  build (the image).
+- Request types that carry signed or bank-derived bytes don't derive `Debug`.
 
 ### Tooling
 - `cargo fmt` and `cargo clippy --all-targets -- -D warnings` must pass.
@@ -281,6 +298,14 @@ Stdlib only unless a dependency is agreed.
 - **Shared test constants are exported once.** Framework error codes and
   account offsets live in one module and are imported, not redeclared per
   test file.
+- **A resource-guard test fails if the guard is released early.** For a
+  permit, lock or limit, make the guarded work block (a gated test clock,
+  a channel) and assert the resource is still held mid-flight, including
+  after the caller is cancelled. "Free before and after" passes with the
+  guard released too soon. Open the gate in a drop guard, so a failing
+  assertion can't hang the runtime.
+- **Tests that share state use distinct ids.** Parallel tests planting the
+  same id into one shared store race; give each test its own id or state.
 - **Mutation restores use plain `cp`** (not `cp -p`). Keeping the old
   timestamp makes cargo reuse the mutated build, so the next mutant is
   tested against the wrong binary.

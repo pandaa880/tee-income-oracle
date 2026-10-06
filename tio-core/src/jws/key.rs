@@ -165,6 +165,27 @@ impl FiuSigningKey {
         Ok(format!("{header_b64}..{}", b64url_encode(&signature)))
     }
 
+    /// The public half as the canonical JWK bytes the enclave publishes and
+    /// signs (`docs/FORMATS.md` §8.1): JCS of exactly `e`, `kid`, `kty`, `n`.
+    ///
+    /// # Errors
+    /// [`JwsError::SignFailed`] if the key id can't be encoded.
+    pub fn public_jwk_jcs(&self) -> Result<Vec<u8>, JwsError> {
+        // JCS (RFC 8785) of an object with only string members is the
+        // members in code-unit order with JSON string escaping; `e` < `kid`
+        // < `kty` < `n`. serde_json's escaping of these strings matches JCS.
+        let string = |s: &str| serde_json::to_string(s).map_err(|_| JwsError::SignFailed);
+        let n = b64url_encode(&self.key.n().to_bytes_be());
+        let e = b64url_encode(&self.key.e().to_bytes_be());
+        let jcs = format!(
+            r#"{{"e":{},"kid":{},"kty":"RSA","n":{}}}"#,
+            string(&e)?,
+            string(&self.kid)?,
+            string(&n)?
+        );
+        Ok(jcs.into_bytes())
+    }
+
     #[cfg(test)]
     pub(crate) fn key(&self) -> &RsaPrivateKey {
         &self.key

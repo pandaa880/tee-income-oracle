@@ -130,8 +130,12 @@ read inside its own instruction: it checks that the oracle's signer wrote
 it, that it is fresh, and that the enclave build behind it is approved by
 the pool and not revoked, then lends up to the tier's limit (one open loan
 per borrower; `repay` closes it). All of them are tested on an embedded
-surfpool, the SAS writes against the deployed SAS binary. Next: the enclave,
-gateway and web.
+surfpool, the SAS writes against the deployed SAS binary. The `enclave`
+serves the HTTP API around `tio-core` (sessions, wallet binding, evaluate,
+secp256k1-signed results, an attester-signed FIU key) and builds as a
+reproducible arm64 image for Oyster; it is tested in-process against every
+test vector, not deployed yet. Next: the live sandbox bank, the gateway and
+the devnet deployment, then the web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

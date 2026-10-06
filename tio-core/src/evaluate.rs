@@ -587,5 +587,35 @@ pub fn evaluate(
     ))
 }
 
+/// What the FI request (§5.1) needs from the consent: its id and the
+/// signature segment of its compact JWS.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsentRef {
+    /// `consentId` from the verified payload.
+    pub id: String,
+    /// The third segment of the compact JWS, as received.
+    pub signature: String,
+}
+
+/// Verifies the consent's AA signature, then reads its `consentId`. Used
+/// at session create; `evaluate` re-checks the whole consent (§10.1).
+///
+/// # Errors
+/// [`EvaluateError::ConsentSignature`] or [`EvaluateError::ConsentInvalid`].
+pub fn consent_ref(consent_jws: &str, aa: &[PinnedKey]) -> Result<ConsentRef, EvaluateError> {
+    let payload = verify_compact(consent_jws, aa).map_err(EvaluateError::ConsentSignature)?;
+    let consent = parse_consent(&payload)?;
+    // `verify_compact` accepted exactly three segments, so the last one is
+    // the signature.
+    let signature = consent_jws
+        .rsplit('.')
+        .next()
+        .ok_or(EvaluateError::ConsentInvalid)?;
+    Ok(ConsentRef {
+        id: consent.id,
+        signature: signature.to_owned(),
+    })
+}
+
 #[cfg(test)]
 mod tests;

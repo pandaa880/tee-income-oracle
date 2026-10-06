@@ -76,9 +76,15 @@ flowchart LR
 | oracle / demo-pool | public | Program bugs are public; the admin key is the MVP weak link |
 | verifier / web | untrusted | Anyone can run their own verifier; the explorer exposes UI lies |
 
-Oyster gives the enclave networking (TLS terminates inside). The MVP still
-keeps outbound calls out of the enclave: it *produces* signed requests and
-*consumes* signed responses, and whoever carries them doesn't matter.
+Oyster forwards raw TCP to the enclave (ports 80, 443, 1024–61439); it
+terminates no TLS, so the gateway talks plain HTTP to the enclave's port
+8080. That is fine because every byte that matters is signed or encrypted
+end to end: the enclave *produces* signed requests and *consumes* signed
+responses, and whoever carries them doesn't matter. The port is reachable
+from the internet, not only from the gateway, so the enclave caps every
+body and every queue itself (FORMATS §10). Oyster can't block outbound
+connections either (its own image pull needs them), so "no outbound calls"
+is a property of the code: the enclave has no HTTP-client dependency.
 
 ## 3. Key inventory
 
@@ -86,7 +92,7 @@ keeps outbound calls out of the enclave: it *produces* signed requests and
 |---|---|---|---|---|
 | Enclave attester | secp256k1 | Created by Oyster at boot, inside the enclave; new on restart | Signing results; bound by the attestation document | Forge tiers. Mitigation: never leaves; revoke the registry entry |
 | Session DH | Curve25519 + 32-byte nonce | Inside the enclave, per session; wiped after | ECDH with the FIP's one-time key | One session's data (forward secrecy) |
-| FIU request key | RSA-2048 | Inside the enclave | Signing `FI/request`, which carries the session key material | Swap in its own DH key and read statements. **This is why it lives inside the enclave.** |
+| FIU request key | RSA-2048 | Inside the enclave, new on every boot; its public half is signed by the attester key at boot (FORMATS §8.1) | Signing `FI/request`, which carries the session key material | Swap in its own DH key and read statements. **This is why it lives inside the enclave**, and why the bank checks the attester's binding signature before trusting it |
 | FIP / AA signing keys | RSA-2048 | Bank / AA (sandbox: demo keys, never committed) | Signing FI data, fetch responses, consent | Forge bank data. Public halves pinned in the image |
 | Oracle SAS signer | PDA `["sas_signer"]` | Derived; no private key | Only authorized signer on the SAS credential | Can't be stolen; only program logic uses it |
 | Admin | wallet for the demo; a multisig (e.g. Squads) beyond it. Replaceable by `propose_admin` + `accept_admin` | Operator | Register/revoke enclave builds | Register a fake enclave (G5). If lost: no revokes until a program upgrade |
@@ -108,7 +114,7 @@ sequenceDiagram
   participant F as Sandbox bank
   participant S as Solana
   B->>G: start session (wallet, persona, pool)
-  G->>E: POST /v1/sessions (policy, window)
+  G->>E: POST /v1/sessions (policy, wallet, consent, measurement id)
   E->>E: new session key + nonce, FI request signed with FIU key
   E-->>G: session_id, KeyMaterial, signed FI request, intent
   B->>G: wallet signature over intent
@@ -128,7 +134,7 @@ What a hostile gateway or host can do at each hop:
 
 | Hop | It sees | It can | It cannot |
 |---|---|---|---|
-| Session create | public key material, signed FI request | read public keys | change the key (the FIU signature covers it) |
+| Session create | public key material, signed FI request | read public keys | change the key (the FIU signature covers it), or swap the FIU key itself (the bank checks the attester's binding, FORMATS §8.1) |
 | Bind | intent, wallet signature | drop it | bind a wallet it doesn't control |
 | Fetch | AES-GCM ciphertext, signed envelopes | store it | decrypt it, or alter it (GCM tag + signatures) |
 | Evaluate | raw bytes in, signed payload out | replay old bytes | get them accepted (one-time session nonce) |
@@ -150,10 +156,11 @@ What a hostile gateway or host can do at each hop:
 | Replay of an enclave signature elsewhere | domain tag + program + credential + schema + wallet + expiry all signed | — |
 | Replaying a signature, or an older one replacing a newer tier | per wallet, a refresh needs a strictly newer `issued_at` (FORMATS §13) | — |
 | Tricking the precompile check | instruction-index fields must point at the precompile itself | a classic Solana bug class; tested explicitly |
-| Bug in enclave code | small code, public source, zeroize, one session at a time | attestation proves *which* code ran, not that it's correct |
+| Bug in enclave code | small code, public source, zeroize, single-use sessions that share no state | attestation proves *which* code ran, not that it's correct |
 | Admin reusing a revoked registry id | ids are append-only | the id space is 255 for the life of a deployment (FORMATS §13 "Id budget") |
 | Admin key | public registry events; anyone can re-run the verifier; a compromised key is replaceable (`propose_admin` + `accept_admin`) | the MVP weak link (G5); a multisig beyond the demo, then ZK-verified attestation |
 | AWS | none | accepted: "trust AWS and the code" |
+| Anyone on the internet exhausting the enclave (its port is public) | caps on open sessions (256), evaluate requests in flight (4), evaluations running (2), body size and read time; slots held until the work ends (FORMATS §10) | accepted liveness risk: a caller who can get consents (the sandbox bank issues them to anyone) can keep the session cap full and lock others out. The host and gateway can already deny service, so availability is never guaranteed |
 
 ## 6. Guarantees and limitations
 
