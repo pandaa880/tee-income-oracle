@@ -39,6 +39,7 @@ same PR updates this file, both implementations and the regenerated vectors.
 | Contract | Id today | Bump when |
 |---|---|---|
 | Enclave signed message (§8) | domain tag `TIO-ATTEST-v1` | any change to the signed bytes or their order |
+| FIU key binding (§8.1) | domain tag `TIO-FIU-KEY-v1` | any change to the signed bytes or the JWK members |
 | Enclave HTTP API (§10) | path prefix `/v1/` | a breaking request/response change (adding optional fields isn't breaking) |
 | Scoring policy (§6) | `"v": 2` | a policy schema change |
 | Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
@@ -199,9 +200,10 @@ checks pass, and an earlier transaction's error wins over a later one's.
 | FIU request key (test) | RSA-2048 JWK, `kid` UUIDv4; stands in for the enclave's per-boot key | private: `test-vectors/keys/fiu.test-private.jwk.json` |
 | Rogue key (test) | RSA-2048 JWK, `kid` UUIDv4; never pinned (builds the `unknown_kid` case) | private: `test-vectors/keys/rogue.test-private.jwk.json` |
 | Public halves (test) | RSA public JWK (`kty`,`n`,`e`,`kid`) of each key above | `test-vectors/keys/<name>.public.jwk.json` |
-| Pinned public keys | RSA public JWK (`kty`,`n`,`e`,`kid`) | `enclave/pinned/*.jwk.json`, compiled in with `include_bytes!` |
-| FIU request key | RSA-2048, generated in the enclave at boot | public JWK exposed by `GET /v1/info` |
-| Enclave attester key | secp256k1, provided by Oyster at `/app/ecdsa.sec` | eth address exposed by `GET /v1/info` |
+| Pinned public keys | RSA public JWK (`kty`,`n`,`e`,`kid`) | `enclave/pinned/aa.jwk.json`, `enclave/pinned/fip.jwk.json` (demo keys), compiled in with `include_bytes!` |
+| Demo FIP / AA signing keys | RSA-2048 JWK, `kid` UUIDv4; made once by `pnpm --filter @tio/sandbox-bank gen:demo-keys` | private: `sandbox-bank/.secrets/{aa,fip}.demo-private.jwk.json` (gitignored); public: `enclave/pinned/` |
+| FIU request key | RSA-2048, generated in the enclave at boot, `kid` UUIDv4 | public JWK exposed by `GET /v1/info`, with the attester's §8.1 binding signature |
+| Enclave attester key | secp256k1, provided by Oyster at `/app/ecdsa.sec` (32 raw bytes, new on every boot) | eth address exposed by `GET /v1/info` |
 | Test enclave keys | Curve25519 scalar (used in both §3 modes) + secp256k1, fixed | `test-vectors/keys/enclave.test-private.json` |
 
 ### Two key sets: committed test keys vs secret demo keys
@@ -209,7 +211,7 @@ checks pass, and an earlier transaction's error wins over a later one's.
 | Key set | Committed? | Used by | Pinned in a deployed enclave? |
 |---|---|---|---|
 | **Test-vector keys** (`test-vectors/keys/*.test-private.*`, golden-vector keys flagged `private_key_test_only`) | **Yes**, on purpose, so anyone can reproduce the vectors | offline unit tests only | **Never** |
-| **Demo sandbox-bank keys** (FIP + AA signing keys for the running sandbox bank) | **Never.** Private halves live only in `sandbox-bank`'s `.env` / secret store | the live sandbox bank | Public halves only, in `enclave/pinned/` |
+| **Demo sandbox-bank keys** (FIP + AA signing keys for the running sandbox bank) | **Never.** Private halves live only in `sandbox-bank/.secrets/` (gitignored, backed up outside the repo) and the deployed service's secret store | the live sandbox bank | Public halves only, in `enclave/pinned/` |
 
 Why two sets: a committed private key is public. If the deployed enclave
 pinned a committed key, anyone could forge "signed bank data" and the enclave
@@ -220,9 +222,16 @@ Rules:
 - `enclave/pinned/` holds **only** demo (or, later, real FIP/AA) public keys.
   Test-vector public keys stay in `test-vectors/` and reach unit tests as
   inputs.
-- **Startup guard:** the enclave keeps a compiled-in deny-list of every
-  test-key `kid` and SPKI hash from `test-vectors/`. At boot it refuses to
-  start (exit non-zero, `test_key_pinned`) if any pinned key matches.
+- **Startup guard:** the enclave keeps a compiled-in deny-list
+  (`enclave/src/guard.rs`) of every test-key `kid` and the SHA-256 of every
+  test RSA modulus (the big-endian bytes of the JWK `n`) under
+  `test-vectors/`, including the golden RFC 7515 / 7520 keys; a test checks
+  the list covers them all. At boot, before loading any other key, it
+  refuses to start (exit non-zero, `test_key_pinned`) if any pinned key
+  matches by `kid` or by modulus, so renaming a test key's `kid` doesn't get
+  it past. Known limit: a modulus re-encoded with a leading zero byte hashes
+  differently. That guards against mistakes, not against someone committing
+  a disguised test key on purpose.
 - Committing private keys is allowed **only** under `test-vectors/`, with the
   `test-private` naming or flag. Anywhere else it's a bug; `.gitignore` blocks
   `*.pem`, `*.key` and `id.json`.
@@ -757,6 +766,33 @@ vote timestamps, bounded to ±25% of the expected time since the epoch start
 real time by more than 300 s, submissions fail with `IssuedInFuture` until it
 catches up: a liveness risk, never a wrong acceptance.
 
+The enclave (`enclave/src/attester.rs`, k256) signs keccak256(`msg`) with
+a recoverable ECDSA signature normalized to low-s, `v ∈ {0, 1}`.
+
+### 8.1 FIU key binding — FROZEN
+
+Only the secp256k1 attester key is in the Nitro attestation document. The
+FIU request key (§2) is born inside the enclave too, but its public half
+reaches the bank through the untrusted gateway, which could swap in its own
+FIU key (and its own §3 session key) and get the statement encrypted to
+itself. So at boot the attester key signs the FIU public key once:
+
+```
+msg = b"TIO-FIU-KEY-v1"                 14 B
+    ‖ sha256(JCS(fiu_public_jwk))        32 B
+                                       = 46 B
+sig = secp256k1_sign_recoverable(keccak256(msg))  → 65 B r‖s‖v, low-s, v ∈ {0,1}
+```
+`fiu_public_jwk` has exactly the members `e`, `kid`, `kty` (`"RSA"`), `n`
+(base64url, no padding); its JCS bytes are
+`{"e":…,"kid":…,"kty":"RSA","n":…}`. `GET /v1/info` returns the JWK (as
+those JCS bytes) and `fiu_key_signature_hex`. A bank (the sandbox bank in
+build step 4b) recovers the eth address from the signature and accepts the
+FIU key only if that address is the `attester` of an active oracle registry
+entry (§13); then it checks the FI request's FIU JWS with that key before
+encrypting anything. The key and its binding live for one boot, like the
+attester key.
+
 ---
 
 ## 9. Wallet intent (borrower binds a session) — FROZEN
@@ -779,11 +815,53 @@ string and verifies; any difference → reject.
 
 | Route | Request | Response |
 |---|---|---|
-| `GET /v1/info` | — | `{ app_version, attester_address, fiu_public_jwk, pinned_kids: [..] }` |
-| `POST /v1/sessions` | `{ policy, fi_data_range: {from,to} }` | `{ session_id, key_material, fi_request_body_b64, fi_request_jws, intent, intent_expires }` |
+| `GET /v1/info` | — | `{ app_version, attester_address, fiu_public_jwk, fiu_key_signature_hex, pinned_kids: [..] }` |
+| `POST /v1/sessions` | `{ policy, wallet, consent_jws, measurement_id }` | `{ session_id, key_material, fi_request_body_b64, fi_request_jws, intent, intent_expires }` |
 | `POST /v1/sessions/{id}/bind` | `{ wallet, signature_b58 }` | `{ status: "bound" }` |
 | `POST /v1/sessions/{id}/evaluate` | `{ fetch_response_b64, fetch_response_jws, consent_jws }` | `{ tier, payload_hex, signature_hex, expiry }` or `{ tier: "REJECT" }` |
 
+- Requests are JSON with exactly the members listed (unknown members →
+  `bad_request`); responses carry exactly the members listed and nothing
+  else (the evaluate response is built from the outcome and the signed
+  payload only; scores never leave). `{id}` is a UUID; anything else →
+  `session_not_found`.
+- **Create.** `policy` is the lender's §6 policy object (`bad_policy`).
+  `wallet` is the borrower's base58 public key (the §9 intent names it).
+  `consent_jws` is the AA-signed consent (§5.3): the FI request (§5.1)
+  carries its `consentId` and signature segment, so the consent must exist
+  before the session; create checks its AA signature and reads the id
+  (JWS codes, `bad_consent_signature`, `consent_invalid`), and evaluate
+  re-checks all of it (§10.1). `measurement_id` (`0..=254`) is this
+  enclave's registry id (§13), set by the gateway: the id only exists after
+  registration, which needs the enclave's attester address, and a wrong id
+  only fails on-chain (§13 checks 8 and 10). The **enclave** sets the
+  requested range: `to` = today 00:00 UTC by its own clock (the clock
+  evaluate's check 10b reads), `from` = `to` − 365 days. `KeyMaterial`
+  expires at now + 24 h; `intent_expires` = now + 600 s = the session TTL.
+  The oracle program id, SAS credential and schema are compiled into the
+  image (`enclave/src/config.rs`), so they are part of its measurement.
+- **Bind** once, with the session's wallet (`bad_request` otherwise) and an
+  Ed25519 signature over the exact §9 intent (`verify_strict`).
+- **Evaluate** takes the session before reading the body: unknown, expired
+  or unbound → 404 / 410 / 409 without the body being read, and any
+  evaluate call on a bound session uses it up, whatever the body or the
+  result (single-use). `expiry` = the enclave's now + 600 s (§8).
+- **Limits:** at most 256 open sessions (expired ones are swept first);
+  session TTL 600 s; at most 32 create/bind requests in flight and 4
+  evaluate requests in flight (reading, waiting or running), and 2
+  evaluations running at once, each slot taken before any body byte is read
+  and held until the request (for evaluate: the computation) ends, even if
+  the client disconnects; evaluate body ≤ 8 MiB, other bodies ≤ 64 KiB;
+  every body must arrive within 30 s (`body_timeout`). Every body must be a
+  JSON object (a positional array is `bad_request`). Base58 values (`wallet`,
+  `signature_b58`) longer than 44 / 88 characters are refused before they
+  are decoded.
+- **Enclave codes** (HTTP status): `bad_request` (400), `bad_intent_signature`
+  (401), `session_not_found` (404), `session_not_bound`,
+  `session_already_bound` (409), `body_timeout` (408), `session_expired`
+  (410), `body_too_large` (413), `too_many_sessions`, `too_many_requests`,
+  `too_many_evaluations` (503; a refused evaluate doesn't use the session
+  up), `internal_error` (500). `tio-core` codes below are sent with 422.
 - Bodies that are signed travel as base64 of the **exact bytes** (`*_b64`), so
   nothing in between can re-serialize them and break the signature.
 - Errors: `{ error: { code, message } }` with stable `code` strings

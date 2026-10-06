@@ -1,0 +1,6 @@
+# Only the enclave image is built from the repo root; send it just the two
+# crates it compiles, without local build output.
+*
+!tio-core/
+!enclave/
+**/target/

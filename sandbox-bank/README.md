@@ -10,14 +10,17 @@ doesn't change; only the pinned keys and the base URL do.
   JSON with the FIP key, encrypts it to the enclave's session key (Curve25519
   `wei25519` → HKDF → AES-256-GCM), and signs the fetch response with the AA
   key. Also issues the consent artefact.
-- **Keys:** the running service uses **demo keys that are never committed**
-  (`.env` / secret store). Only their public halves are pinned in the enclave.
+- **Keys:** the running service uses **demo keys that are never committed**.
+  `pnpm --filter @tio/sandbox-bank gen:demo-keys` makes them once (it refuses
+  to overwrite): private JWKs in `sandbox-bank/.secrets/` (gitignored; back
+  them up outside the repo), public halves in `enclave/pinned/`, compiled into
+  the enclave image. New demo keys mean a new image id.
 - The same crypto module is the **test-vector generator**. It writes
   `test-vectors/` with fixed test keys, including the negative cases (one
   broken layer each; see `docs/FORMATS.md` §11).
 
-**Status:** the test-vector generator works; the HTTP service isn't built
-yet.
+**Status:** the test-vector generator and the demo-key generator work; the
+HTTP service isn't built yet.
 
 It writes the cases that `tio-core` must accept or reject: see
 [how the code is tested](../README.md#how-the-code-is-tested) and the

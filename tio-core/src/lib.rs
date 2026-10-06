@@ -11,6 +11,7 @@ pub mod cipher;
 pub mod ecdh;
 mod encoding;
 pub mod evaluate;
+pub mod fi_request;
 pub mod jws;
 pub mod key_material;
 pub mod money;
@@ -24,10 +25,12 @@ pub use attest::{
 };
 pub use cipher::{decrypt, derive_session_key, DecryptError, Nonce, SessionKey};
 pub use ecdh::{KeyError, KeyMode, PeerPublicKey, PublicKey, SessionKeyPair, SharedSecret};
+pub use encoding::from_json_object;
 pub use evaluate::{
-    evaluate, Attestation, Clock, EvaluateError, EvaluateInput, Evaluation, FiDataRange,
-    PinnedKeys, RangeError, Session,
+    consent_ref, evaluate, Attestation, Clock, ConsentRef, EvaluateError, EvaluateInput,
+    Evaluation, FiDataRange, PinnedKeys, RangeError, Session,
 };
+pub use fi_request::{build_fi_request, FiRequest, FiRequestError, REBIT_VERSION};
 pub use jws::{verify_compact, verify_detached, FiuSigningKey, JwsError, PinnedKey};
 pub use key_material::{DhPublicKey, KeyMaterial, KeyMaterialError};
 pub use money::{parse_paise, MoneyError, Paise, Sign};

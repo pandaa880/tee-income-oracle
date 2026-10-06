@@ -9,6 +9,7 @@
   "scripts": {
     "gen:keys": "node src/vectors/gen-keys.ts",
     "gen:vectors": "node src/vectors/gen-vectors.ts",
+    "gen:demo-keys": "node src/demo/gen-demo-keys.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../.oxlintrc.json --type-aware --deny-warnings src",
     "format": "oxfmt -c ../.oxfmtrc.json src",

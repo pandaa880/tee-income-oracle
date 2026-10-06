@@ -64,7 +64,7 @@ fn strip_armour(compact: &str) -> Option<&str> {
 /// Deserializes `bytes` only if the JSON value is an object. serde's derived
 /// struct visitor also accepts an array (members by position), which no other
 /// implementation does: an input only we accept is a parser differential.
-pub(crate) fn from_json_object<T: DeserializeOwned>(bytes: &[u8]) -> Option<T> {
+pub fn from_json_object<T: DeserializeOwned>(bytes: &[u8]) -> Option<T> {
     if bytes.trim_ascii_start().first() != Some(&b'{') {
         return None;
     }

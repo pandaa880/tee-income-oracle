@@ -3,7 +3,7 @@ target/
 .anchor/
 
 # Node
-node_modules/
+node_modules
 dist/
 .next/
 .vitest/
@@ -20,6 +20,8 @@ __pycache__/
 **/*.pem
 **/*.key
 test-vectors/*.key
+# Sandbox-bank demo private keys (public halves live in enclave/pinned/)
+sandbox-bank/.secrets/
 
 # Nitro enclave build output
 *.eif

@@ -2,8 +2,11 @@
 name = "tio-core"
 version = "0.1.0"
 description = "Trusted core of TEE Income Oracle: key exchange, decryption, verification and scoring. No I/O."
-edition.workspace = true
-rust-version.workspace = true
+# Not inherited from the workspace: the enclave image builds this crate
+# without the root workspace (enclave/Dockerfile), so keep these in sync
+# with the root Cargo.toml by hand.
+edition = "2021"
+rust-version = "1.89.0"
 license = "Apache-2.0"
 publish = false
 
@@ -18,6 +21,7 @@ aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "al
 # backend in `ManuallyDrop` with no `Drop`, so H is NOT wiped unless the
 # enclave is built with `RUSTFLAGS="--cfg polyval_force_soft"` (constant-time
 # soft backend, which zeroizes). The AES key schedule is wiped either way.
+# enclave/Dockerfile sets that flag for every build (arm64 on Oyster too).
 aes = { version = "0.8.4", default-features = false, features = ["zeroize"] }
 base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
 ghash = { version = "0.5.1", default-features = false, features = ["zeroize"] }
