@@ -258,3 +258,12 @@ fn api_error_statuses_are_400_and_401() {
     assert_eq!(ApiError::BAD_INTENT_SIGNATURE.status.as_u16(), 401);
     assert_eq!(ApiError::BAD_INTENT_SIGNATURE.code, "bad_intent_signature");
 }
+
+#[test]
+fn verify_refuses_an_oversized_signature_string_as_bad_request() {
+    let key = signer(1);
+    assert_eq!(
+        verify_intent(&intent_for(&key), &wallet_of(&key), &"2".repeat(60_000)),
+        Err(ApiError::BAD_REQUEST)
+    );
+}

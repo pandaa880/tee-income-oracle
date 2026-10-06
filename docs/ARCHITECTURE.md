@@ -160,7 +160,7 @@ What a hostile gateway or host can do at each hop:
 | Admin reusing a revoked registry id | ids are append-only | the id space is 255 for the life of a deployment (FORMATS §13 "Id budget") |
 | Admin key | public registry events; anyone can re-run the verifier; a compromised key is replaceable (`propose_admin` + `accept_admin`) | the MVP weak link (G5); a multisig beyond the demo, then ZK-verified attestation |
 | AWS | none | accepted: "trust AWS and the code" |
-| Anyone on the internet exhausting the enclave (its port is public) | caps on open sessions (256), evaluate requests in flight (4), evaluations running (2), body size and read time; slots held until the work ends (FORMATS §10) | accepted liveness risk: a caller who can get consents (the sandbox bank issues them to anyone) can keep the session cap full and lock others out. The host and gateway can already deny service, so availability is never guaranteed |
+| Anyone on the internet exhausting the enclave (its port is public) | caps on open sessions (256), create/bind requests in flight (32), evaluate requests in flight (4), evaluations running (2), body size and read time, and base58 length before decoding; slots taken before a body is read and held until the work ends (FORMATS §10) | accepted liveness risk: a caller who can get consents (the sandbox bank issues them to anyone) can keep the session cap full and lock others out. The host and gateway can already deny service, so availability is never guaranteed |
 
 ## 6. Guarantees and limitations
 

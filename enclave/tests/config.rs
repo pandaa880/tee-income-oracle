@@ -11,7 +11,8 @@ mod common;
 
 use tio_core::ProofType;
 use tio_enclave::config::{
-    decode_pubkey, DeploymentIds, ORACLE_PROGRAM_ID, SAS_CREDENTIAL, SAS_SCHEMA,
+    decode_base58_fixed, decode_pubkey, DeploymentIds, ORACLE_PROGRAM_ID, SAS_CREDENTIAL,
+    SAS_SCHEMA,
 };
 
 use common::{b58_32, load_json, repo_root};
@@ -117,4 +118,30 @@ fn decode_pubkey_rejects_31_and_33_byte_keys() {
     assert_eq!(decode_pubkey(&bs58::encode([7u8; 31]).into_string()), None);
     assert_eq!(decode_pubkey(&bs58::encode([7u8; 33]).into_string()), None);
     assert_eq!(decode_pubkey(&bs58::encode([7u8; 64]).into_string()), None);
+}
+
+#[test]
+fn decode_pubkey_refuses_text_longer_than_44_digits_before_decoding() {
+    // 45 base58 digits can't be 32 bytes; a long run must fail without decoding.
+    assert_eq!(decode_pubkey(&"2".repeat(45)), None);
+    assert_eq!(decode_pubkey(&"2".repeat(60_000)), None);
+    // The longest 32-byte value (all 0xff) still fits in 44 digits.
+    let max = bs58::encode([0xffu8; 32]).into_string();
+    assert_eq!(max.len(), 44);
+    assert_eq!(decode_pubkey(&max), Some([0xff; 32]));
+    // Leading zero bytes are leading '1's: still exactly 32 bytes.
+    let zeros = bs58::encode([0u8; 32]).into_string();
+    assert_eq!(decode_pubkey(&zeros), Some([0; 32]));
+}
+
+#[test]
+fn decode_base58_fixed_needs_exactly_n_bytes() {
+    let short = bs58::encode([7u8; 31]).into_string();
+    assert_eq!(decode_base58_fixed::<32>(&short), None);
+    let long = bs58::encode([7u8; 33]).into_string();
+    assert_eq!(decode_base58_fixed::<32>(&long), None);
+    let max64 = bs58::encode([0xffu8; 64]).into_string();
+    assert!(max64.len() <= 88, "{}", max64.len());
+    assert_eq!(decode_base58_fixed::<64>(&max64), Some([0xff; 64]));
+    assert_eq!(decode_base58_fixed::<64>(&"2".repeat(89)), None);
 }

@@ -58,5 +58,21 @@ impl DeploymentIds {
 
 /// Decodes a base58 public key of exactly 32 bytes.
 pub fn decode_pubkey(b58: &str) -> Option<[u8; 32]> {
-    bs58::decode(b58).into_vec().ok()?.try_into().ok()
+    decode_base58_fixed(b58)
+}
+
+/// Decodes base58 text of exactly `N` bytes into a fixed buffer.
+///
+/// Base58 decoding is quadratic in the input length, and the text comes from
+/// the network, so anything longer than `N` bytes can ever encode to is
+/// refused before decoding (a 60 000-character "wallet" took seconds to
+/// reject otherwise). Each base58 digit carries log2(58) ≈ 5.86 bits, so `N`
+/// bytes need at most ⌈8N / 5.86⌉ ≤ 1.366 N + 1 digits (32 → 44, 64 → 88).
+pub fn decode_base58_fixed<const N: usize>(text: &str) -> Option<[u8; N]> {
+    if text.len() > N * 1366 / 1000 + 1 {
+        return None;
+    }
+    let mut out = [0u8; N];
+    let written = bs58::decode(text).onto(&mut out[..]).ok()?;
+    (written == N).then_some(out)
 }

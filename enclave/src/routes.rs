@@ -18,7 +18,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use http_body_util::LengthLimitError;
 use serde::de::DeserializeOwned;
 use std::time::Duration;
-use tokio::time::timeout;
+use tio_core::from_json_object;
+use tokio::{sync::OwnedSemaphorePermit, time::timeout};
 use uuid::Uuid;
 
 use crate::{
@@ -28,8 +29,8 @@ use crate::{
     flows::{create_session, evaluate_session},
     log,
     wire::{
-        BindRequest, BindResponse, CreateSessionRequest, EvaluateRequest, EvaluateResponse,
-        InfoResponse,
+        BindRequest, BindResponse, CreateSessionRequest, CreateSessionResponse, EvaluateRequest,
+        EvaluateResponse, InfoResponse,
     },
 };
 
@@ -56,34 +57,50 @@ async fn info(State(state): State<AppState>) -> Json<InfoResponse> {
 }
 
 async fn create(State(state): State<AppState>, body: Body) -> Response {
-    let result = read_small::<CreateSessionRequest>(&state, body)
-        .await
-        .and_then(|request| {
-            if request.measurement_id == u8::MAX {
-                // 255 is never assigned (FORMATS §13).
-                return Err(ApiError::BAD_REQUEST);
-            }
-            create_session(&state, &request)
-        });
+    let result = run_create(&state, body).await;
     respond(None, "create", result.map(Json))
+}
+
+async fn run_create(state: &AppState, body: Body) -> Result<CreateSessionResponse, ApiError> {
+    let _in_flight = small_request_slot(state)?;
+    let request = read_small::<CreateSessionRequest>(state, body).await?;
+    if request.measurement_id == u8::MAX {
+        // 255 is never assigned (FORMATS §13).
+        return Err(ApiError::BAD_REQUEST);
+    }
+    create_session(state, &request)
 }
 
 async fn bind(State(state): State<AppState>, Path(id): Path<String>, body: Body) -> Response {
     let Some(id) = session_id(&id) else {
         return respond::<Json<BindResponse>>(None, "bind", Err(ApiError::SESSION_NOT_FOUND));
     };
-    let result = read_small::<BindRequest>(&state, body)
-        .await
-        .and_then(|request| {
-            let wallet = decode_pubkey(&request.wallet).ok_or(ApiError::BAD_REQUEST)?;
-            let now = state.inner.config.clock.now();
-            state
-                .inner
-                .sessions
-                .bind(&id, &wallet, &request.signature_b58, now)?;
-            Ok(Json(BindResponse { status: "bound" }))
-        });
-    respond(Some(&id), "bind", result)
+    let result = run_bind(&state, &id, body).await;
+    respond(Some(&id), "bind", result.map(Json))
+}
+
+async fn run_bind(state: &AppState, id: &str, body: Body) -> Result<BindResponse, ApiError> {
+    let _in_flight = small_request_slot(state)?;
+    let request = read_small::<BindRequest>(state, body).await?;
+    let wallet = decode_pubkey(&request.wallet).ok_or(ApiError::BAD_REQUEST)?;
+    let now = state.inner.config.clock.now();
+    state
+        .inner
+        .sessions
+        .bind(id, &wallet, &request.signature_b58, now)?;
+    Ok(BindResponse { status: "bound" })
+}
+
+/// One of the create/bind in-flight slots, held until the request is done
+/// (body read and processing), or 503 `too_many_requests` before any byte
+/// of the body is read.
+fn small_request_slot(state: &AppState) -> Result<OwnedSemaphorePermit, ApiError> {
+    state
+        .inner
+        .small_requests
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::TOO_MANY_REQUESTS)
 }
 
 /// The session is taken (and so used up) before the body is read: a request
@@ -133,8 +150,7 @@ async fn read_evaluate_request(
     limit: usize,
 ) -> Result<(EvaluateRequest, Vec<u8>), ApiError> {
     let bytes = read_body(state, body, limit).await?;
-    let mut request: EvaluateRequest =
-        serde_json::from_slice(&bytes).map_err(|_| ApiError::BAD_REQUEST)?;
+    let mut request: EvaluateRequest = from_json_object(&bytes).ok_or(ApiError::BAD_REQUEST)?;
     drop(bytes);
     let fetch_response_b64 = std::mem::take(&mut request.fetch_response_b64);
     let fetch_response = STANDARD
@@ -148,7 +164,7 @@ async fn read_evaluate_request(
 async fn read_small<T: DeserializeOwned>(state: &AppState, body: Body) -> Result<T, ApiError> {
     let limit = state.inner.config.limits.other_body_bytes;
     let bytes = read_body(state, body, limit).await?;
-    serde_json::from_slice(&bytes).map_err(|_| ApiError::BAD_REQUEST)
+    from_json_object(&bytes).ok_or(ApiError::BAD_REQUEST)
 }
 
 /// Reads a whole body within `limit` bytes and `body_read_timeout_secs`:

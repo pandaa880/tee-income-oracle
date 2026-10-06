@@ -4,7 +4,7 @@
 
 use ed25519_dalek::{Signature, VerifyingKey};
 
-use crate::error::ApiError;
+use crate::{config::decode_base58_fixed, error::ApiError};
 
 /// Builds the exact §9 text: five `\n`-separated lines, no trailing newline.
 pub fn build_intent(
@@ -29,11 +29,8 @@ pub fn build_intent(
 /// or a wallet that isn't a valid key; [`ApiError::BAD_INTENT_SIGNATURE`] if
 /// it doesn't verify.
 pub fn verify_intent(intent: &str, wallet: &[u8; 32], signature_b58: &str) -> Result<(), ApiError> {
-    let signature_bytes: [u8; 64] = bs58::decode(signature_b58)
-        .into_vec()
-        .ok()
-        .and_then(|bytes| bytes.try_into().ok())
-        .ok_or(ApiError::BAD_REQUEST)?;
+    let signature_bytes: [u8; 64] =
+        decode_base58_fixed(signature_b58).ok_or(ApiError::BAD_REQUEST)?;
     let key = VerifyingKey::from_bytes(wallet).map_err(|_| ApiError::BAD_REQUEST)?;
     key.verify_strict(intent.as_bytes(), &Signature::from_bytes(&signature_bytes))
         .map_err(|_| ApiError::BAD_INTENT_SIGNATURE)

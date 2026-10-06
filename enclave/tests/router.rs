@@ -450,6 +450,81 @@ async fn an_evaluate_body_that_never_arrives_times_out_with_408() {
     assert_error(&reply, 408, "body_timeout");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn create_and_bind_in_flight_are_capped_before_any_body_is_read() {
+    let h = build_harness(
+        vector_now(),
+        Limits {
+            max_inflight_small_requests: 1,
+            ..Limits::default()
+        },
+    );
+    // A create whose body never arrives holds the only slot.
+    let stalled = {
+        let h = h.clone();
+        tokio::spawn(async move { send_stalled(&h, "/v1/sessions").await })
+    };
+    for _ in 0..500 {
+        if h.state.available_small_request_slots() == 0 {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    assert_eq!(h.state.available_small_request_slots(), 0);
+    assert_error(
+        &post(&h, "/v1/sessions", &good_create_request()).await,
+        503,
+        "too_many_requests",
+    );
+    let id = uuid::Uuid::new_v4().to_string();
+    let body = json!({ "wallet": "x", "signature_b58": "y" });
+    assert_error(
+        &post(&h, &bind_uri(&id), &body).await,
+        503,
+        "too_many_requests",
+    );
+    // The slot comes back when that request ends.
+    stalled.abort();
+    assert!(stalled.await.is_err());
+    assert_eq!(h.state.available_small_request_slots(), 1);
+    let reply = post(&h, "/v1/sessions", &good_create_request()).await;
+    assert_eq!(reply.status.as_u16(), 200, "{}", reply.text());
+}
+
+#[tokio::test]
+async fn positional_arrays_are_refused_on_every_route() {
+    let h = own_harness();
+    let create = json!([{}, "wallet", "consent", 0]);
+    assert_error(&post(&h, "/v1/sessions", &create).await, 400, "bad_request");
+    let id = uuid::Uuid::new_v4().to_string();
+    let bind = json!(["wallet", "signature"]);
+    assert_error(&post(&h, &bind_uri(&id), &bind).await, 400, "bad_request");
+    let case = salaried();
+    let evaluate = evaluate_body(&case);
+    let array = json!([
+        evaluate["fetch_response_b64"],
+        evaluate["fetch_response_jws"],
+        evaluate["consent_jws"],
+    ]);
+    let session = planted_bound(&h);
+    assert_error(
+        &post(&h, &evaluate_uri(&session), &array).await,
+        400,
+        "bad_request",
+    );
+}
+
+#[tokio::test]
+async fn an_oversized_base58_wallet_is_refused_as_bad_request() {
+    let mut request = good_create_request();
+    request["wallet"] = json!("2".repeat(60_000));
+    assert_error(
+        &post(&shared(), "/v1/sessions", &request).await,
+        400,
+        "bad_request",
+    );
+}
+
 #[tokio::test(start_paused = true)]
 async fn create_and_bind_bodies_that_never_arrive_time_out_with_408() {
     let h = own_harness();

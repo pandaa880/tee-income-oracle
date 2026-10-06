@@ -847,14 +847,19 @@ string and verifies; any difference → reject.
   evaluate call on a bound session uses it up, whatever the body or the
   result (single-use). `expiry` = the enclave's now + 600 s (§8).
 - **Limits:** at most 256 open sessions (expired ones are swept first);
-  session TTL 600 s; at most 4 evaluate requests in flight (reading,
-  waiting or running) and 2 evaluations running at once, each slot held
-  until the computation ends even if the client disconnects; evaluate body
-  ≤ 8 MiB, other bodies ≤ 64 KiB; every body must arrive within 30 s (`body_timeout`).
+  session TTL 600 s; at most 32 create/bind requests in flight and 4
+  evaluate requests in flight (reading, waiting or running), and 2
+  evaluations running at once, each slot taken before any body byte is read
+  and held until the request (for evaluate: the computation) ends, even if
+  the client disconnects; evaluate body ≤ 8 MiB, other bodies ≤ 64 KiB;
+  every body must arrive within 30 s (`body_timeout`). Every body must be a
+  JSON object (a positional array is `bad_request`). Base58 values (`wallet`,
+  `signature_b58`) longer than 44 / 88 characters are refused before they
+  are decoded.
 - **Enclave codes** (HTTP status): `bad_request` (400), `bad_intent_signature`
   (401), `session_not_found` (404), `session_not_bound`,
   `session_already_bound` (409), `body_timeout` (408), `session_expired`
-  (410), `body_too_large` (413), `too_many_sessions`,
+  (410), `body_too_large` (413), `too_many_sessions`, `too_many_requests`,
   `too_many_evaluations` (503; a refused evaluate doesn't use the session
   up), `internal_error` (500). `tio-core` codes below are sent with 422.
 - Bodies that are signed travel as base64 of the **exact bytes** (`*_b64`), so

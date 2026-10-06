@@ -25,6 +25,7 @@ pub use attest::{
 };
 pub use cipher::{decrypt, derive_session_key, DecryptError, Nonce, SessionKey};
 pub use ecdh::{KeyError, KeyMode, PeerPublicKey, PublicKey, SessionKeyPair, SharedSecret};
+pub use encoding::from_json_object;
 pub use evaluate::{
     consent_ref, evaluate, Attestation, Clock, ConsentRef, EvaluateError, EvaluateInput,
     Evaluation, FiDataRange, PinnedKeys, RangeError, Session,

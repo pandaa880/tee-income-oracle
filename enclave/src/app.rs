@@ -25,6 +25,10 @@ pub struct Limits {
     /// session frees its place under `max_sessions`, so this is what bounds
     /// the memory held by evaluate bodies.
     pub max_inflight_evaluate_requests: usize,
+    /// Create and bind requests in flight (reading or processing): bounds the
+    /// small bodies (≤ `other_body_bytes` each) an unauthenticated caller can
+    /// make the enclave buffer at once.
+    pub max_inflight_small_requests: usize,
     /// Time allowed to receive an evaluate body.
     pub body_read_timeout_secs: u64,
     pub evaluate_body_bytes: usize,
@@ -38,6 +42,7 @@ impl Default for Limits {
             session_ttl_secs: 600,
             max_concurrent_evaluations: 2,
             max_inflight_evaluate_requests: 4,
+            max_inflight_small_requests: 32,
             body_read_timeout_secs: 30,
             evaluate_body_bytes: 8 * 1024 * 1024,
             other_body_bytes: 64 * 1024,
@@ -74,6 +79,8 @@ pub(crate) struct Inner {
     pub(crate) evaluations: Arc<Semaphore>,
     /// Bounds evaluate requests in flight (see `Limits`).
     pub(crate) evaluate_requests: Arc<Semaphore>,
+    /// Bounds create and bind requests in flight (see `Limits`).
+    pub(crate) small_requests: Arc<Semaphore>,
     /// JCS bytes of the FIU public JWK (`e`, `kid`, `kty`, `n`).
     pub(crate) fiu_public_jwk: Box<RawValue>,
     /// §8.1 binding signature, hex.
@@ -103,6 +110,7 @@ impl AppState {
                 evaluate_requests: Arc::new(Semaphore::new(
                     config.limits.max_inflight_evaluate_requests,
                 )),
+                small_requests: Arc::new(Semaphore::new(config.limits.max_inflight_small_requests)),
                 fiu_public_jwk,
                 fiu_key_signature_hex: hex::encode(signature),
                 config,
@@ -119,6 +127,12 @@ impl AppState {
     #[cfg(feature = "test-hooks")]
     pub fn available_evaluation_slots(&self) -> usize {
         self.inner.evaluations.available_permits()
+    }
+
+    /// Test hook: free create/bind slots.
+    #[cfg(feature = "test-hooks")]
+    pub fn available_small_request_slots(&self) -> usize {
+        self.inner.small_requests.available_permits()
     }
 
     /// Test hook: stores a prepared session under a fixed id (vector

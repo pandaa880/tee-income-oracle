@@ -98,6 +98,13 @@ scope. See `AGENTS.md` for the full wording.
   `#[serde(flatten)]` / `Value`, silently keep the last value.
 - **Strict decoders.** base64url for JWS/JWK is `URL_SAFE_NO_PAD`: no `=`,
   no non-canonical trailing bits, so each value has one accepted encoding.
+- **Bound the encoded length before decoding.** Base58 decoding is quadratic
+  in the input: reject text longer than the target size can encode to, then
+  decode into a fixed buffer (`enclave::config::decode_base58_fixed`).
+  Never `into_vec()` network input and check the length afterwards.
+- **The enclave's HTTP bodies go through `tio_core::from_json_object`** too,
+  not `serde_json::from_slice`: the object-only rule above applies at every
+  boundary, including our own API.
 
 ### Crypto hygiene
 - `#![forbid(unsafe_code)]` in `tio-core`.
@@ -140,7 +147,9 @@ scope. See `AGENTS.md` for the full wording.
 
 ### Enclave HTTP server
 - Every limit is enforced in the enclave itself: its port is public, not
-  only reachable by the gateway.
+  only reachable by the gateway. **Every route that buffers a body takes an
+  in-flight slot before reading it** (`try_acquire` → 503) and has a read
+  timeout; a per-request size limit alone doesn't bound memory.
 - A concurrency permit for work done in `spawn_blocking` is an owned permit
   (`Arc<Semaphore>::acquire_owned`) **moved into the closure**. A permit held
   by the handler is released when the client disconnects, while the blocking

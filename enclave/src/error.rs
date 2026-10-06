@@ -38,6 +38,9 @@ impl ApiError {
     /// 503: the open-session cap is reached.
     pub const TOO_MANY_SESSIONS: Self =
         Self::new(StatusCode::SERVICE_UNAVAILABLE, "too_many_sessions");
+    /// 503: the create/bind in-flight cap is reached; retry later.
+    pub const TOO_MANY_REQUESTS: Self =
+        Self::new(StatusCode::SERVICE_UNAVAILABLE, "too_many_requests");
     /// 503: the evaluate in-flight cap is reached; retry later.
     pub const TOO_MANY_EVALUATIONS: Self =
         Self::new(StatusCode::SERVICE_UNAVAILABLE, "too_many_evaluations");
@@ -73,6 +76,7 @@ fn message(code: &str) -> &'static str {
         "too_many_sessions" => "too many open sessions",
         "body_too_large" => "the request body is too large",
         "too_many_evaluations" => "too many evaluations in progress",
+        "too_many_requests" => "too many requests in progress",
         "body_timeout" => "the request body did not arrive in time",
         "internal_error" => "internal error",
         _ => "the request was rejected; see the code",
