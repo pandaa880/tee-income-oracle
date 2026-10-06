@@ -446,9 +446,23 @@ async fn an_evaluate_body_that_never_arrives_times_out_with_408() {
     let h = own_harness();
     let case = salaried();
     plant_vector(&h, &case, true);
+    let reply = send_stalled(&h, &evaluate_uri(case.session_id())).await;
+    assert_error(&reply, 408, "body_timeout");
+}
+
+#[tokio::test(start_paused = true)]
+async fn create_and_bind_bodies_that_never_arrive_time_out_with_408() {
+    let h = own_harness();
+    assert_error(&send_stalled(&h, "/v1/sessions").await, 408, "body_timeout");
+    let id = uuid::Uuid::new_v4().to_string();
+    assert_error(&send_stalled(&h, &bind_uri(&id)).await, 408, "body_timeout");
+}
+
+/// POSTs a body that never arrives (time is paused, so the timeout fires at once).
+async fn send_stalled(h: &Harness, uri: &str) -> Reply {
     let request = Request::builder()
         .method("POST")
-        .uri(evaluate_uri(case.session_id()))
+        .uri(uri)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::new(StalledBody))
         .expect("request");
@@ -460,12 +474,11 @@ async fn an_evaluate_body_that_never_arrives_times_out_with_408() {
         .await
         .expect("body")
         .to_bytes();
-    let reply = Reply {
+    Reply {
         status,
         content_type: None,
         body: body.to_vec(),
-    };
-    assert_error(&reply, 408, "body_timeout");
+    }
 }
 
 #[tokio::test]

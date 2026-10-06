@@ -850,7 +850,7 @@ string and verifies; any difference → reject.
   session TTL 600 s; at most 4 evaluate requests in flight (reading,
   waiting or running) and 2 evaluations running at once, each slot held
   until the computation ends even if the client disconnects; evaluate body
-  ≤ 8 MiB, received within 30 s; other bodies ≤ 64 KiB.
+  ≤ 8 MiB, other bodies ≤ 64 KiB; every body must arrive within 30 s (`body_timeout`).
 - **Enclave codes** (HTTP status): `bad_request` (400), `bad_intent_signature`
   (401), `session_not_found` (404), `session_not_bound`,
   `session_already_bound` (409), `body_timeout` (408), `session_expired`

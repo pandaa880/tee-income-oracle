@@ -57,7 +57,7 @@ fi
 echo "reproducible: $first"
 
 if [[ -n "$repo" ]]; then
-  build "type=registry,name=$repo,rewrite-timestamp=true" "$work/meta-push.json"
+  build "type=registry,name=$repo,oci-mediatypes=true,rewrite-timestamp=true" "$work/meta-push.json"
   pushed="$(digest_of "$work/meta-push.json")"
   echo "pushed: $repo@$pushed"
   if [[ "$pushed" != "$first" ]]; then

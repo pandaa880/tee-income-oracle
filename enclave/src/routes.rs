@@ -1,14 +1,15 @@
-//! Route handlers (FORMATS §10). Each handler parses its body itself, so a
-//! malformed body, an unknown member or an oversized body gets the §10
-//! error shape, not axum's plain-text rejection.
+//! Route handlers (FORMATS §10). Each handler reads its body itself through
+//! `read_body`, with a size limit and a time limit (the port is public, so a
+//! client that sends a body slowly or never must not hold a task forever),
+//! and a malformed, oversized or late body gets the §10 error shape, not
+//! axum's plain-text rejection.
 //!
 //! Path ids are parsed as UUIDs before anything else: a non-UUID can't name
 //! a session (404), and only a parsed id ever reaches the log.
 
 use axum::{
     body::{to_bytes, Body, Bytes},
-    extract::{rejection::BytesRejection, DefaultBodyLimit, Path, State},
-    http::StatusCode,
+    extract::{DefaultBodyLimit, Path, State},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -33,17 +34,13 @@ use crate::{
 };
 
 pub(crate) fn routes(state: AppState) -> Router {
-    let small = DefaultBodyLimit::max(state.inner.config.limits.other_body_bytes);
+    // Every handler reads its own body with its own limits (`read_body`).
     Router::new()
         .route("/v1/info", get(info))
-        .route("/v1/sessions", post(create).layer(small))
-        .route("/v1/sessions/{id}/bind", post(bind).layer(small))
-        // Evaluate reads its body itself, after the session lookup, with its
-        // own limit (see `evaluate`).
-        .route(
-            "/v1/sessions/{id}/evaluate",
-            post(evaluate).layer(DefaultBodyLimit::disable()),
-        )
+        .route("/v1/sessions", post(create))
+        .route("/v1/sessions/{id}/bind", post(bind))
+        .route("/v1/sessions/{id}/evaluate", post(evaluate))
+        .layer(DefaultBodyLimit::disable())
         .with_state(state)
 }
 
@@ -58,34 +55,34 @@ async fn info(State(state): State<AppState>) -> Json<InfoResponse> {
     })
 }
 
-async fn create(State(state): State<AppState>, body: Result<Bytes, BytesRejection>) -> Response {
-    let result = parse::<CreateSessionRequest>(body).and_then(|request| {
-        if request.measurement_id == u8::MAX {
-            // 255 is never assigned (FORMATS §13).
-            return Err(ApiError::BAD_REQUEST);
-        }
-        create_session(&state, &request)
-    });
+async fn create(State(state): State<AppState>, body: Body) -> Response {
+    let result = read_small::<CreateSessionRequest>(&state, body)
+        .await
+        .and_then(|request| {
+            if request.measurement_id == u8::MAX {
+                // 255 is never assigned (FORMATS §13).
+                return Err(ApiError::BAD_REQUEST);
+            }
+            create_session(&state, &request)
+        });
     respond(None, "create", result.map(Json))
 }
 
-async fn bind(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    body: Result<Bytes, BytesRejection>,
-) -> Response {
+async fn bind(State(state): State<AppState>, Path(id): Path<String>, body: Body) -> Response {
     let Some(id) = session_id(&id) else {
         return respond::<Json<BindResponse>>(None, "bind", Err(ApiError::SESSION_NOT_FOUND));
     };
-    let result = parse::<BindRequest>(body).and_then(|request| {
-        let wallet = decode_pubkey(&request.wallet).ok_or(ApiError::BAD_REQUEST)?;
-        let now = state.inner.config.clock.now();
-        state
-            .inner
-            .sessions
-            .bind(&id, &wallet, &request.signature_b58, now)?;
-        Ok(Json(BindResponse { status: "bound" }))
-    });
+    let result = read_small::<BindRequest>(&state, body)
+        .await
+        .and_then(|request| {
+            let wallet = decode_pubkey(&request.wallet).ok_or(ApiError::BAD_REQUEST)?;
+            let now = state.inner.config.clock.now();
+            state
+                .inner
+                .sessions
+                .bind(&id, &wallet, &request.signature_b58, now)?;
+            Ok(Json(BindResponse { status: "bound" }))
+        });
     respond(Some(&id), "bind", result)
 }
 
@@ -122,13 +119,8 @@ async fn run_evaluate(
         .map_err(|_| ApiError::TOO_MANY_EVALUATIONS)?;
     let now = state.inner.config.clock.now();
     let session = state.inner.sessions.take_bound(id, now)?;
-    let limits = state.inner.config.limits;
-    let (request, fetch_response) = timeout(
-        Duration::from_secs(limits.body_read_timeout_secs),
-        read_evaluate_request(body, limits.evaluate_body_bytes),
-    )
-    .await
-    .map_err(|_| ApiError::BODY_TIMEOUT)??;
+    let limit = state.inner.config.limits.evaluate_body_bytes;
+    let (request, fetch_response) = read_evaluate_request(state, body, limit).await?;
     evaluate_session(state, in_flight, session, request, fetch_response).await
 }
 
@@ -136,16 +128,11 @@ async fn run_evaluate(
 /// are freed here, so only the decoded fetch response is held while the
 /// evaluation waits for a slot.
 async fn read_evaluate_request(
+    state: &AppState,
     body: Body,
     limit: usize,
 ) -> Result<(EvaluateRequest, Vec<u8>), ApiError> {
-    let bytes = to_bytes(body, limit).await.map_err(|error| {
-        if is_length_limit(&error) {
-            ApiError::BODY_TOO_LARGE
-        } else {
-            ApiError::BAD_REQUEST
-        }
-    })?;
+    let bytes = read_body(state, body, limit).await?;
     let mut request: EvaluateRequest =
         serde_json::from_slice(&bytes).map_err(|_| ApiError::BAD_REQUEST)?;
     drop(bytes);
@@ -154,6 +141,30 @@ async fn read_evaluate_request(
         .decode(fetch_response_b64)
         .map_err(|_| ApiError::BAD_REQUEST)?;
     Ok((request, fetch_response))
+}
+
+/// A create or bind body (≤ `other_body_bytes`) as JSON of `T`; unknown
+/// members and anything else that doesn't parse are `bad_request`.
+async fn read_small<T: DeserializeOwned>(state: &AppState, body: Body) -> Result<T, ApiError> {
+    let limit = state.inner.config.limits.other_body_bytes;
+    let bytes = read_body(state, body, limit).await?;
+    serde_json::from_slice(&bytes).map_err(|_| ApiError::BAD_REQUEST)
+}
+
+/// Reads a whole body within `limit` bytes and `body_read_timeout_secs`:
+/// 408 if it doesn't arrive in time, 413 over the limit, 400 for bad framing.
+async fn read_body(state: &AppState, body: Body, limit: usize) -> Result<Bytes, ApiError> {
+    let secs = state.inner.config.limits.body_read_timeout_secs;
+    timeout(Duration::from_secs(secs), to_bytes(body, limit))
+        .await
+        .map_err(|_| ApiError::BODY_TIMEOUT)?
+        .map_err(|error| {
+            if is_length_limit(&error) {
+                ApiError::BODY_TOO_LARGE
+            } else {
+                ApiError::BAD_REQUEST
+            }
+        })
 }
 
 /// Whether a body read failed because it passed the limit (axum's
@@ -172,19 +183,6 @@ fn is_length_limit(error: &axum::Error) -> bool {
 /// The canonical (lowercase, hyphenated) form of a UUID path id.
 fn session_id(raw: &str) -> Option<String> {
     Uuid::parse_str(raw).ok().map(|id| id.to_string())
-}
-
-/// The body as JSON of `T`: 413 over the route's limit, 400 for anything
-/// else that doesn't parse (including unknown members).
-fn parse<T: DeserializeOwned>(body: Result<Bytes, BytesRejection>) -> Result<T, ApiError> {
-    let bytes = body.map_err(|rejection| {
-        if rejection.status() == StatusCode::PAYLOAD_TOO_LARGE {
-            ApiError::BODY_TOO_LARGE
-        } else {
-            ApiError::BAD_REQUEST
-        }
-    })?;
-    serde_json::from_slice(&bytes).map_err(|_| ApiError::BAD_REQUEST)
 }
 
 /// Logs the outcome code (never data) and turns the result into a response.
