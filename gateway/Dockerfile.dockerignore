@@ -1,0 +1,17 @@
+# Context for gateway/Dockerfile (BuildKit reads <Dockerfile>.dockerignore).
+# Only the lockfile, the gateway's sources, the hand-written oracle helpers,
+# the deployment addresses and the default policy; never tests or keys.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!gateway/package.json
+!gateway/src/
+!clients/ts/oracle/package.json
+!clients/ts/oracle/src/attest.ts
+!sandbox-bank/package.json
+!sandbox-bank/src/crypto/jcs.ts
+!deployments/
+!test-vectors/policy/default.json
+gateway/src/**/*.test.ts
+gateway/src/testing/

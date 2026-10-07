@@ -115,6 +115,18 @@ jobs:
       - run: pnpm --filter @tio/demo-pool-tests lint
       - run: pnpm --filter @tio/demo-pool-tests format:check
       - run: pnpm --filter @tio/demo-pool-tests test
+      # Hand-written oracle helpers (@tio/oracle-client/attest), cross-checked
+      # against the generated client.
+      - run: pnpm --filter @tio/oracle-client lint
+      - run: pnpm --filter @tio/oracle-client format:check
+      - run: pnpm --filter @tio/oracle-client test
+      # Gateway: unit tests plus relayer/registry suites on the embedded surfpool
+      # (they load target/deploy/*.so, so they run after anchor build). The
+      # local E2E (TIO_E2E=1) needs the demo keys and is not run here.
+      - run: pnpm --filter @tio/gateway typecheck
+      - run: pnpm --filter @tio/gateway lint
+      - run: pnpm --filter @tio/gateway format:check
+      - run: pnpm --filter @tio/gateway test
 
   golden-vectors:
     runs-on: ubuntu-latest

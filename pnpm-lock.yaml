@@ -212,9 +212,79 @@ importers:
       codama:
         specifier: 1.11.0
         version: 1.11.0
+      oxfmt:
+        specifier: 0.70.0
+        version: 0.70.0
+      oxlint:
+        specifier: 1.85.0
+        version: 1.85.0(oxlint-tsgolint@7.0.2003)
+      oxlint-tsgolint:
+        specifier: 7.0.2003
+        version: 7.0.2003
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@24.19.0)(vite@8.3.1(@types/node@24.19.0))
+
+  gateway:
+    dependencies:
+      '@hono/node-server':
+        specifier: 2.1.3
+        version: 2.1.3(hono@4.13.13)
+      '@solana/kit':
+        specifier: 7.1.1
+        version: 7.1.1(typescript@7.0.2)
+      '@tio/oracle-client':
+        specifier: workspace:*
+        version: link:../clients/ts/oracle
+      '@tio/sandbox-bank':
+        specifier: workspace:*
+        version: link:../sandbox-bank
+      hono:
+        specifier: 4.13.13
+        version: 4.13.13
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+    devDependencies:
+      '@noble/curves':
+        specifier: 2.4.0
+        version: 2.4.0
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
+      '@solana/surfpool':
+        specifier: 1.6.0
+        version: 1.6.0(@solana/kit@7.1.1(typescript@7.0.2))
+      '@tio/demo-pool-client':
+        specifier: workspace:*
+        version: link:../clients/ts/demo-pool
+      '@tio/ops':
+        specifier: workspace:*
+        version: link:../ops
+      '@tio/oracle-tests':
+        specifier: workspace:*
+        version: link:../programs/oracle/tests
+      '@types/node':
+        specifier: 24.19.0
+        version: 24.19.0
+      oxfmt:
+        specifier: 0.70.0
+        version: 0.70.0
+      oxlint:
+        specifier: 1.85.0
+        version: 1.85.0(oxlint-tsgolint@7.0.2003)
+      oxlint-tsgolint:
+        specifier: 7.0.2003
+        version: 7.0.2003
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@24.19.0)(vite@8.3.1(@types/node@24.19.0))
 
   ops:
     dependencies:
