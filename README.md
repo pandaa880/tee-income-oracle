@@ -148,7 +148,11 @@ reproducible arm64 image for Oyster; it is tested in-process against every
 test vector, not deployed yet. The `sandbox-bank` serves the ReBIT FIP + AA
 API (consent, FI request, fetch) and accepts an enclave's FIU key only if
 its attester is active in the on-chain registry; it runs locally and in
-Docker. Next: the gateway, then the devnet deployment, then the web.
+Docker. The `gateway` drives a whole session for the web (consent, enclave
+session, wallet-signed intent, FI request and fetch, evaluate), streams each
+stage over SSE and relays the signed result to the oracle; a local end-to-end
+test runs the real enclave container, bank and programs through it. Next: the
+devnet deployment, then the web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

@@ -41,6 +41,7 @@ same PR updates this file, both implementations and the regenerated vectors.
 | Enclave signed message (§8) | domain tag `TIO-ATTEST-v1` | any change to the signed bytes or their order |
 | FIU key binding (§8.1) | domain tag `TIO-FIU-KEY-v1` | any change to the signed bytes or the JWK members |
 | Enclave HTTP API (§10) | path prefix `/v1/` | a breaking request/response change (adding optional fields isn't breaking) |
+| Gateway HTTP API (§16) | path prefix `/v1/` | a breaking request/response or event change (adding optional fields isn't breaking) |
 | Scoring policy (§6) | `"v": 2` | a policy schema change |
 | Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
 | `proof_type` values (§7) | `1 = tee_nitro_oyster`; `2 = tee_nitro_aws` reserved | append-only; never reuse or renumber |
@@ -1387,3 +1388,119 @@ RPC cost, not request rate. Exposing the bank publicly breaks this.
 (default `enclave/pinned/`). The bank refuses to start if a key is flagged
 `private_key_test_only`, is under 2048 bits, or its public half (`e, kid,
 kty, n`) differs from the pinned file the enclave compiles in.
+
+---
+
+## 16. Gateway HTTP API — FROZEN (demo)
+
+The gateway (`gateway/`, `node src/main.ts`) is the web's only server. It is
+**untrusted** (ARCHITECTURE §2): it carries the enclave's signed FI request
+and the AA-signed fetch response as exact bytes, relays the enclave's signed
+result on chain and pays the fees. It can delay or drop a session; it can't
+read bank data or forge a tier.
+
+| Route | Request | Reply |
+|---|---|---|
+| `POST /v1/sessions` | `{ wallet, persona_id }` | `{ session_id, intent, intent_expires }` |
+| `POST /v1/sessions/{id}/complete` | `{ signature_b58 }` | `text/event-stream` (below) |
+| `GET /v1/info` | — | `{ cluster, oracle_program, credential, schema, measurement_id, policy_hash, attester_address }` |
+| `GET /health` | — | `{ status: "ok" }` |
+
+- **Bodies** are JSON objects with exactly the members listed (unknown
+  members, wrong types, not JSON → `bad_request`), at most 4 KiB
+  (`body_too_large`, 413). `wallet`: base58, 32–44 characters.
+  `persona_id`: `salaried_steady`, `trader_lumpy`, `declining` or
+  `stressed` (the §15 personas). `signature_b58`: base58, at most 88
+  characters, the wallet's Ed25519 `signMessage` over the exact `intent`
+  string (§9).
+- **Create** checks the enclave's FIU key first (below), asks the bank for an
+  AA-signed consent for the persona (§15 `/Consent`), and opens an enclave
+  session with the configured policy, the wallet, that consent and the
+  configured `measurement_id` (§10). `intent` / `intent_expires` are the
+  enclave's.
+- **Complete** checks the body, then takes the session (single use: any
+  complete after that answers `session_not_found`). Errors up to this point
+  are JSON with their HTTP status. Then the reply is `200 text/event-stream`:
+
+  | Event | Data |
+  |---|---|
+  | `stage` | `{"stage": "bind" \| "fi_request" \| "fi_fetch" \| "evaluate" \| "submit"}`, sent as each stage starts, in this order |
+  | `result` | `{"tier": "A" \| "B" \| "C", "tx", "attestation", "expiry", "payload_hex"}` or `{"tier": "REJECT"}` (no `submit` stage) |
+  | `error` | `{"code", "message", "stage"}`; ends the stream, no `result` |
+
+  `tx` is the relayer's own transaction signature, or `null` when the
+  attestation already held exactly this payload from an earlier transaction
+  (the gateway never guesses a signature from the account's history).
+  `attestation` is the SAS attestation address (§7), `expiry` the §8 message
+  expiry, `payload_hex` the 83-byte §7 payload. A `: keep-alive` comment is
+  sent every 15 s so proxies don't close a quiet stream. A client that
+  disconnects doesn't stop the flow: the attestation may still land.
+- **Stages.** `bind`: enclave `/bind` (§10). `fi_request`: the enclave's
+  `fi_request_body_b64` bytes and `fi_request_jws`, sent to the bank
+  verbatim. `fi_fetch`: bank `/FI/fetch` with the ack's `txnid` and
+  `sessionId`. `evaluate`: enclave `/evaluate` with base64 of the exact
+  fetched bytes, their JWS and the consent. `submit`: one v0 transaction
+  `[SetComputeUnitLimit(60 000), secp256k1 precompile (index 1, §8 layout),
+  oracle.submit_attestation]` paid by the relayer (§13).
+- **Relay retry rules.** The oracle needs a strictly newer `issued_at` per
+  wallet (§13 check 17), so one result can never land twice and re-signing is
+  safe. After a failed send: a signature of ours that is `confirmed` without
+  error → success; else the attestation already holds this payload →
+  success, `tx: null`; else `StaleAttestation` (6026) → `stale_attestation`;
+  else an expired blockhash → one re-sign with a fresh blockhash; else
+  `tx_failed`.
+- **Errors**: `{ error: { code, message, stage } }`, `stage` ∈ `gateway`,
+  `bank`, `enclave`, `chain`. Enclave codes (§10) and ReBIT `errorCode`s
+  (§15) pass through unchanged with their stage; an upstream 4xx keeps its
+  status, a 5xx answers 502. An upstream code must match
+  `^[A-Za-z][A-Za-z0-9_]{0,63}$`, else the reply is `upstream_unavailable`
+  (it's logged and returned, so an untrusted upstream can't inject text).
+  `message` is a fixed string per gateway code and one generic string for any
+  upstream code; it never carries upstream or request text.
+
+| Code | HTTP | Stage |
+|---|---|---|
+| `bad_request` | 400 | gateway |
+| `not_found` (unknown route), `session_not_found` | 404 | gateway |
+| `session_expired` | 410 | gateway |
+| `body_too_large` | 413 | gateway |
+| `rate_limited` | 429 | gateway |
+| `internal_error` (any unexpected exception, no detail) | 500 | gateway |
+| `too_many_sessions` | 503 | gateway |
+| `upstream_unavailable` (network error, 30 s timeout, redirect, reply not JSON / wrong shape / over 64 KiB, fetch reply over 6 MiB, missing `x-jws-signature`) | 502 | bank or enclave |
+| `enclave_rotated` (the enclave's attester differs from the one at boot) | 503 | enclave |
+| `stale_attestation` | 409 | chain |
+| `tx_failed` (any other chain failure, incl. an RPC timeout) | 502 | chain |
+| `enclave_not_registered`, `enclave_revoked`, `attester_mismatch` (boot check; `enclave_not_registered` also at submit) | 503 | chain |
+
+- **Limits.** At most 256 open sessions, TTL 600 s (= the enclave's
+  `intent_expires`), single use. Create only is rate-limited: a token bucket
+  per client IP (burst 5, 10 per minute) and a global one (burst 20, 60 per
+  minute); a request needs a token from both. The client IP is the socket
+  address, or with `TRUST_PROXY=1` the **last** `X-Forwarded-For` hop: the one
+  our single trusted proxy (the Azure ingress) appended. Earlier hops are
+  client-written. Another proxy in front (a CDN) would need a different rule.
+  RPC calls time out after 15 s, a send + confirm after 100 s.
+- **FIU key.** At boot and before every create the gateway reads the
+  enclave's `/v1/info`. A new `kid` (enclave restart) is registered with the
+  bank (§15 `/fiu-keys`); a bank `SignatureDoesNotMatch` on `/FI/request`
+  forces a re-registration on the next create. A different attester means a
+  new registry entry, which needs a new `MEASUREMENT_ID`: `enclave_rotated`
+  until the gateway restarts.
+- **Boot** (any failure exits 1 before listening): config → enclave
+  `/v1/info` → `EnclaveEntry[MEASUREMENT_ID]` exists, is active and holds the
+  enclave's attester → FIU key registered with the bank → relayer balance
+  (warning below 0.05 SOL) → listen.
+- **Config** (environment, a `ConfigError` names the variable and never
+  echoes a secret): `ENCLAVE_URL`, `BANK_URL`, `SOLANA_RPC_URL` (http(s)),
+  `SOLANA_WS_URL` (ws(s); default the RPC URL as ws(s), port 8899 → 8900),
+  `CLUSTER` (reads `deployments/<cluster>.json`; its program ids must equal
+  the compiled-in ones), `MEASUREMENT_ID` (0–254), `POLICY_PATH` (default
+  `test-vectors/policy/default.json`; the file must be exact JCS with no
+  trailing newline, so `policy_hash` = sha256 of its bytes = the §6 hash the
+  enclave puts in the payload), `RELAYER_KEYPAIR` (Solana CLI keypair JSON),
+  `ALLOWED_ORIGIN` (one exact web origin for CORS, never `*`),
+  `TRUST_PROXY` (`1` or unset), `PORT` (8082).
+- **Deployment invariant.** The gateway is the bank's only client (§15) and
+  the only caller that should drive the enclave; it is the public endpoint
+  and owns rate limiting.
