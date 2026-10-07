@@ -113,15 +113,23 @@ sequenceDiagram
   participant E as Enclave (trusted)
   participant F as Sandbox bank
   participant S as Solana
+  Note over G,F: once per enclave boot
+  G->>E: GET /v1/info (FIU key + attester binding)
+  G->>F: POST /fiu-keys (bank checks the binding against the registry)
+  F->>S: read registry (attester active?)
   B->>G: start session (wallet, persona, pool)
+  G->>F: POST /Consent (persona)
+  F-->>G: AA-signed consent
   G->>E: POST /v1/sessions (policy, wallet, consent, measurement id)
   E->>E: new session key + nonce, FI request signed with FIU key
   E-->>G: session_id, KeyMaterial, signed FI request, intent
   B->>G: wallet signature over intent
   G->>E: bind (wallet, signature)
-  G->>F: FI request (carried verbatim)
-  F->>F: verify FIU sig, sign FI (FIP), encrypt to session key, sign response (AA)
-  F-->>G: fetch response + consent
+  G->>F: POST /FI/request (carried verbatim)
+  F->>F: verify FIU sig, attester still active, consent; sign FI (FIP), encrypt to session key
+  F-->>G: ack (sessionId)
+  G->>F: POST /FI/fetch (sessionId)
+  F-->>G: fetch response, signed by the AA
   G->>E: evaluate (raw bytes)
   E->>E: verify AA sig, consent, decrypt, verify FIP sig, score, wipe
   E-->>G: 83-byte payload + secp256k1 signature
@@ -160,7 +168,7 @@ What a hostile gateway or host can do at each hop:
 | Admin reusing a revoked registry id | ids are append-only | the id space is 255 for the life of a deployment (FORMATS §13 "Id budget") |
 | Admin key | public registry events; anyone can re-run the verifier; a compromised key is replaceable (`propose_admin` + `accept_admin`) | the MVP weak link (G5); a multisig beyond the demo, then ZK-verified attestation |
 | AWS | none | accepted: "trust AWS and the code" |
-| Anyone on the internet exhausting the enclave (its port is public) | caps on open sessions (256), create/bind requests in flight (32), evaluate requests in flight (4), evaluations running (2), body size and read time, and base58 length before decoding; slots taken before a body is read and held until the work ends (FORMATS §10) | accepted liveness risk: a caller who can get consents (the sandbox bank issues them to anyone) can keep the session cap full and lock others out. The host and gateway can already deny service, so availability is never guaranteed |
+| Anyone on the internet exhausting the enclave (its port is public) | caps on open sessions (256), create/bind requests in flight (32), evaluate requests in flight (4), evaluations running (2), body size and read time, and base58 length before decoding; slots taken before a body is read and held until the work ends (FORMATS §10) | accepted liveness risk: a caller who can get consents can keep the session cap full and lock others out. The sandbox bank issues consents to anyone who reaches it, but only the gateway can (internal ingress, rate-limited, FORMATS §15); a consent flood at the bank itself can at worst evict unused consents. The host and gateway can already deny service, so availability is never guaranteed |
 
 ## 6. Guarantees and limitations
 

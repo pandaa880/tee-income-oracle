@@ -145,8 +145,10 @@ surfpool, the SAS writes against the deployed SAS binary. The `enclave`
 serves the HTTP API around `tio-core` (sessions, wallet binding, evaluate,
 secp256k1-signed results, an attester-signed FIU key) and builds as a
 reproducible arm64 image for Oyster; it is tested in-process against every
-test vector, not deployed yet. Next: the live sandbox bank, the gateway and
-the devnet deployment, then the web.
+test vector, not deployed yet. The `sandbox-bank` serves the ReBIT FIP + AA
+API (consent, FI request, fetch) and accepts an enclave's FIU key only if
+its attester is active in the on-chain registry; it runs locally and in
+Docker. Next: the gateway, then the devnet deployment, then the web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

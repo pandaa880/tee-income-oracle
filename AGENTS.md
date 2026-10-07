@@ -88,7 +88,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector and demo-key generators; `enclave` serves the §10 HTTP API around `tio-core` (not deployed yet); `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
+has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; not deployed yet); `enclave` serves the §10 HTTP API around `tio-core` (not deployed yet); `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
 hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
@@ -107,6 +107,8 @@ hold only READMEs. Update the status as each one starts working.
 | Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
 | SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet; not yet run on devnet |
+| Run (sandbox bank, local) | `pnpm --filter @tio/sandbox-bank start:local` (demo keys from `sandbox-bank/.secrets/`, RPC defaults to `127.0.0.1:8899`; env in `sandbox-bank/README.md`) | works |
+| Build (sandbox bank image) | `docker build -f sandbox-bank/Dockerfile -t tio-sandbox-bank:dev .` (context = repo root; `sandbox-bank/Dockerfile.dockerignore`) | works (local only; not in CI) |
 | Run (enclave, local) | `docker run -p 8080:8080 -v <32-byte key file>:/app/ecdsa.sec:ro tio-enclave:dev` (see `enclave/README.md`) | works |
 
 ## Engineering principles
@@ -176,6 +178,13 @@ Add a line whenever an agent makes the same mistake twice.
 - `tio-core/Cargo.toml` sets `edition`/`rust-version` itself instead of
   inheriting them: the enclave image builds it without the root workspace.
   Keep them in sync with the root `Cargo.toml` by hand.
+- TS packages run on Node's type stripping: only erasable syntax works (no
+  parameter properties, `enum`, `namespace`). vitest accepts them, so a test
+  run won't catch it: `tsc` (`erasableSyntaxOnly`) or starting the entry point
+  does. The sandbox bank's first container run crashed on one.
+- The root `.dockerignore` is for the enclave image only. The sandbox-bank
+  image uses `sandbox-bank/Dockerfile.dockerignore` (BuildKit's per-Dockerfile
+  ignore file), which keeps `.secrets/` and tests out of the context.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent
   settings don't reach other contributors. Shared guidance goes here.
 

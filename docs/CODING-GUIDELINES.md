@@ -205,9 +205,14 @@ scope. See `AGENTS.md` for the full wording.
 ### Servers (gateway, sandbox-bank)
 - Capture the **raw body** before any JSON middleware on routes that carry
   signatures.
-- Errors return `{ error: { code, message } }`. No stack traces in responses.
+- Errors return `{ error: { code, message } }` (the sandbox bank, which speaks ReBIT,
+  returns ReBIT's `ErrorResponse` instead, FORMATS §15). No stack traces in responses.
 - Config only from env, validated at startup. `.env.example` lists every key.
 - Rate-limit and cap body size on every public route.
+- A service that relies on being internal-only (no rate limit of its own) states that
+  deployment invariant in `docs/FORMATS.md`, not only in a code comment.
+- Every outbound network call (RPC, HTTP) has a timeout or `AbortSignal`; a hung
+  upstream must become an error, never a hung request.
 
 ### Web (Next.js)
 - The browser is untrusted. No keys, no privileged logic.
