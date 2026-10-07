@@ -220,6 +220,26 @@ describe('relayer: 6026 (StaleAttestation)', () => {
     expect(await t.relayer.submit(ARGS)).toEqual({ tx: null, attestation: t.attestation });
   });
 
+  it('maps EnclaveRevoked (6019) on the send to enclave_revoked 503 (revoked after the registry read)', async () => {
+    const t = await setup({ sends: [custom(6019)] });
+    await expectRejected(t.relayer.submit(ARGS), {
+      code: 'enclave_revoked',
+      stage: 'chain',
+      status: 503,
+    });
+    expect(t.sent).toHaveLength(1);
+  });
+
+  it('maps EnclaveRevoked (6019) on the blockhash retry to enclave_revoked', async () => {
+    const t = await setup({ sends: [blockHeightExceeded(), custom(6019)] });
+    await expectRejected(t.relayer.submit(ARGS), {
+      code: 'enclave_revoked',
+      stage: 'chain',
+      status: 503,
+    });
+    expect(t.sent).toHaveLength(2);
+  });
+
   it('maps any other program error to tx_failed without a retry', async () => {
     const t = await setup({ sends: [custom(6020)] });
     await expectRejected(t.relayer.submit(ARGS), { code: 'tx_failed', stage: 'chain' });

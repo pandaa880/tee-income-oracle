@@ -50,6 +50,7 @@ import type { Relayer } from './flow.ts';
 import { entryFromAccount } from './registry.ts';
 
 const COMPUTE_BUDGET_PROGRAM = address('ComputeBudget111111111111111111111111111111');
+const ENCLAVE_REVOKED = 6019;
 const STALE_ATTESTATION = 6026;
 /** Measured: 22,968 CU for a refresh; the precompile itself costs no CU. */
 const DEFAULT_COMPUTE_UNITS = 60_000;
@@ -179,9 +180,10 @@ async function submit(
       if (await storesPayload(ctx, attestation, s.payload).catch(() => false)) {
         return { tx: null, attestation };
       }
-      if (customErrorCode(error) === STALE_ATTESTATION) {
-        throw gatewayError('stale_attestation', 'chain', 409);
-      }
+      const code = customErrorCode(error);
+      if (code === STALE_ATTESTATION) throw gatewayError('stale_attestation', 'chain', 409);
+      // Revoked between our registry read and the send (or the retry).
+      if (code === ENCLAVE_REVOKED) throw gatewayError('enclave_revoked', 'chain', 503);
       if (attempt === 0 && isSolanaError(error, SOLANA_ERROR__BLOCK_HEIGHT_EXCEEDED)) continue;
       throw gatewayError('tx_failed', 'chain', 502);
     }
