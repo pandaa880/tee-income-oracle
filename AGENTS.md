@@ -88,7 +88,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; not deployed yet); `enclave` serves the §10 HTTP API around `tio-core` (not deployed yet); `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
+has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; not deployed yet); `enclave` serves the §10 HTTP API around `tio-core` (not deployed yet); `gateway` orchestrates sessions over the §16 HTTP API (SSE stages) and relays the attestation transaction (runs locally, end to end on localnet; not deployed yet); `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
 hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
@@ -102,13 +102,16 @@ hold only READMEs. Update the status as each one starts working.
 | Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives); `cargo test -p oracle`: precompile/message layouts, attestation readers and clock rules; `cargo test -p demo-pool`: the pool's lending rules (all three also in CI) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests --filter @tio/demo-pool-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; `demo-pool` against the real oracle, SAS and SPL Token; also in CI) |
-| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary, `oracle-tests` and `demo-pool-tests` after `anchor build`; also in CI) |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary, `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`, cross-checked against the generated client) and `gateway` (unit + surfpool relayer/registry suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
 | SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet; not yet run on devnet |
 | Run (sandbox bank, local) | `pnpm --filter @tio/sandbox-bank start:local` (demo keys from `sandbox-bank/.secrets/`, RPC defaults to `127.0.0.1:8899`; env in `sandbox-bank/README.md`) | works |
 | Build (sandbox bank image) | `docker build -f sandbox-bank/Dockerfile -t tio-sandbox-bank:dev .` (context = repo root; `sandbox-bank/Dockerfile.dockerignore`) | works (local only; not in CI) |
+| Run (gateway, local) | `pnpm --filter @tio/gateway start` with the env in `gateway/README.md` (needs a running enclave, the bank and an RPC; boot checks the enclave's registry entry) | works |
+| Build (gateway image) | `docker build -f gateway/Dockerfile -t tio-gateway:dev .` (context = repo root; `gateway/Dockerfile.dockerignore`) | works (local only; not in CI) |
+| E2E (local) | `TIO_E2E=1 [TIO_ENCLAVE_IMAGE=tio-enclave:dev] pnpm --filter @tio/gateway test src/e2e.local.test.ts` — real enclave container + bank process + surfnet (oracle, SAS, demo-pool) + gateway; needs the demo keys and the ops admin wallet | works (local only; never in CI: the demo keys aren't committed) |
 | Run (enclave, local) | `docker run -p 8080:8080 -v <32-byte key file>:/app/ecdsa.sec:ro tio-enclave:dev` (see `enclave/README.md`) | works |
 
 ## Engineering principles
@@ -185,6 +188,14 @@ Add a line whenever an agent makes the same mistake twice.
 - The root `.dockerignore` is for the enclave image only. The sandbox-bank
   image uses `sandbox-bank/Dockerfile.dockerignore` (BuildKit's per-Dockerfile
   ignore file), which keeps `.secrets/` and tests out of the context.
+- The Codama kit-7 clients (`@tio/oracle-client`, `@tio/demo-pool-client` root
+  exports) don't load under plain Node (extensionless imports, `enum`):
+  `ERR_UNSUPPORTED_DIR_IMPORT`. Runtime code (gateway) imports only
+  `@tio/oracle-client/attest`; tests may use the generated clients (vitest
+  resolves them). `gateway/src/main.smoke.test.ts` starts `main.ts` under plain
+  Node to catch a regression.
+- Behind one trusted proxy, the client IP is the **last** `X-Forwarded-For`
+  hop (the one the proxy appended); earlier hops are client-written.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent
   settings don't reach other contributors. Shared guidance goes here.
 

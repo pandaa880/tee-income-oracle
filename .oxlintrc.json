@@ -34,6 +34,7 @@
               "expectError",
               "expectMismatch",
               "expectRejected",
+              "expectThrown",
               "expectBaselineSucceeds"
             ]
           }

@@ -7,11 +7,16 @@
     "node": ">=24"
   },
   "exports": {
-    ".": "./src/generated/index.ts"
+    ".": "./src/generated/index.ts",
+    "./attest": "./src/attest.ts"
   },
   "scripts": {
     "generate": "node scripts/generate.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../../.oxlintrc.json --type-aware --deny-warnings src/attest.ts src/attest.test.ts",
+    "format": "oxfmt -c ../../../.oxfmtrc.json src/attest.ts src/attest.test.ts",
+    "format:check": "oxfmt -c ../../../.oxfmtrc.json --check src/attest.ts src/attest.test.ts"
   },
   "dependencies": {
     "@solana/kit": "7.1.1",
@@ -22,6 +27,10 @@
     "@codama/renderers-js": "2.3.1",
     "@types/node": "24.19.0",
     "codama": "1.11.0",
-    "typescript": "7.0.2"
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
   }
 }

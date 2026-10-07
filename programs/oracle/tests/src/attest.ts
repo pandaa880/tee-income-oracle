@@ -8,13 +8,35 @@ import {
   type KeyPairSigner,
   address,
   getAddressDecoder,
-  getAddressEncoder,
   getProgramDerivedAddress,
   getUtf8Encoder,
 } from '@solana/kit';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak_256 } from '@noble/hashes/sha3.js';
-import { SAS_PROGRAM_ID } from '@tio/ops/sas-schema';
+import {
+  DOMAIN_TAG,
+  MAX_SIGNATURE_LIFETIME_SECS,
+  MESSAGE_LEN,
+  type MessageFields,
+  PAYLOAD_LEN,
+  PRECOMPILE_DATA_LEN,
+  SAS_ATTESTATION_DISCRIMINATOR,
+  SAS_ATTESTATION_LEN,
+  SAS_CREDENTIAL_OFFSET,
+  SAS_DATA_LEN_OFFSET,
+  SAS_DATA_OFFSET,
+  SAS_EXPIRY_OFFSET,
+  SAS_NONCE_OFFSET,
+  SAS_PROGRAM_ID,
+  SAS_SCHEMA_OFFSET,
+  SAS_SIGNER_OFFSET,
+  SECP256K1_PROGRAM,
+  attestationAddress,
+  buildMessage,
+  buildPrecompileData as buildPrecompileBytes,
+  payloadIssuedAt,
+  precompileInstruction,
+} from '@tio/oracle-client/attest';
 import {
   ORACLE_PROGRAM_ADDRESS,
   findEnclaveEntryPda,
@@ -22,30 +44,37 @@ import {
 } from '@tio/oracle-client';
 import { type Harness } from './harness.ts';
 
-export { SAS_PROGRAM_ID };
+// The FORMATS §7/§8 builders and SAS layout live in `@tio/oracle-client/attest`
+// (the gateway uses them too); these helpers add signing and fault injection.
+export {
+  DOMAIN_TAG,
+  MAX_SIGNATURE_LIFETIME_SECS,
+  MESSAGE_LEN,
+  type MessageFields,
+  PAYLOAD_LEN,
+  PRECOMPILE_DATA_LEN,
+  SAS_ATTESTATION_DISCRIMINATOR,
+  SAS_ATTESTATION_LEN,
+  SAS_CREDENTIAL_OFFSET,
+  SAS_DATA_LEN_OFFSET,
+  SAS_DATA_OFFSET,
+  SAS_EXPIRY_OFFSET,
+  SAS_NONCE_OFFSET,
+  SAS_PROGRAM_ID,
+  SAS_SCHEMA_OFFSET,
+  SAS_SIGNER_OFFSET,
+  SECP256K1_PROGRAM,
+  attestationAddress,
+  buildMessage,
+  payloadIssuedAt,
+  precompileInstruction,
+};
 
-export const SECP256K1_PROGRAM = address('KeccakSecp256k11111111111111111111111111111');
 const CLOCK_SYSVAR = address('SysvarC1ock11111111111111111111111111111111');
 export const SYSTEM_PROGRAM = address('11111111111111111111111111111111');
 
-export const DOMAIN_TAG = 'TIO-ATTEST-v1';
-export const PAYLOAD_LEN = 83;
-export const MESSAGE_LEN = 232;
-export const PRECOMPILE_DATA_LEN = 329;
-export const SAS_ATTESTATION_LEN = 256;
-export const SAS_ATTESTATION_DISCRIMINATOR = 2;
 export const MAX_SKEW_SECS = 300n;
-export const MAX_SIGNATURE_LIFETIME_SECS = 600n;
 export const ATTESTATION_TTL_SECS = 30n * 86_400n;
-
-// Byte offsets inside the SAS attestation account (256 bytes).
-export const SAS_NONCE_OFFSET = 1;
-export const SAS_CREDENTIAL_OFFSET = 33;
-export const SAS_SCHEMA_OFFSET = 65;
-export const SAS_DATA_LEN_OFFSET = 97;
-export const SAS_DATA_OFFSET = 101;
-export const SAS_SIGNER_OFFSET = 184;
-export const SAS_EXPIRY_OFFSET = 216;
 
 // --- keys -------------------------------------------------------------
 
@@ -130,36 +159,6 @@ export function buildPayload(fields: Partial<PayloadFields> & { issuedAt: bigint
   return out;
 }
 
-export function payloadIssuedAt(payload: Uint8Array): bigint {
-  return new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getBigInt64(67, true);
-}
-
-export type MessageFields = {
-  programId: Address;
-  credential: Address;
-  schema: Address;
-  wallet: Address;
-  payload: Uint8Array;
-  expiry: bigint;
-};
-
-/** FORMATS §8: tag ‖ program ‖ credential ‖ schema ‖ wallet ‖ payload ‖ expiry = 232 bytes. */
-export function buildMessage(f: MessageFields): Uint8Array {
-  if (f.payload.length !== PAYLOAD_LEN) {
-    throw new Error(`payload must be ${PAYLOAD_LEN} bytes`);
-  }
-  const encoder = getAddressEncoder();
-  const out = new Uint8Array(MESSAGE_LEN);
-  out.set(getUtf8Encoder().encode(DOMAIN_TAG), 0);
-  out.set(encoder.encode(f.programId), 13);
-  out.set(encoder.encode(f.credential), 45);
-  out.set(encoder.encode(f.schema), 77);
-  out.set(encoder.encode(f.wallet), 109);
-  out.set(f.payload, 141);
-  new DataView(out.buffer).setBigInt64(224, f.expiry, true);
-  return out;
-}
-
 // --- secp256k1 precompile instruction ---------------------------------
 
 /**
@@ -175,19 +174,7 @@ export function buildPrecompileData(
   mutate?: (data: Uint8Array) => void,
 ): Uint8Array {
   const signature = signMessage(key.secretKey, message);
-  const data = new Uint8Array(PRECOMPILE_DATA_LEN);
-  const view = new DataView(data.buffer);
-  data[0] = 1;
-  view.setUint16(1, 32, true); // signature offset
-  data[3] = index; // signature instruction index
-  view.setUint16(4, 12, true); // eth address offset
-  data[6] = index; // eth address instruction index
-  view.setUint16(7, 97, true); // message offset
-  view.setUint16(9, MESSAGE_LEN, true); // message size
-  data[11] = index; // message instruction index
-  data.set(key.ethAddress, 12);
-  data.set(signature, 32);
-  data.set(message, 97);
+  const data = buildPrecompileBytes({ ethAddress: key.ethAddress, signature, message, index });
   mutate?.(data);
   return data;
 }
@@ -253,29 +240,7 @@ export function buildShiftedPrecompileData(
   return data;
 }
 
-export function precompileInstruction(data: Uint8Array): Instruction {
-  return { programAddress: SECP256K1_PROGRAM, accounts: [], data };
-}
-
 // --- SAS addresses and account readers --------------------------------
-
-export async function attestationAddress(
-  credential: Address,
-  schema: Address,
-  wallet: Address,
-): Promise<Address> {
-  const encoder = getAddressEncoder();
-  const [pda] = await getProgramDerivedAddress({
-    programAddress: SAS_PROGRAM_ID,
-    seeds: [
-      getUtf8Encoder().encode('attestation'),
-      encoder.encode(credential),
-      encoder.encode(schema),
-      encoder.encode(wallet),
-    ],
-  });
-  return pda;
-}
 
 export async function sasEventAuthority(): Promise<Address> {
   const [pda] = await getProgramDerivedAddress({

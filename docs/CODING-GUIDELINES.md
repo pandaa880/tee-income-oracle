@@ -212,7 +212,12 @@ scope. See `AGENTS.md` for the full wording.
 - A service that relies on being internal-only (no rate limit of its own) states that
   deployment invariant in `docs/FORMATS.md`, not only in a code comment.
 - Every outbound network call (RPC, HTTP) has a timeout or `AbortSignal`; a hung
-  upstream must become an error, never a hung request.
+  upstream must become an error, never a hung request. For kit that means
+  `.send({ abortSignal })` and an `abortSignal` on `sendAndConfirm`.
+- An identifier from an untrusted upstream (an error code) is checked against a
+  short pattern before it is logged or returned, so it can't forge log lines or
+  carry text. Lookup tables keyed by external strings are `Map`s (a plain object
+  answers `constructor`).
 
 ### Web (Next.js)
 - The browser is untrusted. No keys, no privileged logic.
