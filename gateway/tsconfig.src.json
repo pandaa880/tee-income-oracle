@@ -1,0 +1,10 @@
+{
+  // Runtime code only, checked with erasableSyntaxOnly: `node src/main.ts` runs on
+  // Node type stripping, which can't load enum / namespace / parameter properties.
+  // tsconfig.json (tests, oxlint) keeps the flag off because the tests import the
+  // Codama kit-7 clients, which use `enum`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "erasableSyntaxOnly": true },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/testing"]
+}

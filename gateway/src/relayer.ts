@@ -50,6 +50,7 @@ import type { Relayer } from './flow.ts';
 import { entryFromAccount } from './registry.ts';
 
 const COMPUTE_BUDGET_PROGRAM = address('ComputeBudget111111111111111111111111111111');
+const ENCLAVE_REVOKED = 6019;
 const STALE_ATTESTATION = 6026;
 /** Measured: 22,968 CU for a refresh; the precompile itself costs no CU. */
 const DEFAULT_COMPUTE_UNITS = 60_000;
@@ -83,7 +84,10 @@ export type RelayerOptions = {
 type Ctx = RelayerOptions & {
   credential: Address;
   schema: Address;
-  /** The registered attester (eth address) of our entry, read once. */
+  /**
+   * The attester (eth address) of our registry entry, read on every submit: an entry
+   * revoked while the gateway runs must stop relaying at once, with a clear code.
+   */
   attester: () => Promise<Uint8Array>;
 };
 
@@ -176,9 +180,10 @@ async function submit(
       if (await storesPayload(ctx, attestation, s.payload).catch(() => false)) {
         return { tx: null, attestation };
       }
-      if (customErrorCode(error) === STALE_ATTESTATION) {
-        throw gatewayError('stale_attestation', 'chain', 409);
-      }
+      const code = customErrorCode(error);
+      if (code === STALE_ATTESTATION) throw gatewayError('stale_attestation', 'chain', 409);
+      // Revoked between our registry read and the send (or the retry).
+      if (code === ENCLAVE_REVOKED) throw gatewayError('enclave_revoked', 'chain', 503);
       if (attempt === 0 && isSolanaError(error, SOLANA_ERROR__BLOCK_HEIGHT_EXCEEDED)) continue;
       throw gatewayError('tx_failed', 'chain', 502);
     }
@@ -191,17 +196,15 @@ export function createRelayer(opts: RelayerOptions): Relayer {
   if (deployment.oracleProgram !== ORACLE_PROGRAM_ID || deployment.sasProgram !== SAS_PROGRAM_ID) {
     throw new Error('deployment program ids differ from @tio/oracle-client/attest');
   }
-  let attester: Uint8Array | undefined;
   const ctx: Ctx = {
     ...opts,
     credential: address(deployment.credential),
     schema: address(deployment.schema),
     attester: async () => {
-      if (attester !== undefined) return attester;
       const entry = entryFromAccount(await chain.account(await enclaveEntryAddress(measurementId)));
       if (entry === undefined) throw gatewayError('enclave_not_registered', 'chain', 503);
-      attester = entry.attester;
-      return attester;
+      if (entry.revokedAt !== 0n) throw gatewayError('enclave_revoked', 'chain', 503);
+      return entry.attester;
     },
   };
   return {

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node src/main.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.src.json",
     "lint": "oxlint -c ../.oxlintrc.json --type-aware --deny-warnings src",
     "format": "oxfmt -c ../.oxfmtrc.json src",
     "format:check": "oxfmt -c ../.oxfmtrc.json --check src",
