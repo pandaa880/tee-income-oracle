@@ -1472,7 +1472,7 @@ read bank data or forge a tier.
 | `enclave_rotated` (the enclave's attester differs from the one at boot) | 503 | enclave |
 | `stale_attestation` | 409 | chain |
 | `tx_failed` (any other chain failure, incl. an RPC timeout) | 502 | chain |
-| `enclave_not_registered`, `enclave_revoked`, `attester_mismatch` (boot check; `enclave_not_registered` also at submit) | 503 | chain |
+| `enclave_not_registered`, `enclave_revoked`, `attester_mismatch` (boot check; the first two also before every submit, which re-reads the registry entry) | 503 | chain |
 
 - **Limits.** At most 256 open sessions, TTL 600 s (= the enclave's
   `intent_expires`), single use. Create only is rate-limited: a token bucket

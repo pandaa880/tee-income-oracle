@@ -83,7 +83,10 @@ export type RelayerOptions = {
 type Ctx = RelayerOptions & {
   credential: Address;
   schema: Address;
-  /** The registered attester (eth address) of our entry, read once. */
+  /**
+   * The attester (eth address) of our registry entry, read on every submit: an entry
+   * revoked while the gateway runs must stop relaying at once, with a clear code.
+   */
   attester: () => Promise<Uint8Array>;
 };
 
@@ -191,17 +194,15 @@ export function createRelayer(opts: RelayerOptions): Relayer {
   if (deployment.oracleProgram !== ORACLE_PROGRAM_ID || deployment.sasProgram !== SAS_PROGRAM_ID) {
     throw new Error('deployment program ids differ from @tio/oracle-client/attest');
   }
-  let attester: Uint8Array | undefined;
   const ctx: Ctx = {
     ...opts,
     credential: address(deployment.credential),
     schema: address(deployment.schema),
     attester: async () => {
-      if (attester !== undefined) return attester;
       const entry = entryFromAccount(await chain.account(await enclaveEntryAddress(measurementId)));
       if (entry === undefined) throw gatewayError('enclave_not_registered', 'chain', 503);
-      attester = entry.attester;
-      return attester;
+      if (entry.revokedAt !== 0n) throw gatewayError('enclave_revoked', 'chain', 503);
+      return entry.attester;
     },
   };
   return {

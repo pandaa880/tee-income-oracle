@@ -64,7 +64,7 @@ function sasAccount(payload: Uint8Array): RawAccount {
   return { owner: SAS_PROGRAM_ID, data };
 }
 
-function entryAccount(): RawAccount {
+function entryAccount(revokedAt = 0n): RawAccount {
   const data = getEnclaveEntryEncoder().encode({
     version: 1,
     bump: 255,
@@ -74,7 +74,7 @@ function entryAccount(): RawAccount {
     attester: new Uint8Array(20).fill(0xbb),
     attestationDocHash: new Uint8Array(32),
     registeredAt: 1n,
-    revokedAt: 0n,
+    revokedAt,
   });
   return { owner: ORACLE_PROGRAM_ID, data: new Uint8Array(data) };
 }
@@ -96,6 +96,7 @@ async function setup(o: FakeOpts) {
   const attestation = await attestationAddress(CREDENTIAL, SCHEMA, WALLET);
   const entryAt = await enclaveEntryAddress(MEASUREMENT_ID);
   let blockhashes = 0;
+  const reads = { entry: 0 };
   const chain: Chain = {
     latestBlockhash: async () => {
       if (o.blockhashFails === true) throw new Error('rpc timeout');
@@ -115,6 +116,7 @@ async function setup(o: FakeOpts) {
     },
     account: async (at: Address) => {
       if (at === entryAt) {
+        reads.entry += 1;
         if (o.entryFails === true) throw new Error('rpc timeout');
         return o.entry === undefined ? entryAccount() : o.entry;
       }
@@ -133,7 +135,8 @@ async function setup(o: FakeOpts) {
     },
     measurementId: MEASUREMENT_ID,
   });
-  return { relayer, sent, attestation };
+  const entryReads = () => reads.entry;
+  return { relayer, sent, attestation, entryReads };
 }
 
 describe('relayer: success', () => {
@@ -259,6 +262,26 @@ describe('relayer: chain failures before sending', () => {
     const t = await setup({ sends: [], entryFails: true });
     await expectRejected(t.relayer.submit(ARGS), { code: 'tx_failed', stage: 'chain' });
     expect(t.sent).toEqual([]);
+  });
+
+  it('rejects enclave_revoked before sending when the registry entry is revoked', async () => {
+    const t = await setup({ sends: [undefined], entry: entryAccount(1_790_000_000n) });
+    await expectRejected(t.relayer.submit(ARGS), {
+      code: 'enclave_revoked',
+      stage: 'chain',
+      status: 503,
+    });
+    expect(t.sent).toEqual([]);
+  });
+
+  it('re-reads the registry entry on every submit, so a later revoke is seen', async () => {
+    const opts: FakeOpts = { sends: [undefined, undefined] };
+    const t = await setup(opts);
+    await t.relayer.submit(ARGS);
+    opts.entry = entryAccount(1_790_000_000n);
+    await expectRejected(t.relayer.submit(ARGS), { code: 'enclave_revoked', stage: 'chain' });
+    expect(t.entryReads()).toBe(2);
+    expect(t.sent).toHaveLength(1);
   });
 
   it('rejects enclave_not_registered when the registry entry is missing', async () => {

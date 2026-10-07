@@ -192,8 +192,10 @@ Add a line whenever an agent makes the same mistake twice.
   exports) don't load under plain Node (extensionless imports, `enum`):
   `ERR_UNSUPPORTED_DIR_IMPORT`. Runtime code (gateway) imports only
   `@tio/oracle-client/attest`; tests may use the generated clients (vitest
-  resolves them). `gateway/src/main.smoke.test.ts` starts `main.ts` under plain
-  Node to catch a regression.
+  resolves them). So `gateway/tsconfig.json` (tests, oxlint) has
+  `erasableSyntaxOnly: false`, and `typecheck` also runs `tsconfig.src.json`
+  (runtime `src` only, flag on); `gateway/src/main.smoke.test.ts` starts
+  `main.ts` under plain Node to catch a regression.
 - Behind one trusted proxy, the client IP is the **last** `X-Forwarded-For`
   hop (the one the proxy appended); earlier hops are client-written.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent
