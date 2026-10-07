@@ -149,12 +149,15 @@ export type EnclaveClient = {
   ) => Promise<Evaluation>;
 };
 
+/** `base` + `path` with exactly one slash between them (a configured URL may end in `/`). */
+const joinUrl = (base: string, path: string): string => `${base.replace(/\/+$/, '')}${path}`;
+
 const sessionPath = (id: string, action: string): string =>
   `/v1/sessions/${encodeURIComponent(id)}/${action}`;
 
 export function createEnclaveClient(baseUrl: string, fetchFn: Fetch = fetch): EnclaveClient {
   const call = async <T>(path: string, init: RequestInit, schema: z.ZodType<T>): Promise<T> =>
-    parseReply('enclave', await send(fetchFn, 'enclave', `${baseUrl}${path}`, init), schema);
+    parseReply('enclave', await send(fetchFn, 'enclave', joinUrl(baseUrl, path), init), schema);
   return {
     info: () => call('/v1/info', { method: 'GET' }, infoSchema),
     createSession: (body) => call('/v1/sessions', jsonPost(body), createdSchema),
@@ -199,7 +202,7 @@ export type BankClient = {
 
 export function createBankClient(baseUrl: string, fetchFn: Fetch = fetch): BankClient {
   const post = (path: string, init: RequestInit, maxBytes?: number) =>
-    send(fetchFn, 'bank', `${baseUrl}${path}`, init, maxBytes);
+    send(fetchFn, 'bank', joinUrl(baseUrl, path), init, maxBytes);
   return {
     registerFiuKey: async (body) =>
       parseReply('bank', await post('/fiu-keys', jsonPost(body)), fiuKeySchema),

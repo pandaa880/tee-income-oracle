@@ -1444,8 +1444,9 @@ read bank data or forge a tier.
   oracle.submit_attestation]` paid by the relayer (§13).
 - **Relay retry rules.** The oracle needs a strictly newer `issued_at` per
   wallet (§13 check 17), so one result can never land twice and re-signing is
-  safe. After a failed send: a signature of ours that is `confirmed` without
-  error → success; else the attestation already holds this payload →
+  safe. After a failed send: a signature of ours that is `confirmed` or
+  `finalized` without error → success (`processed` or an unknown status
+  doesn't count); else the attestation already holds this payload →
   success, `tx: null`; else `StaleAttestation` (6026) → `stale_attestation`;
   else an expired blockhash → one re-sign with a fresh blockhash; else
   `tx_failed`.

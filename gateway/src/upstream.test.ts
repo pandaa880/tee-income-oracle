@@ -99,6 +99,25 @@ describe('enclave client: requests', () => {
   });
 });
 
+describe('base URLs with a trailing slash', () => {
+  it.each([`${ENCLAVE}/`, `${ENCLAVE}//`])(
+    'enclave client joins %s and /v1/info with one slash',
+    async (base) => {
+      const f = fakeFetch(() => jsonResponse(200, INFO));
+      await createEnclaveClient(base, f.fetch).info();
+      expect(f.requests[0]?.url).toBe(`${ENCLAVE}/v1/info`);
+    },
+  );
+
+  it('bank client joins a trailing-slash base and /FI/fetch with one slash', async () => {
+    const f = fakeFetch(() =>
+      bytesResponse(200, new TextEncoder().encode('{}'), { 'x-jws-signature': 'h..sig' }),
+    );
+    await createBankClient(`${BANK}/`, f.fetch).fiFetch({ txnid: 't', sessionId: 's' });
+    expect(f.requests[0]?.url).toBe(`${BANK}/FI/fetch`);
+  });
+});
+
 describe('enclave client: evaluate results', () => {
   const evalBody = { fetch_response_b64: 'e30=', fetch_response_jws: 'a..b', consent_jws: 'c.o.n' };
 

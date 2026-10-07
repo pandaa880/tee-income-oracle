@@ -134,7 +134,11 @@ async function ownLanded(ctx: Ctx, sent: Signature[]): Promise<Signature | undef
   const statuses = await ctx.chain.signatureStatuses(sent);
   return sent.find((_, i) => {
     const status = statuses[i];
-    return status != null && status.err === null && status.confirmationStatus !== 'processed';
+    // Only a definite `confirmed`/`finalized` counts; `processed` or an unknown (null) status
+    // falls through to the stored-payload check.
+    const settled =
+      status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized';
+    return settled && status?.err === null;
   });
 }
 

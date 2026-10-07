@@ -159,6 +159,22 @@ describe('relayer: after a failed send', () => {
     await expectRejected(t.relayer.submit(ARGS), { code: 'tx_failed', stage: 'chain' });
   });
 
+  it('does not count a signature whose confirmation status is unknown (null)', async () => {
+    const t = await setup({
+      sends: [new Error('timeout')],
+      status: () => ({ err: null, confirmationStatus: null }),
+    });
+    await expectRejected(t.relayer.submit(ARGS), { code: 'tx_failed', stage: 'chain' });
+  });
+
+  it('counts a finalized signature', async () => {
+    const t = await setup({
+      sends: [new Error('ws closed')],
+      status: () => ({ err: null, confirmationStatus: 'finalized' }),
+    });
+    expect(await t.relayer.submit(ARGS)).toEqual({ tx: t.sent[0], attestation: t.attestation });
+  });
+
   it('does not count a signature that landed with an error', async () => {
     const t = await setup({
       sends: [new Error('timeout')],
