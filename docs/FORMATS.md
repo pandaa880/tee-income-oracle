@@ -790,11 +790,11 @@ sig = secp256k1_sign_recoverable(keccak256(msg))  → 65 B r‖s‖v, low-s, v �
 `fiu_public_jwk` has exactly the members `e`, `kid`, `kty` (`"RSA"`), `n`
 (base64url, no padding); its JCS bytes are
 `{"e":…,"kid":…,"kty":"RSA","n":…}`. `GET /v1/info` returns the JWK (as
-those JCS bytes) and `fiu_key_signature_hex`. A bank (the sandbox bank in
-build step 4b) recovers the eth address from the signature and accepts the
-FIU key only if that address is the `attester` of an active oracle registry
-entry (§13); then it checks the FI request's FIU JWS with that key before
-encrypting anything. The key and its binding live for one boot, like the
+those JCS bytes) and `fiu_key_signature_hex`. A bank (the sandbox bank,
+§15) recovers the eth address from the signature and accepts the FIU key
+only if that address is the `attester` of an active oracle registry entry
+(§13); then it checks the FI request's FIU JWS with that key, and the entry
+again, before encrypting anything. The key and its binding live for one boot, like the
 attester key.
 
 ---
@@ -1306,3 +1306,84 @@ change only: `Pool` and `Loan` store just the mint and the vault address,
 and existing vaults stay valid. Token-2022 mints need an explicit decision
 per extension first (transfer fee, transfer hook, permanent delegate,
 default frozen state).
+
+---
+
+## 15. Sandbox bank HTTP API — FROZEN (demo)
+
+The live mock FIP + AA (`sandbox-bank`, `node src/service/main.ts`). It
+speaks ReBIT where ReBIT defines the call (§5) and adds one route,
+`/fiu-keys`, that stands in for the Sahamati Central Registry lookup of an
+FIU's key. Bodies are JSON (`ver` = §5's version string), at most 64 KiB
+(413), read once as exact bytes. Every success reply carries
+`x-jws-signature` = the AA's detached JWS (§4) over its exact bytes.
+
+**Deployment invariant.** The bank is reachable only from the gateway
+(private network / internal ingress); the gateway is its only client and
+owns rate limiting. Two routes need no authentication (`/fiu-keys`,
+`/Consent`), and their caps below are sized for that: they bound memory and
+RPC cost, not request rate. Exposing the bank publicly breaks this.
+
+| Route | Request | Reply |
+|---|---|---|
+| `POST /fiu-keys` | `{ fiu_public_jwk, fiu_key_signature_hex }` (`GET /v1/info`'s values, §8.1) | `{ kid, attester: "0x…" }` |
+| `POST /Consent` | `{ persona_id }` (`salaried_steady`, `trader_lumpy`, `declining`, `stressed`) | `{ ver, timestamp, consentId, signedConsent }` |
+| `POST /FI/request` | §5.1 body, header `x-jws-signature` (FIU detached JWS) | `{ ver, timestamp, txnid, consentId, sessionId }` |
+| `POST /FI/fetch` | `{ ver, timestamp, txnid, sessionId }` (ReBIT AA 2.0 shape) | the §5.2 fetch response, AA-signed |
+| `GET /health` | — | `{ status: "ok" }` |
+
+- **`/fiu-keys`**: JWK exactly `e, kid, kty: "RSA", n`, RSA ≥ 2048 bits;
+  signature 130 hex characters, `v ∈ {0, 1}`, low-s (else `InvalidKey`).
+  The recovered address must be the `attester` of an active registry entry
+  (`Unauthorized`; registry unreadable → `ServiceUnavailable`). The gateway
+  calls it once per enclave boot. The bank keeps the newest 16 keys by `kid`.
+- **`/Consent`**: the §5.3 consent, AA-signed (RS256), `status ACTIVE`,
+  `fetchType ONETIME`, `consentStart` = now − 60 s, `consentExpiry` = now +
+  24 h, `FIDataRange` = [today 00:00 UTC − 366 d, today 00:00 UTC + 1 d]
+  (the enclave requests [today − 365 d, today]; the spare day on each side
+  covers a session that crosses UTC midnight). Approval by the borrower is
+  implied (demo). At most 1024 consents are kept; when full, the oldest
+  **unused** one is dropped (a flood can only make a borrower ask again).
+- **`/FI/request`** checks, in order: FIU JWS (`kid` registered via
+  `/fiu-keys`, signature over the raw bytes; before any RPC read) →
+  `SignatureDoesNotMatch`; the key's attester still active →
+  `Unauthorized` / `ServiceUnavailable`; body shape → `InvalidRequest`;
+  consent known → `InvalidConsentId`, not expired → `InvalidConsentStatus`,
+  unused → `InvalidConsentUse`, `Consent.digitalSignature` = the issued
+  signature segment → `InvalidConsentDetail`; `FIDataRange` valid §12
+  date-times, `from < to`, inside the consent's range → `InvalidDateRange`;
+  `KeyMaterial` (§3) → `InvalidKey`. Only then is the consent marked used
+  (a refused request never uses it up) and the statement encrypted (§3,
+  §5.2: FIP envelope, one `FI[]`, one `data[]`). The persona's statement
+  ends on the requested `to` day (or today, if `to` is later), so it lies
+  inside the requested window across UTC midnight.
+- **`/FI/fetch`**: not FIU-signed (the data is encrypted to the enclave).
+  Unknown or expired session (600 s, the enclave's TTL) → `InvalidSessionId`;
+  `txnid` ≠ the session's → `InvalidRequest`; second fetch → `DataGone`. At
+  most 256 sessions.
+- **Registry reads** (§13): `Config`, then every `EnclaveEntry` PDA below
+  `next_measurement_id` (`getMultipleAccounts`, batches of 100; account
+  `version` must be 1 and `measurement_id` its PDA seed). One snapshot at
+  most every 5 s (concurrent misses share one read), each read timed out at
+  5 s; a positive answer is cached 30 s per attester, so a revoke takes
+  effect within 35 s. A failed read is never cached and never "active".
+- **Errors**: ReBIT `ErrorResponse` `{ ver, txnid, timestamp, errorCode,
+  errorMsg }`; `txnid` is the request's when its body was read, else `""`;
+  `errorMsg` is fixed per code and never repeats request data.
+
+| `errorCode` | HTTP |
+|---|---|
+| `InvalidRequest`, `SignatureDoesNotMatch`, `InvalidKey`, `InvalidDateRange`, `InvalidConsentId`, `InvalidConsentStatus`, `InvalidConsentDetail`, `InvalidConsentUse`, `InvalidSessionId` | 400 |
+| `InvalidRequest` (unknown route) | 404 |
+| `InvalidRequest` (body over 64 KiB) | 413 |
+| `Unauthorized` | 401 |
+| `DataGone` | 410 |
+| `InternalError` | 500 |
+| `ServiceUnavailable` (registry unreadable, store full) | 503 |
+
+**Keys and config** (environment): `SANDBOX_AA_PRIVATE_JWK`,
+`SANDBOX_FIP_PRIVATE_JWK` (the §2 demo keys, JSON text), `SOLANA_RPC_URL`,
+`ORACLE_PROGRAM_ID` (default the §13 id), `PORT` (8081), `PINNED_DIR`
+(default `enclave/pinned/`). The bank refuses to start if a key is flagged
+`private_key_test_only`, is under 2048 bits, or its public half (`e, kid,
+kty, n`) differs from the pinned file the enclave compiles in.
