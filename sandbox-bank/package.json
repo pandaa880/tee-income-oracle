@@ -10,6 +10,8 @@
     "gen:keys": "node src/vectors/gen-keys.ts",
     "gen:vectors": "node src/vectors/gen-vectors.ts",
     "gen:demo-keys": "node src/demo/gen-demo-keys.ts",
+    "start": "node src/service/main.ts",
+    "start:local": "node src/service/start-local.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../.oxlintrc.json --type-aware --deny-warnings src",
     "format": "oxfmt -c ../.oxfmtrc.json src",
@@ -17,11 +19,20 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@solana/surfpool": "1.6.0",
     "@types/node": "24.19.0",
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",
     "oxlint-tsgolint": "7.0.2003",
     "typescript": "7.0.2",
     "vitest": "5.0.2"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.3",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "@solana/kit": "7.1.1",
+    "hono": "4.13.13",
+    "zod": "4.6.5"
   }
 }

@@ -16,10 +16,10 @@ import {
   b64Encode,
   b64urlDecode,
   b64urlEncode,
+  jsonBytes,
   toHex,
   utf8,
 } from '../crypto/encoding.ts';
-import { deriveSessionKey, encrypt } from '../crypto/cipher.ts';
 import { sessionKeyPairFromScalar, type KeyMode, type SessionKeyPair } from '../crypto/ecdh.ts';
 import type { JsonValue } from '../crypto/jcs.ts';
 import { encodeDetached, rsaSigner, signCompact, signDetached, type Alg } from '../crypto/jws.ts';
@@ -37,6 +37,7 @@ import {
   type ResponseLayout,
 } from '../rebit/fetch-response.ts';
 import { buildFiRequest } from '../rebit/fi-request.ts';
+import { encryptToPeer } from '../rebit/seal.ts';
 import { buildKeyMaterial, isoUtc } from '../rebit/key-material.ts';
 import { reduceFi } from '../scoring/reduce.ts';
 import { score, type Features } from '../scoring/score.ts';
@@ -344,22 +345,24 @@ function buildFiRequestBody(ctx: Context, consentJws: string): Uint8Array {
 
 /** FIP side: sign the FI, wrap it, encrypt to the enclave's session key. */
 function buildFetchBody(ctx: Context): Uint8Array {
-  const fip = sessionKeyPairFromScalar(ctx.opts.mode, seedBytes(ctx.caseId, 'fip_scalar'));
-  const fipNonce = seedBytes(ctx.caseId, 'fip_nonce');
   const fiBytes = signedFiBytes(ctx);
   const fipJws = signDetached(fiBytes, ctx.keys.fip);
   const envelopeFi =
     ctx.opts.negative === 'fi_plaintext_changed' ? changedFi(ctx.persona.fi) : fiBytes;
-  const key = deriveSessionKey(
-    fip.sharedSecret(ctx.enclave.publicSpki),
-    fipNonce,
-    ctx.enclaveNonce,
-  );
   const envelope =
     ctx.opts.negative === 'fip_envelope_malformed'
       ? { fi: 'not base64 !', jws: fipJws }
       : buildFipEnvelope(envelopeFi, fipJws);
-  const encrypted = encrypt(key, jsonBytes(envelope, 0));
+  const sealed = encryptToPeer(
+    {
+      peerSpki: ctx.enclave.publicSpki,
+      peerNonce: ctx.enclaveNonce,
+      fipScalar: seedBytes(ctx.caseId, 'fip_scalar'),
+      fipNonce: seedBytes(ctx.caseId, 'fip_nonce'),
+      expiryUnix: NOW_UNIX + KEY_TTL,
+    },
+    jsonBytes(envelope, 0),
+  );
   const response = buildFetchResponse({
     txnid: OTHER_TXNID.includes(ctx.opts.negative)
       ? uuidFromSeed(seedBytes(ctx.caseId, 'other_txnid'))
@@ -368,9 +371,9 @@ function buildFetchBody(ctx: Context): Uint8Array {
     linkRefNumber: uuidFromSeed(seedBytes(ctx.caseId, 'link_ref')),
     maskedAccNumber: 'XXXXXXXX1234',
     encryptedFi: FLIPPED_CIPHERTEXT.includes(ctx.opts.negative)
-      ? flipB64Byte(encrypted)
-      : encrypted,
-    keyMaterial: buildKeyMaterial(fip.publicSpki, fipNonce, NOW_UNIX + KEY_TTL),
+      ? flipB64Byte(sealed.encryptedFi)
+      : sealed.encryptedFi,
+    keyMaterial: sealed.keyMaterial,
     layout: (ctx.opts.negative === undefined ? undefined : LAYOUTS[ctx.opts.negative]) ?? 'single',
   });
   return jsonBytes(response, 0);
@@ -602,9 +605,4 @@ function safeInteger(paise: bigint): number {
     throw new Error(`paise ${paise} exceed 2^53 - 1`);
   }
   return Number(paise);
-}
-
-/** Compact (indent 0) for signed bodies; 2-space for human-read files. No trailing newline. */
-export function jsonBytes(value: JsonValue, indent = 2): Uint8Array {
-  return utf8(JSON.stringify(value, null, indent));
 }

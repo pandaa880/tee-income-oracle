@@ -5,6 +5,8 @@
  * map to the same bytes, which breaks "verify the bytes as received".
  */
 
+import type { JsonValue } from './jcs.ts';
+
 export class EncodingError extends Error {
   override readonly name = 'EncodingError';
 }
@@ -77,4 +79,9 @@ function canonical(buf: Buffer, s: string, encode: (b: Uint8Array) => string): U
     throw new EncodingError('non-canonical encoding');
   }
   return new Uint8Array(buf);
+}
+
+/** Compact (indent 0) for signed bodies; 2-space for human-read files. No trailing newline. */
+export function jsonBytes(value: JsonValue, indent = 2): Uint8Array {
+  return utf8(JSON.stringify(value, null, indent));
 }

@@ -3,11 +3,11 @@
  * relative path to bytes. Pure: same keys in, same bytes out.
  */
 
-import { utf8 } from '../crypto/encoding.ts';
+import { jsonBytes, utf8 } from '../crypto/encoding.ts';
 import type { KeyMode } from '../crypto/ecdh.ts';
 import type { JsonValue } from '../crypto/jcs.ts';
 import type { Alg } from '../crypto/jws.ts';
-import { buildCase, jsonBytes, NEGATIVE_CASES, type CaseOptions } from './cases.ts';
+import { buildCase, NEGATIVE_CASES, type CaseOptions } from './cases.ts';
 import type { TestKeys } from './keys.ts';
 import { buildPersonas, type Persona, type PersonaId } from './personas.ts';
 import { policyBytes, policyHashHex } from './policy.ts';
