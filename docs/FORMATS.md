@@ -674,6 +674,23 @@ addresses on every cluster. `sas:setup` writes them to
 `cluster, sas_program, oracle_program, sas_signer, authority, credential,
 schema, schema_name, schema_version`.
 
+**Deployment file.** Several `ops` scripts write `deployments/<cluster>.json`;
+each merges its own keys in and keeps the rest:
+
+| Key | Written by | Value |
+|---|---|---|
+| the nine above | `sas:setup` | SAS program, oracle program, credential, schema |
+| `demo_pool_program`, `mint` | `pool:setup` | base58; `mint` is classic SPL Token, 6 decimals, no freeze authority |
+| `pools` | `pool:setup` | `[{ address, pool_id }]`, the pools `enclave:rotate` keeps approving |
+| `enclaves` | `enclave:rotate` | `[{ measurement_id, image_id, attester, attestation_file }]`: hex image id (§13 `measurement`), `0x` eth address, path of the archived document relative to the deployment file; one record per id |
+
+Archived attestation documents: `deployments/<cluster>/attestation-<id>.hex`,
+the exact hex returned by the enclave's Oyster attestation server (port 1301,
+`/attestation/hex`) and checked by `oyster-cvm verify`. `sha256` of the decoded
+bytes is the entry's `attestation_doc_hash` (§13), so anyone can re-verify the
+document behind a registry entry after the enclave is gone. Never edited or
+overwritten.
+
 **Verified on devnet 2026-09-27** (throwaway spike, `sas-lib` 1.0.10, SAS
 `22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG`):
 - The schema layout above is accepted and stored as `0,0,0,4,4,4,4,8,2,2`.

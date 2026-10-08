@@ -97,7 +97,8 @@ sandbox-bank/        Node/TS mock FIP + AA speaking ReBIT with test keys. Also t
                      test-vector generator.
 verifier/            TS. Checks the Nitro attestation to AWS's root, the image id,
                      and the attester key on chain.
-ops/                 TS admin scripts. Creates the SAS credential and schema.
+ops/                 TS admin scripts: oracle init, SAS credential + schema, demo pool,
+                     attested enclave rotation, devnet end-to-end run.
 deployments/         Public addresses per cluster, written by ops.
 web/                 Next.js. Borrower flow, lender dashboard, verify page.
 test-vectors/        Generated fixtures, including golden vectors from Sahamati's
@@ -151,8 +152,10 @@ its attester is active in the on-chain registry; it runs locally and in
 Docker. The `gateway` drives a whole session for the web (consent, enclave
 session, wallet-signed intent, FI request and fetch, evaluate), streams each
 stage over SSE and relays the signed result to the oracle; a local end-to-end
-test runs the real enclave container, bank and programs through it. Next: the
-devnet deployment, then the web.
+test runs the real enclave container, bank and programs through it. The
+`ops` scripts set a cluster up (oracle config, SAS, demo pool) and register
+the running Oyster enclave from its verified attestation; they are tested on
+surfpool, not run on devnet yet. Next: the devnet deployment, then the web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.
