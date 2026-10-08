@@ -1,8 +1,13 @@
 # sandbox-bank
 
 Node/TS mock **FIP + AA** that speaks the real ReBIT protocol with test data:
-"simulated bank, real protocol". When a real AA replaces it, the enclave code
-doesn't change; only the pinned keys and the base URL do.
+"simulated bank, real protocol". When a real AA replaces it, the enclave's
+protocol code doesn't change, but the pinned keys and the base URL do, and
+so does FIU key onboarding. This bank accepts a new FIU key on every enclave
+boot because the on-chain registry vouches for it (`POST /fiu-keys` below).
+A real AA onboards an FIU's public key out of band, so a key that changes per
+boot needs either a stable key (e.g. sealed by a KMS to the enclave's
+measurement) or a re-onboarding flow with that AA (`docs/ARCHITECTURE.md` §6).
 
 - Serves four borrower personas (DEPOSIT schema, 6–12 months): salaried/steady,
   lumpy trader, declining, stressed. The live service rebuilds each statement
