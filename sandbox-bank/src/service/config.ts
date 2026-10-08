@@ -38,8 +38,8 @@ export interface Config {
 const ORACLE_PROGRAM_ID = 'HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8';
 const DEFAULT_PINNED_DIR = fileURLToPath(new URL('../../../enclave/pinned/', import.meta.url));
 const MIN_RSA_BITS = 2048;
-/** RFC 6750 token68, ≥ 32 chars; the gateway's `BANK_TOKEN` rule is the same. */
-const TOKEN_PATTERN = /^[A-Za-z0-9._~+/=-]{32,}$/;
+/** RFC 6750 b64token (`=` only as trailing padding), ≥ 32 chars; the gateway's rule is the same. */
+const TOKEN_PATTERN = /^(?=.{32,}$)[A-Za-z0-9._~+/-]+=*$/;
 
 const EnvSchema = z.object({
   SANDBOX_AA_PRIVATE_JWK: z.string().min(1),

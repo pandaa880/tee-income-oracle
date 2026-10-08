@@ -1339,9 +1339,10 @@ FIU's key. Bodies are JSON (`ver` = §5's version string), at most 64 KiB
 **Deployment invariant.** Only the gateway can call the bank: over a private
 network, or, where the host has none (Azure Container Apps express: an
 "internal" app still answers on its public URL), with a shared bearer token
-(`BANK_TOKEN` below). The gateway is its only client and owns rate limiting. Two routes need no authentication (`/fiu-keys`,
-`/Consent`), and their caps below are sized for that: they bound memory and
-RPC cost, not request rate. Exposing the bank publicly breaks this.
+(`BANK_TOKEN` below). The gateway is its only client and owns rate
+limiting. Two routes need no authentication beyond that caller rule
+(`/fiu-keys`, `/Consent`), and their caps below are sized for that: they
+bound memory and RPC cost, not request rate. Exposing the bank publicly breaks this.
 
 | Route | Request | Reply |
 |---|---|---|
@@ -1404,8 +1405,9 @@ RPC cost, not request rate. Exposing the bank publicly breaks this.
 `SANDBOX_FIP_PRIVATE_JWK` (the §2 demo keys, JSON text), `SOLANA_RPC_URL`,
 `ORACLE_PROGRAM_ID` (default the §13 id), `PORT` (8081), `PINNED_DIR`
 (default `enclave/pinned/`), `BANK_TOKEN` (optional: when set, every route
-but `/health` needs `authorization: Bearer <token>`; RFC 6750 token68, at
-least 32 characters, compared in constant time). The bank refuses to start if a key is flagged
+but `/health` needs `authorization: Bearer <token>`; RFC 6750 b64token:
+`A-Z a-z 0-9 - . _ ~ + /` then optional trailing `=`, at least 32
+characters; compared in constant time). The bank refuses to start if a key is flagged
 `private_key_test_only`, is under 2048 bits, or its public half (`e, kid,
 kty, n`) differs from the pinned file the enclave compiles in.
 
@@ -1525,7 +1527,9 @@ read bank data or forge a tier.
   `ALLOWED_ORIGIN` (one exact web origin for CORS, never `*`),
   `TRUST_PROXY` (`1` or unset), `PORT` (8082), `BANK_TOKEN` (optional; the
   bank's token, sent as `authorization: Bearer <token>` on every bank call;
-  same rule as §15).
+  same rule as §15; with a token, `BANK_URL` must be `https:`, or `http:` only
+  to localhost, `[::1]`, a loopback or private IPv4, a single-label name or
+  a `.internal` name, since RFC 6750 bearer tokens need a confidential channel).
 - **Deployment invariant.** The gateway is the bank's only client (§15) and
   the only caller that should drive the enclave; it is the public endpoint
   and owns rate limiting.

@@ -109,6 +109,15 @@ switch for it in the CLI). Express has no private networking: an
 supported. So the bank is protected by `BANK_TOKEN` (FORMATS §15), and the
 gateway reaches it over HTTPS.
 
+Never type a secret on the command line: it lands in shell history. Put
+these commands in a script that reads each secret from its mode-`600` file
+or the environment at run time (for example `bank-token="$(cat <file>)"`),
+so the values never appear in history or in the script itself (they do
+reach `az`'s arguments for the moment it runs, so run it on your own
+machine, not a shared one). Key Vault
+references, the usual alternative, aren't supported on express
+environments. The `…` below stand for those reads.
+
 ```sh
 az containerapp env create -g <rg> -n <env> -l <region> --logs-destination none
 

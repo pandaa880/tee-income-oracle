@@ -219,4 +219,19 @@ describe('loadConfig: BANK_TOKEN (bearer token for the gateway)', () => {
     expect((error as Error).message).toContain('BANK_TOKEN');
     if (bad !== '') expect((error as Error).message).not.toContain(bad);
   });
+
+  it('accepts base64-style padding at the end of the token', () => {
+    const t = `${'a'.repeat(30)}==`;
+    expect(loadConfig(env({ BANK_TOKEN: t })).token).toBe(t);
+  });
+
+  it.each([
+    ['an inner "="', `${'a'.repeat(16)}=${'a'.repeat(16)}`],
+    ['only padding characters', '='.repeat(32)],
+  ])('refuses a token with %s (not a b64token)', (_, bad) => {
+    const error = thrown(() => loadConfig(env({ BANK_TOKEN: bad })));
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as Error).message).toContain('BANK_TOKEN');
+    expect((error as Error).message).not.toContain(bad);
+  });
 });
