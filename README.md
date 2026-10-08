@@ -87,6 +87,7 @@ layer and must fail with exactly its error code (see
 programs/oracle/     Anchor. Enclave registry, verifies the enclave's secp256k1
                      signature (precompile), writes the SAS attestation.
 clients/ts/oracle/   TypeScript client for the oracle, generated from its IDL (Codama).
+packages/encoding/   Shared strict byte encodings (hex, base64, base64url) for the TS code.
 programs/demo-pool/  Anchor. Reads and checks the SAS attestation, lends testnet tokens.
 clients/ts/demo-pool/  TypeScript client for the demo pool, generated the same way.
 tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
@@ -116,8 +117,8 @@ docs/                Architecture, formats, coding guidelines.
 
 Two build worlds:
 - **Rust/Anchor**: a Cargo workspace (`programs/*`, `tio-core`). See the root `Cargo.toml`.
-- **Node/TS**: a pnpm workspace (`clients/ts/*`, `gateway/`, `ops/`, `programs/*/tests`,
-  `sandbox-bank/`, `verifier/`, `web/`). Solana client code uses `@solana/kit` 7 and
+- **Node/TS**: a pnpm workspace (`clients/ts/*`, `gateway/`, `ops/`, `packages/*`,
+  `programs/*/tests`, `sandbox-bank/`, `verifier/`, `web/`). Solana client code uses `@solana/kit` 7 and
   `sas-lib` 2.0.0-beta.1; the program clients are generated with Codama; local chain tests run
   on embedded [surfpool](https://solana.com/docs/tools/surfpool) (`@solana/surfpool`).
 

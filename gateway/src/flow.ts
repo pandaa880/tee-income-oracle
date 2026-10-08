@@ -4,6 +4,7 @@
  * fetch response travel exactly as signed, and the tier comes back signed by
  * the enclave. Stages are emitted as each one starts (FORMATS §16).
  */
+import { b64Decode, b64Encode } from '@tio/encoding';
 import { GatewayError } from './errors.ts';
 import type { FiuKeyManager } from './fiu-key.ts';
 import type { SessionData, SessionStore } from './sessions.ts';
@@ -75,10 +76,7 @@ export function takeSession(deps: Deps, id: string): TakenSession {
 
 async function sendFiRequest(deps: Deps, s: TakenSession) {
   try {
-    return await deps.bank.fiRequest(
-      new Uint8Array(Buffer.from(s.fiRequestBodyB64, 'base64')),
-      s.fiRequestJws,
-    );
+    return await deps.bank.fiRequest(b64Decode(s.fiRequestBodyB64), s.fiRequestJws);
   } catch (e) {
     // The bank no longer knows our FIU key (bank restart): register it again next time.
     if (e instanceof GatewayError && e.code === 'SignatureDoesNotMatch') deps.fiuKey.markStale();
@@ -100,7 +98,7 @@ export async function runSession(
   const fetched = await deps.bank.fiFetch({ txnid: ack.txnid, sessionId: ack.sessionId });
   emit('evaluate');
   const result = await deps.enclave.evaluate(s.id, {
-    fetch_response_b64: Buffer.from(fetched.bytes).toString('base64'),
+    fetch_response_b64: b64Encode(fetched.bytes),
     fetch_response_jws: fetched.jws,
     consent_jws: s.consentJws,
   });

@@ -2,9 +2,9 @@
 // fake Oyster ports (no network, no oyster-cvm). Needs `anchor build`. One surfnet per file;
 // tests build on each other in order: rotation 1, 2, 3 (re-run), then the failure cases.
 import { createHash } from 'node:crypto';
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { type Address, type Rpc, type SolanaRpcApi } from '@solana/kit';
 import { type PoolParams, fetchMaybePool } from '@tio/demo-pool-client';
 import {
@@ -161,6 +161,19 @@ async function waitFor(condition: () => Promise<boolean>, timeoutMs = 10_000): P
   }
 }
 
+/** Pending attestation files left in the archive directory. */
+async function pendingFiles(): Promise<string[]> {
+  return (await readdir(archiveDir)).filter((name) => name.startsWith('attestation-pending'));
+}
+
+async function pendingContents(): Promise<string[]> {
+  return Promise.all(
+    (await pendingFiles()).map(async (name) =>
+      (await readFile(join(archiveDir, name), 'utf8')).trim(),
+    ),
+  );
+}
+
 async function deploymentFile(): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(deploymentPath, 'utf8')) as Record<string, unknown>;
 }
@@ -239,7 +252,9 @@ describe('runRotate on surfpool', () => {
 
     it('verifies_the_pending_file_in_the_archive_dir_against_the_computed_image_id', () => {
       expect(calls.verify).toHaveLength(1);
-      expect(calls.verify[0]?.hexFile).toBe(join(archiveDir, 'attestation-pending.hex'));
+      const hexFile = calls.verify[0]?.hexFile ?? '';
+      expect(dirname(hexFile)).toBe(archiveDir);
+      expect(basename(hexFile)).toMatch(/^attestation-pending-[0-9a-z-]+\.hex$/);
       expect(calls.verify[0]?.imageIdHex).toBe(ONE.imageIdHex);
     });
 
@@ -265,7 +280,7 @@ describe('runRotate on surfpool', () => {
     });
 
     it('renames_the_pending_file_to_the_numbered_archive', async () => {
-      expect(await exists(join(archiveDir, 'attestation-pending.hex'))).toBe(false);
+      expect(await pendingFiles()).toEqual([]);
       expect(await exists(join(archiveDir, 'attestation-0.hex'))).toBe(true);
     });
 
@@ -349,7 +364,7 @@ describe('runRotate on surfpool', () => {
     });
 
     it('drops_the_fresh_pending_file_and_keeps_the_archive_that_matches_the_chain', async () => {
-      expect(await exists(join(archiveDir, 'attestation-pending.hex'))).toBe(false);
+      expect(await pendingFiles()).toEqual([]);
       await expectArchiveMatchesEntry(1);
     });
   });
@@ -364,14 +379,15 @@ describe('runRotate on surfpool', () => {
       expect(calls.verify).toHaveLength(0);
     });
 
-    it('rejects_an_attester_that_differs_from_the_enclave_info_and_keeps_the_pending_file', async () => {
+    it('rejects_an_attester_that_differs_from_the_enclave_info_and_removes_its_pending_file', async () => {
       const { ports } = portsFor(THREE, 3, {
         enclaveInfo: async () => ({ attester_address: TWO.attesterHex }),
       });
       const failure = await expectRejected(ports);
       expect(failure).toBeInstanceOf(OpsError);
       expect(failure).toMatchObject({ code: 'attester_mismatch' });
-      expect(await exists(join(archiveDir, 'attestation-pending.hex'))).toBe(true);
+      // Nothing was sent, so the attempt's document is evidence for nothing.
+      expect(await pendingFiles()).toEqual([]);
     });
 
     it('rejects_a_verified_image_id_that_differs_from_the_computed_one', async () => {
@@ -464,7 +480,9 @@ describe('runRotate on surfpool', () => {
       );
       expect(result).toMatchObject({ measurementId: 2, registered: false });
       await expectArchiveMatchesEntry(2);
-      expect(await exists(join(archiveDir, 'attestation-pending.hex'))).toBe(false);
+      const left = await pendingContents();
+      expect(left).not.toContain(fakeAttestationHex(4));
+      expect(left).not.toContain(fakeAttestationHex(5));
       const enclaves = (await deploymentFile())['enclaves'] as Record<string, unknown>[];
       expect(enclaves.map((e) => e['measurement_id'])).toEqual([0, 1, 2]);
     });
@@ -482,6 +500,62 @@ describe('runRotate on surfpool', () => {
       expect(counted.sent()).toBe(0);
       expect(await nextMeasurementId()).toBe(3);
       expect(await readFile(stale, 'utf8')).toBe('ab'.repeat(32));
+      await rm(stale);
+    });
+  });
+
+  describe('a deployment record that conflicts with the next id', () => {
+    it('refuses_with_deployment_conflict_before_sending', async () => {
+      const next = await nextMeasurementId();
+      const before = await deploymentFile();
+      const stale = {
+        measurement_id: next,
+        image_id: '00'.repeat(32),
+        attester: `0x${'11'.repeat(20)}`,
+        attestation_file: 'x',
+      };
+      const enclaves = [...(before['enclaves'] as unknown[]), stale];
+      await writeFile(deploymentPath, `${JSON.stringify({ ...before, enclaves }, null, 2)}\n`);
+      try {
+        const counted = countingRpc(chain.rpc);
+        const failure = await rejection(rotate(portsFor(fakeEnclave(9), 9).ports, counted.rpc));
+        expect(failure).toMatchObject({ code: 'deployment_conflict' });
+        expect(counted.sent()).toBe(0);
+        expect(await nextMeasurementId()).toBe(next);
+        expect(await pendingFiles()).toEqual([]);
+      } finally {
+        // Later tests in this file build on the original deployment file.
+        await writeFile(deploymentPath, `${JSON.stringify(before, null, 2)}\n`);
+      }
+    });
+  });
+
+  describe('two rotations at the same time', () => {
+    it('refuses_a_second_run_while_one_holds_the_lock', async () => {
+      const lock = join(archiveDir, '.rotate.lock');
+      await writeFile(lock, 'held by a test');
+      const counted = countingRpc(chain.rpc);
+      const failure = await rejection(rotate(portsFor(fakeEnclave(7), 7).ports, counted.rpc));
+      expect(failure).toMatchObject({ code: 'rotation_in_progress' });
+      expect(counted.sent()).toBe(0);
+      expect(await readFile(lock, 'utf8')).toBe('held by a test');
+      await rm(lock);
+    });
+
+    it('lets_exactly_one_of_two_concurrent_runs_register_and_archives_its_own_document', async () => {
+      const next = await nextMeasurementId();
+      const results = await Promise.allSettled([
+        rotate(portsFor(fakeEnclave(7), 7).ports),
+        rotate(portsFor(fakeEnclave(8), 8).ports),
+      ]);
+      const failed = results.filter((r) => r.status === 'rejected');
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.status === 'rejected' && failed[0].reason).toMatchObject({
+        code: 'rotation_in_progress',
+      });
+      expect(await nextMeasurementId()).toBe(next + 1);
+      await expectArchiveMatchesEntry(next);
+      expect(await exists(join(archiveDir, '.rotate.lock'))).toBe(false);
     });
   });
 });

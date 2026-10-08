@@ -14,6 +14,7 @@ import {
 } from '@tio/oracle-client';
 import { ORACLE_PROGRAM_ID } from '@tio/oracle-client/attest';
 
+import { b64Decode, toHex } from '@tio/encoding';
 import { gatewayError } from './errors.ts';
 import { rpcSignal } from './timeouts.ts';
 
@@ -43,14 +44,12 @@ export async function readEnclaveEntry(
     .getAccountInfo(at, { encoding: 'base64' })
     .send({ abortSignal: rpcSignal() });
   return entryFromAccount(
-    value === null
-      ? null
-      : { owner: value.owner, data: new Uint8Array(Buffer.from(value.data[0], 'base64')) },
+    value === null ? null : { owner: value.owner, data: b64Decode(value.data[0]) },
   );
 }
 
 export function attesterHex(entry: EnclaveEntry): string {
-  return `0x${Buffer.from(entry.attester).toString('hex')}`;
+  return `0x${toHex(Uint8Array.from(entry.attester))}`;
 }
 
 export async function checkEnclaveEntry(

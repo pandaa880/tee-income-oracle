@@ -3,6 +3,7 @@
 // deployments/<cluster>.json). The new pool approves the registry entries active now;
 // enclave:rotate keeps it current afterwards.
 import { readFile } from 'node:fs/promises';
+import { fromHex } from '@tio/encoding';
 import { chainClients, cliOptions, deploymentPath, readKeypair, repoPath, runCli } from './cli.ts';
 import { assertCluster, parseCluster } from './cluster.ts';
 import { loadConfig } from './config.ts';
@@ -15,7 +16,7 @@ async function defaultPolicyHash(): Promise<Uint8Array> {
   if (!/^[0-9a-f]{64}$/.test(hex)) {
     throw new Error('test-vectors/policy/default.hash is not 32 bytes of hex');
   }
-  return new Uint8Array(Buffer.from(hex, 'hex'));
+  return fromHex(hex);
 }
 
 async function main(): Promise<void> {

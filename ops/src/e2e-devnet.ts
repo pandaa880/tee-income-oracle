@@ -24,6 +24,8 @@ import {
 import { getBorrowInstructionAsync, getRepayInstructionAsync } from '@tio/demo-pool-client';
 import { findEnclaveEntryPda } from '@tio/oracle-client';
 import { attestationAddress, parseSasAttestation } from '@tio/oracle-client/attest';
+import { b64Decode, toHex } from '@tio/encoding';
+import { type Cluster, assertCluster } from './cluster.ts';
 import { isRecord } from './deployments.ts';
 import { type ChainClients, sendInstructions } from './send.ts';
 import { type SseEvent, parseSse } from './sse.ts';
@@ -81,6 +83,7 @@ export function outcomeOf(events: SseEvent[]): Outcome {
 }
 
 export type E2eInput = ChainClients & {
+  cluster: Cluster;
   gatewayUrl: string;
   /** Pays the borrow/repay fees and the borrower's token account. */
   admin: KeyPairSigner;
@@ -93,6 +96,8 @@ export type E2eInput = ChainClients & {
 
 /** Runs every persona, then a tier A borrow + repay. Resolves true only if all pass. */
 export async function runE2e(input: E2eInput): Promise<boolean> {
+  // The admin wallet pays real fees below: never on a cluster other than the one named.
+  await assertCluster(input);
   let allPassed = true;
   let tierA: KeyPairSigner | undefined;
   for (const persona of PERSONAS) {
@@ -197,15 +202,14 @@ async function onChainMatches(
 ): Promise<boolean> {
   if (!outcome.ok || outcome.tier === 'REJECT') return outcome.ok;
   const stored = await readAttestation(input, wallet.address);
-  return stored !== undefined && Buffer.from(stored).toString('hex') === outcome.payloadHex;
+  return stored !== undefined && toHex(stored) === outcome.payloadHex;
 }
 
 async function readAttestation(input: E2eInput, wallet: Address): Promise<Uint8Array | undefined> {
   const at = await attestationAddress(input.credential, input.schema, wallet);
   const { value } = await input.rpc.getAccountInfo(at, { encoding: 'base64' }).send();
   if (value === null) return undefined;
-  return parseSasAttestation(value.owner, new Uint8Array(Buffer.from(value.data[0], 'base64')))
-    .payload;
+  return parseSasAttestation(value.owner, b64Decode(value.data[0])).payload;
 }
 
 async function borrowAndRepay(input: E2eInput, borrower: KeyPairSigner): Promise<boolean> {

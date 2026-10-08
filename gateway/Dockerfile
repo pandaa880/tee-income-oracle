@@ -14,11 +14,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY gateway/package.json gateway/
 COPY clients/ts/oracle/package.json clients/ts/oracle/
 COPY sandbox-bank/package.json sandbox-bank/
+COPY packages/encoding/package.json packages/encoding/
 RUN pnpm install --frozen-lockfile --prod --filter "@tio/gateway..."
 
 # The generated client uses `enum` and extensionless imports: runs under tsx.
 COPY clients/ts/oracle/src/ clients/ts/oracle/src/
 COPY sandbox-bank/src/crypto/jcs.ts sandbox-bank/src/crypto/
+COPY packages/encoding/src/encoding.ts packages/encoding/src/
 COPY deployments/ deployments/
 COPY test-vectors/policy/default.json test-vectors/policy/
 COPY gateway/src/ gateway/src/

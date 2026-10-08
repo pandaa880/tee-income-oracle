@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
-import { EXPECTED_TIERS, outcomeOf } from './e2e-devnet.ts';
+import { type Rpc, type SolanaRpcApi, address, generateKeyPairSigner } from '@solana/kit';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { EXPECTED_TIERS, outcomeOf, runE2e } from './e2e-devnet.ts';
 
 const MANIFEST_PATH = fileURLToPath(new URL('../../test-vectors/manifest.json', import.meta.url));
 
@@ -103,5 +104,33 @@ describe('outcomeOf', () => {
 
   it('fails_with_stream_no_result_for_an_empty_stream', () => {
     expect(outcomeOf([])).toEqual({ ok: false, stage: 'stream', code: 'no_result' });
+  });
+});
+
+describe('runE2e', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('refuses_an_rpc_that_is_not_the_named_cluster_before_any_request', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const rpc = {
+      getGenesisHash: () => ({ send: async () => 'NotDevnetGenesisHash1111111111111111111111111' }),
+    } as unknown as Rpc<SolanaRpcApi>;
+    const any = address('11111111111111111111111111111111');
+    const run = runE2e({
+      cluster: 'devnet',
+      rpc,
+      rpcSubscriptions: {} as never,
+      gatewayUrl: 'http://127.0.0.1:1',
+      admin: await generateKeyPairSigner(),
+      credential: any,
+      schema: any,
+      pool: any,
+      mint: any,
+      log: () => {},
+    });
+    await expect(run).rejects.toMatchObject({ code: 'cluster_mismatch' });
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

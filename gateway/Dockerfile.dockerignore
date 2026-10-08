@@ -11,8 +11,13 @@
 !clients/ts/oracle/src/
 !sandbox-bank/package.json
 !sandbox-bank/src/crypto/jcs.ts
+!packages/encoding/package.json
+!packages/encoding/src/encoding.ts
 !deployments/
 !test-vectors/policy/default.json
 gateway/src/**/*.test.ts
 gateway/src/testing/
+deployments/**/.rotate.lock
+deployments/**/attestation-pending*.hex
+deployments/**/*.tmp
 clients/ts/oracle/src/**/*.test.ts

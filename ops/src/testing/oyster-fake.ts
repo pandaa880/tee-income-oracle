@@ -3,11 +3,12 @@
 // identity standing in for an enclave's per-boot attester key.
 import { createECDH, createHash } from 'node:crypto';
 import { keccak_256 } from '@noble/hashes/sha3.js';
+import { toHex } from '@tio/encoding';
 
 const STAMP = '2026-10-08T10:00:00.123456Z';
 const ESC = String.fromCharCode(27);
 
-export const toHex = (bytes: Uint8Array): string => Buffer.from(bytes).toString('hex');
+export { toHex };
 
 export function logLine(module: string, message: string, level = ' INFO', colour = false): string {
   if (!colour) return `${STAMP} ${level} oyster_cvm::commands::${module}: ${message}`;

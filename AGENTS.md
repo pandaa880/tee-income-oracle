@@ -53,6 +53,8 @@ programs/oracle/      Anchor. Enclave registry (image id → attester), verifies
                       enclave signature via secp256k1 precompile, CPIs SAS.
                       tests/ = TS program tests (vitest on embedded surfpool).
 clients/ts/oracle/    Codama-generated kit client for the oracle (from the IDL; committed).
+packages/encoding/    `@tio/encoding`: the one TS module for hex / base64 / base64url (strict,
+                      canonical decoders). sandbox-bank, gateway and ops use it.
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
                       tests/ = TS program tests (reuse the oracle test harness).
 clients/ts/demo-pool/ Codama-generated kit client for the demo pool (committed).
@@ -127,7 +129,7 @@ hold only READMEs. Update the status as each one starts working.
 | Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests --filter @tio/demo-pool-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; `demo-pool` against the real oracle, SAS and SPL Token; also in CI) |
 | Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` unit tests incl. an offline surfpool suite with the dumped SAS binary (`pnpm --filter @tio/ops test:programs` runs the suites that need the built programs), `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`: §8 message, precompile, SAS reader) and `gateway` (unit + surfpool relayer/registry suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Lint/typecheck (TS) | `pnpm --filter <@tio/encoding, @tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
 | Oracle init (admin) | `pnpm --filter @tio/ops oracle:init --cluster <localnet\|devnet>` — the admin wallet must be the oracle's upgrade authority; env in `ops/README.md` | works on surfpool; not yet run on devnet |
 | SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet; not yet run on devnet |
@@ -231,7 +233,10 @@ Add a line whenever an agent makes the same mistake twice.
   in `deployments/<cluster>/`) is never overwritten: check an existing archive
   by content, not by name, never `rename` over an existing file, and on a
   re-run reconcile local files against the on-chain hash first
-  (`ops/src/rotate.ts`).
+  (`ops/src/rotate.ts`). One rotation at a time (exclusive lock file) and one
+  pending file per attempt, so a run archives the document it registered.
+  Run-time files a script writes under the committed `deployments/` tree
+  (locks, pending, temp) get a `.gitignore` entry in the same change.
 - Behind one trusted proxy, the client IP is the **last** `X-Forwarded-For`
   hop (the one the proxy appended); earlier hops are client-written.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent

@@ -50,22 +50,26 @@ describe('entryFromAccount', () => {
   it('throws_on_a_wrong_discriminator', () => {
     const bytes = entryBytes();
     bytes[0] = (bytes[0] ?? 0) ^ 0xff;
-    expect(() => entryFromAccount(owned(bytes))).toThrow();
+    expect(() => entryFromAccount(owned(bytes))).toThrow('account is not an oracle EnclaveEntry');
   });
 
   it('throws_on_data_one_byte_short', () => {
     const bytes = entryBytes();
-    expect(() => entryFromAccount(owned(bytes.subarray(0, bytes.length - 1)))).toThrow();
+    expect(() => entryFromAccount(owned(bytes.subarray(0, bytes.length - 1)))).toThrow(
+      'enclave entry has the wrong length',
+    );
   });
 
   it('throws_on_data_one_byte_long', () => {
     const bytes = entryBytes();
     const longer = new Uint8Array(bytes.length + 1);
     longer.set(bytes);
-    expect(() => entryFromAccount(owned(longer))).toThrow();
+    expect(() => entryFromAccount(owned(longer))).toThrow('enclave entry has the wrong length');
   });
 
   it('throws_on_empty_data', () => {
-    expect(() => entryFromAccount(owned(new Uint8Array(0)))).toThrow();
+    expect(() => entryFromAccount(owned(new Uint8Array(0)))).toThrow(
+      'enclave entry has the wrong length',
+    );
   });
 });

@@ -154,6 +154,21 @@ describe('runPoolSetup on surfpool', () => {
     expect(await tokenBalance(chain.rpc, first.vault)).toBe(POOL_DEFAULTS.vaultFunding);
   });
 
+  it('keeps_other_pools_listed_in_the_deployment_on_a_re_run', async () => {
+    const other = { address: 'GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq', pool_id: 1 };
+    const before = await readDeploymentFile();
+    await writeFile(
+      deploymentPath,
+      `${JSON.stringify({ ...before, pools: [other, ...(before['pools'] as unknown[])] }, null, 2)}\n`,
+    );
+    await setup();
+    const { pool } = await poolAddresses();
+    expect((await readDeploymentFile())['pools']).toEqual([
+      other,
+      { address: pool, pool_id: POOL_DEFAULTS.poolId },
+    ]);
+  });
+
   it('fails_pool_mismatch_when_the_existing_pool_has_a_different_policy_hash', async () => {
     const counted = countingRpc(chain.rpc);
     const failure = await rejection(

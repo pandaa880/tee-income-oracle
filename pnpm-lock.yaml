@@ -236,6 +236,9 @@ importers:
       '@solana/kit':
         specifier: 7.1.1
         version: 7.1.1(typescript@7.0.2)
+      '@tio/encoding':
+        specifier: workspace:*
+        version: link:../packages/encoding
       '@tio/oracle-client':
         specifier: workspace:*
         version: link:../clients/ts/oracle
@@ -306,6 +309,9 @@ importers:
       '@tio/demo-pool-client':
         specifier: workspace:*
         version: link:../clients/ts/demo-pool
+      '@tio/encoding':
+        specifier: workspace:*
+        version: link:../packages/encoding
       '@tio/oracle-client':
         specifier: workspace:*
         version: link:../clients/ts/oracle
@@ -322,6 +328,27 @@ importers:
       '@solana/surfpool':
         specifier: 1.6.0
         version: 1.6.0(@solana/kit@7.1.1(typescript@7.0.2))
+      '@types/node':
+        specifier: 24.19.0
+        version: 24.19.0
+      oxfmt:
+        specifier: 0.70.0
+        version: 0.70.0
+      oxlint:
+        specifier: 1.85.0
+        version: 1.85.0(oxlint-tsgolint@7.0.2003)
+      oxlint-tsgolint:
+        specifier: 7.0.2003
+        version: 7.0.2003
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@24.19.0)(vite@8.3.1(@types/node@24.19.0))
+
+  packages/encoding:
+    devDependencies:
       '@types/node':
         specifier: 24.19.0
         version: 24.19.0
@@ -433,6 +460,9 @@ importers:
       '@solana/kit':
         specifier: 7.1.1
         version: 7.1.1(typescript@7.0.2)
+      '@tio/encoding':
+        specifier: workspace:*
+        version: link:../packages/encoding
       hono:
         specifier: 4.13.13
         version: 4.13.13

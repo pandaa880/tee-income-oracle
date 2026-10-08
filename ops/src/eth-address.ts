@@ -4,6 +4,7 @@
  * (FORMATS §13).
  */
 import { keccak_256 } from '@noble/hashes/sha3.js';
+import { toHex } from '@tio/encoding';
 
 /**
  * `keccak256(x ‖ y)[12..32]` of an uncompressed point, given either as the
@@ -27,5 +28,5 @@ export function ethAddressFromPublicKey(pub: Uint8Array): Uint8Array {
 /** `0x` + lowercase hex of a 20-byte address (the form `/v1/info` uses). */
 export function toEthHex(address: Uint8Array): string {
   if (address.length !== 20) throw new Error(`expected 20 bytes, got ${address.length}`);
-  return `0x${Buffer.from(address).toString('hex')}`;
+  return `0x${toHex(address)}`;
 }

@@ -42,6 +42,7 @@ import {
 } from '@tio/oracle-client/attest';
 import { findEnclaveEntryPda, getSubmitAttestationInstructionAsync } from '@tio/oracle-client';
 
+import { fromHex } from '@tio/encoding';
 import type { Chain } from './chain.ts';
 import type { Deployment } from './config.ts';
 import { GatewayError, gatewayError } from './errors.ts';
@@ -68,9 +69,6 @@ function customErrorCode(error: unknown): number | undefined {
   }
   return undefined;
 }
-
-/** Hex already checked by the enclave reply schema (upstream.ts). */
-const fromHex = (hex: string): Uint8Array => new Uint8Array(Buffer.from(hex, 'hex'));
 
 export type RelayerOptions = {
   chain: Chain;

@@ -7,6 +7,7 @@
  * 5.0.1 (cli/oyster-cvm/src/commands/{verify,image_id}.rs); a newer CLI that
  * rewords a line makes `enclave:rotate` stop, not guess.
  */
+import { fromHex } from '@tio/encoding';
 
 const ANSI = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
 const HEX = /^(?:[0-9a-f]{2})+$/;
@@ -35,7 +36,7 @@ function hexValue(text: string, label: string, lengths: number[]): Uint8Array {
   if (!HEX.test(value) || !lengths.includes(value.length / 2)) {
     throw new Error(`"${label}" is not ${lengths.join(' or ')} bytes of lowercase hex`);
   }
-  return new Uint8Array(Buffer.from(value, 'hex'));
+  return fromHex(value);
 }
 
 /** The 32-byte image id from `oyster-cvm compute-image-id` output. */

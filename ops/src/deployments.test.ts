@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -91,6 +91,13 @@ describe('readDeployment / writeDeployment', () => {
     await writeFile(path, '{"old":true}\n');
     await writeDeployment(path, { fresh: true });
     expect(await readDeployment(path)).toEqual({ fresh: true });
+  });
+
+  it('writes_through_a_temporary_file_and_leaves_none_behind', async () => {
+    const path = join(dir, 'devnet.json');
+    await writeFile(path, '{"old":true}\n');
+    await writeDeployment(path, { fresh: true });
+    expect(await readdir(dir)).toEqual(['devnet.json']);
   });
 
   it('rejects_a_file_that_is_not_json_instead_of_treating_it_as_missing', async () => {

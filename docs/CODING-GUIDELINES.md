@@ -200,7 +200,9 @@ scope. See `AGENTS.md` for the full wording.
   `findSasEventAuthorityPda`) default to *our* program id when called on
   their own. Always pass `{ programAddress: <that program> }`.
 - Bytes are `Uint8Array`. Encode/decode explicitly (hex, base64, base64url,
-  base58) with one helper module; no ad-hoc `Buffer.toString` scattered around.
+  base58) with one helper module, `@tio/encoding` (`packages/encoding`, strict
+  canonical decoders); no ad-hoc `Buffer.toString` / `Buffer.from(…, 'hex')`
+  scattered around.
 
 ### Servers (gateway, sandbox-bank)
 - Capture the **raw body** before any JSON middleware on routes that carry

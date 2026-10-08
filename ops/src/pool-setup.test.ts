@@ -69,6 +69,10 @@ describe('planPoolSetup', () => {
         params: { ...s.params, tierLimits: [...s.params.tierLimits.slice(0, 2), 1n] },
       }),
     ],
+    [
+      'tier_limits_shorter',
+      (s) => ({ ...s, params: { ...s.params, tierLimits: s.params.tierLimits.slice(0, 2) } }),
+    ],
     ['max_age', (s) => ({ ...s, params: { ...s.params, maxAgeSecs: 1 } })],
     ['max_window_age', (s) => ({ ...s, params: { ...s.params, maxWindowAgeSecs: 1 } })],
     ['min_window', (s) => ({ ...s, params: { ...s.params, minWindowSecs: 1 } })],

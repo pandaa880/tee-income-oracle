@@ -27,6 +27,8 @@ import {
 import { setMeasurementBit } from './bitmap.ts';
 import { type Cluster, assertCluster } from './cluster.ts';
 import {
+  type DeploymentFile,
+  isRecord,
   optionalAddress,
   readDeployment,
   requiredAddress,
@@ -71,7 +73,12 @@ function firstDifference(found: PoolState, expected: PoolState): string | undefi
   if (found.credential !== expected.credential) return 'credential';
   if (found.schema !== expected.schema) return 'schema';
   if (!sameBytes(new Uint8Array(f.policyHash), new Uint8Array(e.policyHash))) return 'policy_hash';
-  if (f.tierLimits.some((limit, i) => limit !== e.tierLimits[i])) return 'tier_limits';
+  if (
+    f.tierLimits.length !== e.tierLimits.length ||
+    f.tierLimits.some((limit, i) => limit !== e.tierLimits[i])
+  ) {
+    return 'tier_limits';
+  }
   if (f.maxAgeSecs !== e.maxAgeSecs) return 'max_age_secs';
   if (f.maxWindowAgeSecs !== e.maxWindowAgeSecs) return 'max_window_age_secs';
   if (f.minWindowSecs !== e.minWindowSecs) return 'min_window_secs';
@@ -133,9 +140,20 @@ export async function runPoolSetup(input: PoolSetupInput): Promise<PoolSetupResu
   await updateDeployment(input.deploymentPath, {
     mint,
     demo_pool_program: DEMO_POOL_PROGRAM_ADDRESS,
-    pools: [{ address: pool, pool_id: POOL_DEFAULTS.poolId }],
+    // Merge: other pools listed here must stay, or `enclave:rotate` stops approving them.
+    pools: withPool(deployment, { address: pool, pool_id: POOL_DEFAULTS.poolId }),
   });
   return { created: plan.create, pool, mint, vault };
+}
+
+type PoolRecord = { address: string; pool_id: number };
+
+/** The deployment's `pools` with `record` added, or replaced in place if its address is listed. */
+function withPool(deployment: DeploymentFile | null, record: PoolRecord): unknown[] {
+  const listed = deployment?.['pools'];
+  const pools: unknown[] = Array.isArray(listed) ? listed : [];
+  const at = pools.findIndex((p) => isRecord(p) && p['address'] === record.address);
+  return at === -1 ? [...pools, record] : pools.map((p, i) => (i === at ? record : p));
 }
 
 function poolParams(input: PoolSetupInput): PoolParams {

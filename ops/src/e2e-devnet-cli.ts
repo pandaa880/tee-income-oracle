@@ -23,6 +23,7 @@ async function main(): Promise<void> {
   const deployment = await readDeployment(deploymentPath(cluster));
   const passed = await runE2e({
     ...chainClients(config),
+    cluster,
     gatewayUrl,
     admin: await readKeypair(config.adminKeypairPath),
     credential: requiredAddress(deployment, 'credential', 'sas:setup'),

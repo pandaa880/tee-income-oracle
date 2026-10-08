@@ -12,12 +12,14 @@
  * can re-verify the archived file later. `/v1/info` is only a cross-check
  * that the enclave answering on :8080 is the one that was attested.
  *
- * The archive is evidence for an on-chain hash, so it is never overwritten:
- * a run that registered but failed before archiving leaves the document in
- * the pending file, and the next run promotes it before fetching a new one.
+ * The archive is evidence for an on-chain hash, so it is never overwritten.
+ * Each attempt writes its own pending file and only one run at a time may
+ * rotate (a lock file in the archive directory), so a run always archives the
+ * document it registered. A run that registered but failed before archiving
+ * leaves its pending file; the next run promotes it before fetching anew.
  */
-import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { access, mkdir, open, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import type { Address, Instruction, KeyPairSigner } from '@solana/kit';
 import { type PoolParams, fetchMaybePool, getUpdatePoolInstruction } from '@tio/demo-pool-client';
@@ -27,6 +29,7 @@ import {
   getRegisterEnclaveInstructionAsync,
   getRevokeEnclaveInstructionAsync,
 } from '@tio/oracle-client';
+import { fromHex, toHex } from '@tio/encoding';
 import { type Cluster, assertCluster } from './cluster.ts';
 import { isRecord, poolAddresses, readDeployment, updateDeployment } from './deployments.ts';
 import { OpsError } from './errors.ts';
@@ -38,7 +41,9 @@ import { type ChainClients, sendInstructions } from './send.ts';
 
 /** FORMATS §13 `measurement_kind` 1: Oyster image id. */
 const KIND_OYSTER_IMAGE_ID = 1;
-const PENDING_FILE = 'attestation-pending.hex';
+/** `attestation-pending.hex` (older runs) or `attestation-pending-<unique>.hex`. */
+const PENDING_FILE = /^attestation-pending(?:-[0-9a-z-]+)?\.hex$/;
+const LOCK_FILE = '.rotate.lock';
 
 /** Everything outside the chain, injected so tests replace the network and the CLI. */
 export type RotatePorts = {
@@ -78,11 +83,103 @@ type Attested = { imageId: Uint8Array; attester: Uint8Array; docHash: Uint8Array
 /** @throws OpsError; nothing is sent unless every check passes. */
 export async function runRotate(input: RotateInput): Promise<RotateResult> {
   await assertCluster(input);
-  const pendingFile = join(input.archiveDir, PENDING_FILE);
+  const release = await acquireLock(input.archiveDir);
+  try {
+    return await rotateLocked(input);
+  } finally {
+    await release();
+  }
+}
+
+/**
+ * Only one rotation at a time: two overlapping runs would both read the same
+ * registry counter, and the archive must hold the document of the run that
+ * registered. The lock is a file created exclusively; a crashed run leaves
+ * it behind, and the message says how to clear it.
+ */
+async function acquireLock(archiveDir: string): Promise<() => Promise<void>> {
+  await mkdir(archiveDir, { recursive: true });
+  const lock = join(archiveDir, LOCK_FILE);
+  let handle;
+  try {
+    handle = await open(lock, 'wx');
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'EEXIST') {
+      const holder = (await readFile(lock, 'utf8').catch(() => '')).trim() || 'unknown run';
+      throw new OpsError(
+        'rotation_in_progress',
+        `${lock} exists (${holder}): another enclave:rotate is running; if that process is gone (crash, Ctrl-C), delete the file`,
+      );
+    }
+    throw error;
+  }
+  try {
+    await handle.writeFile(`pid ${process.pid} since ${new Date().toISOString()}\n`);
+  } catch (error) {
+    await rm(lock, { force: true });
+    throw error;
+  } finally {
+    await handle.close();
+  }
+  return () => rm(lock, { force: true });
+}
+
+async function rotateLocked(input: RotateInput): Promise<RotateResult> {
   // Promoting changes no chain state, so one registry read serves the whole run.
   const registry = await readRegistry(input);
-  await promoteCommittedPending(input, pendingFile, registry);
+  await promoteCommittedPending(input, registry);
+  const pendingFile = join(input.archiveDir, `attestation-pending-${randomUUID()}.hex`);
+  let prepared: Prepared;
+  try {
+    prepared = await prepareRotation(input, registry, pendingFile);
+  } catch (error) {
+    // Nothing was sent, so this attempt's document is evidence for nothing.
+    await rm(pendingFile, { force: true });
+    throw error;
+  }
+  const { pools, plan, attestationFile, record, instructions } = prepared;
+  // From here the send may land even if it reports an error: keep the pending file.
+  if (instructions.length > 0) await sendInstructions(input, input.admin, instructions);
 
+  const warnings: string[] = [];
+  if (pools.size === 0) warnings.push('no pools in the deployment file: none approves this id');
+  if (plan.register) {
+    await rename(pendingFile, attestationFile);
+  } else {
+    // A fresh document of an enclave registered earlier: its hash isn't on chain.
+    await rm(pendingFile);
+    if (!(await exists(attestationFile))) {
+      warnings.push(
+        `archive ${attestationFile} is missing for registered id ${plan.measurementId}`,
+      );
+    }
+  }
+  await recordEnclave(input, record);
+  return {
+    measurementId: plan.measurementId,
+    registered: plan.register,
+    revoked: plan.revoke,
+    poolsUpdated: plan.poolUpdates.map((p) => p.address),
+    attestationFile,
+    warnings,
+  };
+}
+
+type Prepared = {
+  attested: Attested;
+  pools: Map<string, ListedPool>;
+  plan: RotatePlan;
+  attestationFile: string;
+  record: EnclaveRecord;
+  instructions: Instruction[];
+};
+
+/** Every check and the transaction, before anything is sent. */
+async function prepareRotation(
+  input: RotateInput,
+  registry: Registry,
+  pendingFile: string,
+): Promise<Prepared> {
   const attested = await attestedEnclave(input.ports, pendingFile);
   const pools = await readPools(input);
   const plan = planRotate({
@@ -107,31 +204,11 @@ export async function runRotate(input: RotateInput): Promise<RotateResult> {
       `${attestationFile} already exists for an id not yet registered (stale archive from an earlier deployment?)`,
     );
   }
+  // Also before sending: the local record for this id must not name another enclave.
+  const record = enclaveRecord(input, plan.measurementId, attested, attestationFile);
+  await recordStatus(input, record);
   const instructions = await rotateInstructions(input.admin, plan, attested, pools);
-  if (instructions.length > 0) await sendInstructions(input, input.admin, instructions);
-
-  const warnings: string[] = [];
-  if (pools.size === 0) warnings.push('no pools in the deployment file: none approves this id');
-  if (plan.register) {
-    await rename(pendingFile, attestationFile);
-  } else {
-    // A fresh document of an enclave registered earlier: its hash isn't on chain.
-    await rm(pendingFile);
-    if (!(await exists(attestationFile))) {
-      warnings.push(
-        `archive ${attestationFile} is missing for registered id ${plan.measurementId}`,
-      );
-    }
-  }
-  await recordEnclave(input, plan.measurementId, attested, attestationFile);
-  return {
-    measurementId: plan.measurementId,
-    registered: plan.register,
-    revoked: plan.revoke,
-    poolsUpdated: plan.poolUpdates.map((p) => p.address),
-    attestationFile,
-    warnings,
-  };
+  return { attested, pools, plan, attestationFile, record, instructions };
 }
 
 const archivePath = (input: RotateInput, measurementId: number): string =>
@@ -145,7 +222,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 const sha256OfHex = (hex: string): Uint8Array =>
-  new Uint8Array(createHash('sha256').update(Buffer.from(hex, 'hex')).digest());
+  new Uint8Array(createHash('sha256').update(fromHex(hex)).digest());
 
 const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
   a.length === b.length && a.every((byte, i) => byte === b[i]);
@@ -153,16 +230,27 @@ const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
 /**
  * A pending file left by a run that registered and then failed holds the only
  * copy of an on-chain-hashed document: move it to its archive name (and record
- * the entry) before anything overwrites it. A pending file no entry vouches
- * for is from a run that stopped before sending; it is simply replaced.
+ * the entry). A pending file no entry vouches for is left alone: its run
+ * stopped before sending, or its transaction hasn't been seen yet.
  */
-async function promoteCommittedPending(
+async function promoteCommittedPending(input: RotateInput, registry: Registry): Promise<void> {
+  const names = (await readdir(input.archiveDir)).filter((name) => PENDING_FILE.test(name));
+  for (const name of names) {
+    await promoteIfCommitted(input, join(input.archiveDir, name), registry);
+  }
+}
+
+async function promoteIfCommitted(
   input: RotateInput,
   pendingFile: string,
   registry: Registry,
 ): Promise<void> {
-  if (!(await exists(pendingFile))) return;
-  const hash = sha256OfHex((await readFile(pendingFile, 'utf8')).trim());
+  let hash: Uint8Array;
+  try {
+    hash = sha256OfHex((await readFile(pendingFile, 'utf8')).trim());
+  } catch {
+    return; // not hex: no entry can vouch for it
+  }
   const entry = registry.entries.find((e) => sameBytes(new Uint8Array(e.attestationDocHash), hash));
   if (entry === undefined) return;
   const target = archivePath(input, entry.measurementId);
@@ -178,8 +266,10 @@ async function promoteCommittedPending(
     await rm(pendingFile);
     return;
   }
+  const record = enclaveRecord(input, entry.measurementId, attestedOf(entry), target);
+  await recordStatus(input, record);
   await rename(pendingFile, target);
-  await recordEnclave(input, entry.measurementId, attestedOf(entry), target);
+  await recordEnclave(input, record);
 }
 
 const attestedOf = (entry: EnclaveEntry): Attested => ({
@@ -203,11 +293,11 @@ async function attestedEnclave(ports: RotatePorts, pendingFile: string): Promise
   await mkdir(dirname(pendingFile), { recursive: true });
   await writeFile(pendingFile, hex);
 
-  const computedHex = Buffer.from(computed).toString('hex');
+  const computedHex = toHex(computed);
   const verified = await wrap('verify_failed', async () =>
     parseVerifyOutput(await ports.verify(pendingFile, computedHex)),
   );
-  if (Buffer.from(verified.imageId).toString('hex') !== computedHex) {
+  if (toHex(verified.imageId) !== computedHex) {
     throw new OpsError('image_id_mismatch', 'attested image id differs from the compose file');
   }
   const attester = ethAddressFromPublicKey(verified.enclavePublicKey);
@@ -285,39 +375,58 @@ async function rotateInstructions(
   return instructions;
 }
 
-/**
- * Adds `{ measurement_id, image_id, attester, attestation_file }` to the
- * deployment's `enclaves`, once per id.
- */
-async function recordEnclave(
+type EnclaveRecord = {
+  measurement_id: number;
+  image_id: string;
+  attester: string;
+  attestation_file: string;
+};
+
+function enclaveRecord(
   input: RotateInput,
   measurementId: number,
   attested: Attested,
   attestationFile: string,
-): Promise<void> {
-  const existing = (await readDeployment(input.deploymentPath))?.['enclaves'];
-  const enclaves: unknown[] = Array.isArray(existing) ? existing : [];
-  const record = {
+): EnclaveRecord {
+  return {
     measurement_id: measurementId,
-    image_id: Buffer.from(attested.imageId).toString('hex'),
+    image_id: toHex(attested.imageId),
     attester: toEthHex(attested.attester),
     // Relative to the deployment file, so the committed path works in any checkout.
     attestation_file: relative(dirname(input.deploymentPath), attestationFile),
   };
-  const found = enclaves.find((e) => isRecord(e) && e['measurement_id'] === measurementId);
-  if (found !== undefined) {
-    // Same id, other enclave: a stale record from an earlier deployment of the registry.
-    if (
-      isRecord(found) &&
-      found['attester'] === record.attester &&
-      found['image_id'] === record.image_id
-    ) {
-      return;
-    }
-    throw new OpsError(
-      'deployment_conflict',
-      `enclaves[] already holds another enclave as id ${measurementId}`,
-    );
+}
+
+/**
+ * Whether the deployment's `enclaves` already holds this id's record (and
+ * the list as read).
+ *
+ * @throws OpsError `deployment_conflict` if it holds another enclave under
+ *   the same id (a stale record from an earlier deployment of the registry).
+ */
+async function recordStatus(input: RotateInput, record: EnclaveRecord): Promise<RecordStatus> {
+  const listed = (await readDeployment(input.deploymentPath))?.['enclaves'];
+  const enclaves: unknown[] = Array.isArray(listed) ? listed : [];
+  const found = enclaves.find((e) => isRecord(e) && e['measurement_id'] === record.measurement_id);
+  if (found === undefined) return { present: false, enclaves };
+  if (
+    isRecord(found) &&
+    found['attester'] === record.attester &&
+    found['image_id'] === record.image_id
+  ) {
+    return { present: true, enclaves };
   }
+  throw new OpsError(
+    'deployment_conflict',
+    `enclaves[] already holds another enclave as id ${record.measurement_id}`,
+  );
+}
+
+type RecordStatus = { present: boolean; enclaves: unknown[] };
+
+/** Adds the record to the deployment's `enclaves`, once per id. */
+async function recordEnclave(input: RotateInput, record: EnclaveRecord): Promise<void> {
+  const { present, enclaves } = await recordStatus(input, record);
+  if (present) return;
   await updateDeployment(input.deploymentPath, { enclaves: [...enclaves, record] });
 }

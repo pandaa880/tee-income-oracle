@@ -30,7 +30,7 @@
 
 - [ ] Rust: `cargo fmt --all -- --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test -p tio-core -p oracle -p demo-pool`
 - [ ] Enclave (if touched): the same three with `--manifest-path enclave/Cargo.toml` (clippy and test with `--all-features`); image changes: `enclave/scripts/build-image.sh` reports equal digests
-- [ ] TS: `pnpm --filter <package> typecheck`, `lint`, `format:check`, `test` for each package touched (`@tio/sandbox-bank`, `@tio/ops`, `@tio/oracle-tests`, `@tio/demo-pool-tests`; `@tio/oracle-client` and `@tio/demo-pool-client` are generated: rerun `generate`, no diff)
+- [ ] TS: `pnpm --filter <package> typecheck`, `lint`, `format:check`, `test` for each package touched (`@tio/encoding`, `@tio/sandbox-bank`, `@tio/ops`, `@tio/oracle-tests`, `@tio/demo-pool-tests`; `@tio/oracle-client` and `@tio/demo-pool-client` are generated: rerun `generate`, no diff)
 - [ ] Vectors: `pnpm gen:vectors` leaves `git diff test-vectors/` empty (or the format change is intended)
 - [ ] Code review done; blocking findings fixed
 

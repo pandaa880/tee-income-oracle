@@ -681,7 +681,7 @@ each merges its own keys in and keeps the rest:
 |---|---|---|
 | the nine above | `sas:setup` | SAS program, oracle program, credential, schema |
 | `demo_pool_program`, `mint` | `pool:setup` | base58; `mint` is classic SPL Token, 6 decimals, no freeze authority |
-| `pools` | `pool:setup` | `[{ address, pool_id }]`, the pools `enclave:rotate` keeps approving |
+| `pools` | `pool:setup` (adds its pool, keeps the others) | `[{ address, pool_id }]`, the pools `enclave:rotate` keeps approving |
 | `enclaves` | `enclave:rotate` | `[{ measurement_id, image_id, attester, attestation_file }]`: hex image id (§13 `measurement`), `0x` eth address, path of the archived document relative to the deployment file; one record per id |
 
 Archived attestation documents: `deployments/<cluster>/attestation-<id>.hex`,

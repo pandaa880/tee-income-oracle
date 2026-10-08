@@ -59,6 +59,11 @@ jobs:
       - run: pnpm --filter @tio/sandbox-bank test
       # Admin scripts (ops). The test suite includes an embedded, offline
       # surfpool run that loads the committed SAS binary.
+      # Shared byte encodings (hex, base64, base64url) for sandbox-bank, gateway and ops.
+      - run: pnpm --filter @tio/encoding typecheck
+      - run: pnpm --filter @tio/encoding lint
+      - run: pnpm --filter @tio/encoding format:check
+      - run: pnpm --filter @tio/encoding test
       - run: pnpm --filter @tio/ops typecheck
       - run: pnpm --filter @tio/ops lint
       - run: pnpm --filter @tio/ops format:check

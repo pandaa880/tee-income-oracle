@@ -12,9 +12,11 @@ WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY sandbox-bank/package.json sandbox-bank/
-RUN pnpm install --frozen-lockfile --prod --filter @tio/sandbox-bank
+COPY packages/encoding/package.json packages/encoding/
+RUN pnpm install --frozen-lockfile --prod --filter "@tio/sandbox-bank..."
 
 COPY sandbox-bank/src/ sandbox-bank/src/
+COPY packages/encoding/src/encoding.ts packages/encoding/src/
 COPY enclave/pinned/ pinned/
 
 ENV NODE_ENV=production \

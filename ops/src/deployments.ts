@@ -3,7 +3,8 @@
  * scripts write parts of it (`sas:setup`, `pool:setup`, `enclave:rotate`), so
  * each one merges its keys into the file instead of replacing it.
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { type Address, address } from '@solana/kit';
 import { OpsError } from './errors.ts';
@@ -36,9 +37,19 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Writes a temporary file next to `path`, then renames it over `path`, so a
+ * crash or full disk never leaves a truncated deployment file behind.
+ */
 export async function writeDeployment(path: string, value: DeploymentFile): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`);
+    await rename(temporary, path);
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 /** Read, merge `update` in, write back. */

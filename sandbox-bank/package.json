@@ -35,6 +35,7 @@
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@solana/kit": "7.1.1",
+    "@tio/encoding": "workspace:*",
     "hono": "4.13.13",
     "zod": "4.6.5"
   }

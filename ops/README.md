@@ -83,7 +83,10 @@ tokens minted into the vault. Parameters: the default policy hash
 (`test-vectors/policy/default.hash`), tier limits A 5 000 / B 2 000 / C 500
 tokens, `max_age` 30 days, `max_window_age` 45 days, `min_window` 180 days, and
 the registry entries active at setup time as approved enclaves. Writes `mint`,
-`demo_pool_program` and `pools`.
+`demo_pool_program`, and adds pool 0 to `pools` (other pools listed there stay:
+`enclave:rotate` keeps approving every listed pool). Entries are matched by
+address; after a program or admin change, remove the old pool's entry by hand
+(`enclave:rotate` stops with `pool_missing` on a pool that no longer exists).
 
 A re-run with an equal pool is a no-op; another policy, limit or window fails
 (`pool_mismatch`). The approved-enclave bitmap is ignored on re-runs:
@@ -105,8 +108,8 @@ pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4>
 
 1. Refuse the template `enclave/docker-compose.yml` (placeholder digest), then
    compute the image id from it (`oyster-cvm compute-image-id`).
-2. Fetch the attestation document once (`/attestation/hex`) into
-   `deployments/<cluster>/attestation-pending.hex`, and verify **that file**
+2. Fetch the attestation document once (`/attestation/hex`) into its own
+   `deployments/<cluster>/attestation-pending-<uuid>.hex`, and verify **that file**
    with `oyster-cvm verify --attestation-hex-file … --image-id <computed>`
    (AWS Nitro root, freshness, image id). Any missing line, ERROR line or
    non-zero exit stops the run.
@@ -121,9 +124,17 @@ pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4>
    points the gateway at the new entry.
 
 The archive is the evidence behind an on-chain hash, so it is never
-overwritten. A run that registered but failed before archiving leaves the
-document in the pending file; the next run promotes it (the registry's
-`attestation_doc_hash` says which id it belongs to) before fetching a new one.
+overwritten. Only one rotation runs at a time: the run holds
+`deployments/<cluster>/.rotate.lock` (created exclusively, deleted at the end;
+a second run fails with `rotation_in_progress`, and after a crash you delete
+the file). A run that registered but failed before archiving leaves its
+pending file; the next run promotes every pending file whose `sha256` is an
+entry's `attestation_doc_hash` before fetching a new one, and leaves the
+others alone. A record in `enclaves` that names another enclave under the id
+about to be used fails the run before sending (`deployment_conflict`). A run
+that fails before sending deletes its own pending file. The lock, pending and
+temporary files are gitignored; only `attestation-<id>.hex` and
+`<cluster>.json` are committed.
 An archive that already exists for an id about to be registered fails the run
 before anything is sent (`archive_conflict`). Re-running for an enclave that is
 already registered and approved sends nothing.

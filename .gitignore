@@ -38,3 +38,10 @@ skills-lock.json
 
 # OS
 .DS_Store
+
+# ops runtime files under the committed deployments/ tree (enclave:rotate lock and
+# per-attempt pending attestations, writeDeployment temp files). Archived
+# attestation-<id>.hex files and <cluster>.json are committed.
+deployments/**/.rotate.lock
+deployments/**/attestation-pending*.hex
+deployments/**/*.tmp

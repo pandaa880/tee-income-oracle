@@ -2,6 +2,7 @@ packages:
   - "clients/ts/*"
   - "gateway"
   - "ops"
+  - "packages/*"
   - "programs/*/tests"
   - "sandbox-bank"
   - "verifier"
