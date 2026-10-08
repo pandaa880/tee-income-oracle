@@ -23,8 +23,12 @@ measurement) or a re-onboarding flow with that AA (`docs/ARCHITECTURE.md` §6).
     enclave's session key (Curve25519 `wei25519`/X25519 → HKDF → AES-256-GCM).
     Replies with a session id.
   - `POST /FI/fetch`: the AA-signed fetch response, once per session.
-- **Internal only:** the bank must be reachable only from the gateway, which
-  rate-limits (FORMATS §15). `/fiu-keys` and `/Consent` need no
+- **Gateway only:** the bank must be reachable only from the gateway, which
+  rate-limits (FORMATS §15): over a private network, or with `BANK_TOKEN`
+  set on both (every route but `/health` then needs `authorization: Bearer
+  <token>`, checked before the body is read). The devnet deployment uses the
+  token, because its Azure environment has no private networking
+  (`docs/DEPLOY.md` §4). `/fiu-keys` and `/Consent` need no other
   authentication.
 - **Keys:** the running service uses **demo keys that are never committed**.
   `pnpm --filter @tio/sandbox-bank gen:demo-keys` makes them once (it refuses

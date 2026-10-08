@@ -14,6 +14,7 @@ protocol with test keys: simulated bank, real protocol.
 
 - How it works and why it's secure: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Every wire and data format: [`docs/FORMATS.md`](docs/FORMATS.md)
+- How the devnet demo is deployed: [`docs/DEPLOY.md`](docs/DEPLOY.md)
 - Coding rules: [`docs/CODING-GUIDELINES.md`](docs/CODING-GUIDELINES.md)
 - Git workflow and releases: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - For AI agents: [`AGENTS.md`](AGENTS.md)
@@ -158,16 +159,25 @@ surfpool, the SAS writes against the deployed SAS binary. The `enclave`
 serves the HTTP API around `tio-core` (sessions, wallet binding, evaluate,
 secp256k1-signed results, an attester-signed FIU key) and builds as a
 reproducible arm64 image for Oyster; it is tested in-process against every
-test vector, not deployed yet. The `sandbox-bank` serves the ReBIT FIP + AA
+test vector and runs on Marlin Oyster. The `sandbox-bank` serves the ReBIT FIP + AA
 API (consent, FI request, fetch) and accepts an enclave's FIU key only if
-its attester is active in the on-chain registry; it runs locally and in
-Docker. The `gateway` drives a whole session for the web (consent, enclave
+its attester is active in the on-chain registry; it runs locally, in
+Docker, and on Azure Container Apps (reachable only with the gateway's
+bearer token). The `gateway` drives a whole session for the web (consent, enclave
 session, wallet-signed intent, FI request and fetch, evaluate), streams each
 stage over SSE and relays the signed result to the oracle; a local end-to-end
 test runs the real enclave container, bank and programs through it. The
 `ops` scripts set a cluster up (oracle config, SAS, demo pool) and register
 the running Oyster enclave from its verified attestation; they are tested on
-surfpool, not run on devnet yet. Next: the devnet deployment, then the web.
+surfpool and run on devnet.
+
+**On devnet now:** both programs, the enclave on Marlin Oyster (image id in
+[`deployments/devnet.json`](deployments/devnet.json), reproducible from the
+repo), and the gateway and sandbox bank on Azure Container Apps. The
+headless end-to-end run passes on devnet (tiers A, B, C attested on chain,
+REJECT leaves nothing, tier A borrows and repays), also after an enclave
+restart with a new key. How it is deployed: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+Next: the web app (borrower flow, verify page).
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.
