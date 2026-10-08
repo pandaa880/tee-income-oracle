@@ -59,6 +59,11 @@ jobs:
       - run: pnpm --filter @tio/sandbox-bank test
       # Admin scripts (ops). The test suite includes an embedded, offline
       # surfpool run that loads the committed SAS binary.
+      # Shared byte encodings (hex, base64, base64url) for sandbox-bank, gateway and ops.
+      - run: pnpm --filter @tio/encoding typecheck
+      - run: pnpm --filter @tio/encoding lint
+      - run: pnpm --filter @tio/encoding format:check
+      - run: pnpm --filter @tio/encoding test
       - run: pnpm --filter @tio/ops typecheck
       - run: pnpm --filter @tio/ops lint
       - run: pnpm --filter @tio/ops format:check
@@ -115,8 +120,8 @@ jobs:
       - run: pnpm --filter @tio/demo-pool-tests lint
       - run: pnpm --filter @tio/demo-pool-tests format:check
       - run: pnpm --filter @tio/demo-pool-tests test
-      # Hand-written oracle helpers (@tio/oracle-client/attest), cross-checked
-      # against the generated client.
+      # Hand-written oracle helpers (@tio/oracle-client/attest): §8 message,
+      # precompile, SAS reader.
       - run: pnpm --filter @tio/oracle-client lint
       - run: pnpm --filter @tio/oracle-client format:check
       - run: pnpm --filter @tio/oracle-client test
@@ -127,6 +132,9 @@ jobs:
       - run: pnpm --filter @tio/gateway lint
       - run: pnpm --filter @tio/gateway format:check
       - run: pnpm --filter @tio/gateway test
+      # ops admin scripts against the real programs (oracle:init, pool:setup,
+      # enclave:rotate with fake Oyster ports); the unit tests run in the ts job.
+      - run: pnpm --filter @tio/ops test:programs
 
   golden-vectors:
     runs-on: ubuntu-latest

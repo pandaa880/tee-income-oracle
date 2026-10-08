@@ -12,7 +12,7 @@ import {
   generateKeyPairSigner,
   getSignatureFromTransaction,
 } from '@solana/kit';
-import { getEnclaveEntryEncoder } from '@tio/oracle-client';
+import { findEnclaveEntryPda, getEnclaveEntryEncoder } from '@tio/oracle-client';
 import {
   ORACLE_PROGRAM_ID,
   SAS_ATTESTATION_DISCRIMINATOR,
@@ -21,7 +21,6 @@ import {
   SAS_DATA_OFFSET,
   SAS_PROGRAM_ID,
   attestationAddress,
-  enclaveEntryAddress,
 } from '@tio/oracle-client/attest';
 import { describe, expect, it } from 'vitest';
 
@@ -94,7 +93,7 @@ type FakeOpts = {
 async function setup(o: FakeOpts) {
   const sent: Signature[] = [];
   const attestation = await attestationAddress(CREDENTIAL, SCHEMA, WALLET);
-  const entryAt = await enclaveEntryAddress(MEASUREMENT_ID);
+  const [entryAt] = await findEnclaveEntryPda({ measurementId: MEASUREMENT_ID });
   let blockhashes = 0;
   const reads = { entry: 0 };
   const chain: Chain = {

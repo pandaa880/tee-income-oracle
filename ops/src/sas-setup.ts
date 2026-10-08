@@ -6,16 +6,8 @@ import {
   type RpcSubscriptions,
   type SolanaRpcApi,
   type SolanaRpcSubscriptionsApi,
-  appendTransactionMessageInstructions,
-  assertIsTransactionWithBlockhashLifetime,
-  createTransactionMessage,
   getProgramDerivedAddress,
   getUtf8Encoder,
-  pipe,
-  sendAndConfirmTransactionFactory,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
-  signTransactionMessageWithSigners,
 } from '@solana/kit';
 import {
   fetchMaybeCredential,
@@ -36,6 +28,7 @@ import {
   SCHEMA_NAME,
   SCHEMA_VERSION,
 } from './sas-schema.ts';
+import { sendInstructions } from './send.ts';
 
 /** Public addresses written to `deployments/<cluster>.json`. */
 export type Deployment = {
@@ -116,7 +109,7 @@ export async function runSasSetup(
   const instructions = plan.steps.map((step) =>
     buildInstruction(step, { admin, credential, schema, sasSigner }),
   );
-  if (instructions.length > 0) await sendInstructions(input, instructions);
+  if (instructions.length > 0) await sendInstructions(input, admin, instructions);
 
   return {
     created: plan.steps,
@@ -172,22 +165,4 @@ async function findSetupPdas(
     config,
   );
   return { credential, schema };
-}
-
-async function sendInstructions(
-  { rpc, rpcSubscriptions, admin }: SetupInput,
-  instructions: readonly Instruction[],
-): Promise<void> {
-  const { value: blockhash } = await rpc.getLatestBlockhash().send();
-  const message = pipe(
-    createTransactionMessage({ version: 0 }),
-    (m) => setTransactionMessageFeePayerSigner(admin, m),
-    (m) => setTransactionMessageLifetimeUsingBlockhash(blockhash, m),
-    (m) => appendTransactionMessageInstructions(instructions, m),
-  );
-  const transaction = await signTransactionMessageWithSigners(message);
-  assertIsTransactionWithBlockhashLifetime(transaction);
-  await sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions })(transaction, {
-    commitment: 'confirmed',
-  });
 }

@@ -40,6 +40,10 @@ Docker (context = repo root; secrets only from the environment):
 docker build -f gateway/Dockerfile -t tio-gateway:dev .
 ```
 
+Azure Container Apps runs `linux/amd64`: an image built on Apple Silicon is
+arm64 by default, so build the deployed one with
+`docker buildx build --platform linux/amd64 …`.
+
 ## Code
 
 | File | Role |
@@ -54,9 +58,12 @@ docker build -f gateway/Dockerfile -t tio-gateway:dev .
 | `src/registry.ts` | reads this enclave's registry entry |
 | `src/sessions.ts`, `src/rate-limit.ts`, `src/errors.ts`, `src/timeouts.ts` | session store, token buckets, error bodies, time budgets |
 
-The oracle helpers come from `@tio/oracle-client/attest` (hand-written, loads
-under plain Node; the generated Codama client doesn't, see AGENTS.md
-Gotchas).
+Oracle instructions, PDAs and the registry account come from the generated
+Codama client (`@tio/oracle-client`); the §8 message, the secp256k1
+precompile and the SAS reader from the hand-written
+`@tio/oracle-client/attest`. The generated client doesn't load under plain
+Node, so the gateway runs with `node --import tsx` (`pnpm start`, and the
+image's `CMD` from `/app/gateway`; see AGENTS.md Gotchas).
 
 ## Tests
 

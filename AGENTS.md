@@ -53,6 +53,8 @@ programs/oracle/      Anchor. Enclave registry (image id → attester), verifies
                       enclave signature via secp256k1 precompile, CPIs SAS.
                       tests/ = TS program tests (vitest on embedded surfpool).
 clients/ts/oracle/    Codama-generated kit client for the oracle (from the IDL; committed).
+packages/encoding/    `@tio/encoding`: the one TS module for hex / base64 / base64url (strict,
+                      canonical decoders). sandbox-bank, gateway and ops use it.
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
                       tests/ = TS program tests (reuse the oracle test harness).
 clients/ts/demo-pool/ Codama-generated kit client for the demo pool (committed).
@@ -64,7 +66,9 @@ enclave/              Rust. Runs in the Oyster CVM. HTTP wrapper around tio-core
 gateway/              Node/TS, untrusted orchestrator + tx relayer (formerly proxy/).
 sandbox-bank/         Node/TS mock FIP + AA (ReBIT, demo keys) + test-vector generator.
 verifier/             TS. Nitro attestation doc → AWS root; image id; on-chain key match.
-ops/                  TS admin scripts (admin wallet). `sas:setup`: SAS credential + schema.
+ops/                  TS admin scripts (admin wallet): `oracle:init`, `sas:setup` (SAS credential
+                      + schema), `pool:setup` (demo mint + pool), `enclave:rotate` (attested
+                      Oyster key → registry + pools), `e2e:devnet`.
 deployments/          Public addresses per cluster (`<cluster>.json`), written by ops.
 test-fixtures/        Hand-calculated scoring cases; `sas/` = SAS binary dumped from devnet
                       (+ SOURCE.md with sha256, LICENSE). Not generated, unlike test-vectors/.
@@ -74,10 +78,31 @@ docs/                 ARCHITECTURE.md, FORMATS.md (wire formats, source of truth
                       CODING-GUIDELINES.md.
 ```
 
+## Exploring the code: codegraph
+
+Use [CodeGraph](https://github.com/colbymchenry/codegraph) (`codegraph` CLI) to find
+your way around before reading files one by one or running broad grep sweeps. It
+indexes the Rust and TypeScript code into a symbol graph (functions, types, imports,
+call edges) in `.codegraph/` (gitignored, one index per checkout or worktree).
+
+- **Set up:** `codegraph init` once in the checkout (or worktree); `codegraph sync`
+  after pulling, switching branches or large edits. Don't install it for the user:
+  if `codegraph` is missing, ask (rule below) or fall back to grep.
+- **Understand an area or task:** `codegraph explore "<area>"` (symbols' source plus
+  call paths), `codegraph context "<task>"`, `codegraph node <symbol or file>`.
+- **Before changing shared code:** `codegraph callers <symbol>`,
+  `codegraph impact <symbol>`; after the change, `codegraph affected <files>` lists
+  the tests to run.
+- If your agent has the CodeGraph MCP server, its `codegraph_explore` and
+  `codegraph_node` tools return the same output.
+- The index is an aid, not the source of truth: it can be stale, so read the file
+  before editing it. Formats and invariants still come from `docs/FORMATS.md` and
+  this file.
+
 ## Toolchain
 
 Rust 1.89.0 (pinned in `rust-toolchain.toml`, Anchor 1.2's toolchain) · Anchor 1.2.0 · Solana/Agave CLI 4.3.0 · pnpm 12.6.0 (corepack) ·
-Node 24 LTS (`.nvmrc`; runs TS directly via type stripping) · Docker. Chain: devnet (localnet for tests).
+Node 24 LTS (`.nvmrc`; runs TS directly: `sandbox-bank` via type stripping, `gateway` and `ops` via `node --import tsx` because they load the Codama clients) · tsx 4.23.15 · Docker. Chain: devnet (localnet for tests).
 Solana TS: `@solana/kit` 7.1.1 · `sas-lib` 2.0.0-beta.1 (renamed upstream to
 `@solana/attestation`, not on npm yet) · `@solana/surfpool` 1.6.0 (embedded `Surfnet`, offline;
 its kit plugin needs kit 8, so it isn't used).
@@ -88,7 +113,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; not deployed yet); `enclave` serves the §10 HTTP API around `tio-core` (not deployed yet); `gateway` orchestrates sessions over the §16 HTTP API (SSE stages) and relays the attestation transaction (runs locally, end to end on localnet; not deployed yet); `ops` has the SAS credential/schema setup; the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
+has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; not deployed yet); `enclave` serves the §10 HTTP API around `tio-core` (not deployed yet); `gateway` orchestrates sessions over the §16 HTTP API (SSE stages) and relays the attestation transaction (runs locally, end to end on localnet; not deployed yet); `ops` has the admin scripts for a cluster (oracle init, SAS credential/schema, demo pool, attested enclave rotation, devnet E2E; tested on surfpool, not yet run on devnet); the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
 hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
@@ -102,11 +127,16 @@ hold only READMEs. Update the status as each one starts working.
 | Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives); `cargo test -p oracle`: precompile/message layouts, attestation readers and clock rules; `cargo test -p demo-pool`: the pool's lending rules (all three also in CI) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests --filter @tio/demo-pool-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; `demo-pool` against the real oracle, SAS and SPL Token; also in CI) |
-| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` incl. an offline surfpool suite with the dumped SAS binary, `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`, cross-checked against the generated client) and `gateway` (unit + surfpool relayer/registry suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` unit tests incl. an offline surfpool suite with the dumped SAS binary (`pnpm --filter @tio/ops test:programs` runs the suites that need the built programs), `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`: §8 message, precompile, SAS reader) and `gateway` (unit + surfpool relayer/registry suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm --filter <@tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Lint/typecheck (TS) | `pnpm --filter <@tio/encoding, @tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
+| Oracle init (admin) | `pnpm --filter @tio/ops oracle:init --cluster <localnet\|devnet>` — the admin wallet must be the oracle's upgrade authority; env in `ops/README.md` | works on surfpool; not yet run on devnet |
 | SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet; not yet run on devnet |
+| Demo pool (admin) | `pnpm --filter @tio/ops pool:setup --cluster <c>` — mint (no freeze authority) + pool 0 + funded vault in one transaction; re-run is a no-op | works on surfpool; not yet run on devnet |
+| Enclave rotate (admin) | `pnpm --filter @tio/ops enclave:rotate --cluster <c> --enclave-ip <ipv4>` — needs `oyster-cvm` on PATH; archives the attestation in `deployments/<c>/` | works on surfpool (fake Oyster ports); not yet run against Oyster |
+| E2E (devnet) | `pnpm --filter @tio/ops e2e:devnet --cluster devnet --gateway <url>` — 4 personas + tier A borrow/repay against the deployed gateway | local only; not yet run |
+| Test (ops, programs) | `pnpm --filter @tio/ops test:programs` after `anchor build` — `oracle:init`, `pool:setup`, `enclave:rotate` against the real programs | works (also in CI, `programs` job) |
 | Run (sandbox bank, local) | `pnpm --filter @tio/sandbox-bank start:local` (demo keys from `sandbox-bank/.secrets/`, RPC defaults to `127.0.0.1:8899`; env in `sandbox-bank/README.md`) | works |
 | Build (sandbox bank image) | `docker build -f sandbox-bank/Dockerfile -t tio-sandbox-bank:dev .` (context = repo root; `sandbox-bank/Dockerfile.dockerignore`) | works (local only; not in CI) |
 | Run (gateway, local) | `pnpm --filter @tio/gateway start` with the env in `gateway/README.md` (needs a running enclave, the bank and an RPC; boot checks the enclave's registry entry) | works |
@@ -132,7 +162,9 @@ hold only READMEs. Update the status as each one starts working.
 
 Add a line whenever an agent makes the same mistake twice.
 
-- `Anchor.toml`: `cluster` is still `localnet`.
+- `Anchor.toml`: `provider.cluster` stays `localnet` so `anchor test` runs offline;
+  `[programs.devnet]` has the same ids. Deploy to devnet with
+  `--provider.cluster devnet`, never by editing the default.
 - Anchor check order isn't field order: it loads every account (3012), then
   creates `init` accounts ("already in use", `init` seeds), then checks the
   other constraints field by field, then runs the handler. Document error
@@ -156,9 +188,9 @@ Add a line whenever an agent makes the same mistake twice.
 - Crypto function names quoted in comments, `Cargo.toml` or FORMATS go
   stale when the code changes (`try_sign_with_rng` vs `sign_with_rng`).
   Grep each cited name against the code before a PR.
-- Strip ANSI colour codes before grepping gate output
-  (`sed 's/\x1b\[[0-9;]*m//g'`): coloured `tsc` errors once slipped past
-  `grep "error TS"`.
+- Judge a gate by its exit code, not by grepping its output. Coloured `tsc`
+  errors slipped past `grep "error TS"` twice; if you must grep, strip ANSI
+  codes first (`sed 's/\x1b\[[0-9;]*m//g'`).
 - Mutation checks: restore files with plain `cp`, not `cp -p`, or cargo
   reuses the mutated build (CODING-GUIDELINES §5).
 - `surfnet_timeTravel`'s `absoluteTimestamp` is in **milliseconds** and
@@ -181,7 +213,7 @@ Add a line whenever an agent makes the same mistake twice.
 - `tio-core/Cargo.toml` sets `edition`/`rust-version` itself instead of
   inheriting them: the enclave image builds it without the root workspace.
   Keep them in sync with the root `Cargo.toml` by hand.
-- TS packages run on Node's type stripping: only erasable syntax works (no
+- `sandbox-bank` runs on Node's type stripping: only erasable syntax works (no
   parameter properties, `enum`, `namespace`). vitest accepts them, so a test
   run won't catch it: `tsc` (`erasableSyntaxOnly`) or starting the entry point
   does. The sandbox bank's first container run crashed on one.
@@ -190,12 +222,21 @@ Add a line whenever an agent makes the same mistake twice.
   ignore file), which keeps `.secrets/` and tests out of the context.
 - The Codama kit-7 clients (`@tio/oracle-client`, `@tio/demo-pool-client` root
   exports) don't load under plain Node (extensionless imports, `enum`):
-  `ERR_UNSUPPORTED_DIR_IMPORT`. Runtime code (gateway) imports only
-  `@tio/oracle-client/attest`; tests may use the generated clients (vitest
-  resolves them). So `gateway/tsconfig.json` (tests, oxlint) has
-  `erasableSyntaxOnly: false`, and `typecheck` also runs `tsconfig.src.json`
-  (runtime `src` only, flag on); `gateway/src/main.smoke.test.ts` starts
-  `main.ts` under plain Node to catch a regression.
+  `ERR_UNSUPPORTED_DIR_IMPORT`. So `gateway` and `ops` run with
+  `node --import tsx` (their package scripts, the gateway Dockerfile from
+  `WORKDIR /app/gateway`: tsx resolves from the cwd) and use the generated
+  client directly; `gateway/src/main.smoke.test.ts` starts `main.ts` that way.
+  Don't hand-write instructions, PDAs or account decoders the IDL describes.
+  The generated decoders don't check length or discriminator: check both
+  before decoding an account you didn't create (`gateway/src/registry.ts`).
+- Evidence whose hash may already be on chain (archived attestation documents
+  in `deployments/<cluster>/`) is never overwritten: check an existing archive
+  by content, not by name, never `rename` over an existing file, and on a
+  re-run reconcile local files against the on-chain hash first
+  (`ops/src/rotate.ts`). One rotation at a time (exclusive lock file) and one
+  pending file per attempt, so a run archives the document it registered.
+  Run-time files a script writes under the committed `deployments/` tree
+  (locks, pending, temp) get a `.gitignore` entry in the same change.
 - Behind one trusted proxy, the client IP is the **last** `X-Forwarded-For`
   hop (the one the proxy appended); earlier hops are client-written.
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent

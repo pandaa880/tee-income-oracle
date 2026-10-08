@@ -87,6 +87,7 @@ layer and must fail with exactly its error code (see
 programs/oracle/     Anchor. Enclave registry, verifies the enclave's secp256k1
                      signature (precompile), writes the SAS attestation.
 clients/ts/oracle/   TypeScript client for the oracle, generated from its IDL (Codama).
+packages/encoding/   Shared strict byte encodings (hex, base64, base64url) for the TS code.
 programs/demo-pool/  Anchor. Reads and checks the SAS attestation, lends testnet tokens.
 clients/ts/demo-pool/  TypeScript client for the demo pool, generated the same way.
 tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
@@ -97,7 +98,8 @@ sandbox-bank/        Node/TS mock FIP + AA speaking ReBIT with test keys. Also t
                      test-vector generator.
 verifier/            TS. Checks the Nitro attestation to AWS's root, the image id,
                      and the attester key on chain.
-ops/                 TS admin scripts. Creates the SAS credential and schema.
+ops/                 TS admin scripts: oracle init, SAS credential + schema, demo pool,
+                     attested enclave rotation, devnet end-to-end run.
 deployments/         Public addresses per cluster, written by ops.
 web/                 Next.js. Borrower flow, lender dashboard, verify page.
 test-vectors/        Generated fixtures, including golden vectors from Sahamati's
@@ -115,8 +117,8 @@ docs/                Architecture, formats, coding guidelines.
 
 Two build worlds:
 - **Rust/Anchor**: a Cargo workspace (`programs/*`, `tio-core`). See the root `Cargo.toml`.
-- **Node/TS**: a pnpm workspace (`clients/ts/*`, `gateway/`, `ops/`, `programs/*/tests`,
-  `sandbox-bank/`, `verifier/`, `web/`). Solana client code uses `@solana/kit` 7 and
+- **Node/TS**: a pnpm workspace (`clients/ts/*`, `gateway/`, `ops/`, `packages/*`,
+  `programs/*/tests`, `sandbox-bank/`, `verifier/`, `web/`). Solana client code uses `@solana/kit` 7 and
   `sas-lib` 2.0.0-beta.1; the program clients are generated with Codama; local chain tests run
   on embedded [surfpool](https://solana.com/docs/tools/surfpool) (`@solana/surfpool`).
 
@@ -151,8 +153,10 @@ its attester is active in the on-chain registry; it runs locally and in
 Docker. The `gateway` drives a whole session for the web (consent, enclave
 session, wallet-signed intent, FI request and fetch, evaluate), streams each
 stage over SSE and relays the signed result to the oracle; a local end-to-end
-test runs the real enclave container, bank and programs through it. Next: the
-devnet deployment, then the web.
+test runs the real enclave container, bank and programs through it. The
+`ops` scripts set a cluster up (oracle config, SAS, demo pool) and register
+the running Oyster enclave from its verified attestation; they are tested on
+surfpool, not run on devnet yet. Next: the devnet deployment, then the web.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

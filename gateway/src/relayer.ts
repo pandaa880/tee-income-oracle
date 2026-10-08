@@ -37,12 +37,12 @@ import {
   attestationAddress,
   buildMessage,
   buildPrecompileData,
-  enclaveEntryAddress,
   parseSasAttestation,
   precompileInstruction,
-  submitAttestationInstruction,
 } from '@tio/oracle-client/attest';
+import { findEnclaveEntryPda, getSubmitAttestationInstructionAsync } from '@tio/oracle-client';
 
+import { fromHex } from '@tio/encoding';
 import type { Chain } from './chain.ts';
 import type { Deployment } from './config.ts';
 import { GatewayError, gatewayError } from './errors.ts';
@@ -69,9 +69,6 @@ function customErrorCode(error: unknown): number | undefined {
   }
   return undefined;
 }
-
-/** Hex already checked by the enclave reply schema (upstream.ts). */
-const fromHex = (hex: string): Uint8Array => new Uint8Array(Buffer.from(hex, 'hex'));
 
 export type RelayerOptions = {
   chain: Chain;
@@ -109,12 +106,12 @@ async function buildInstructions(
   return [
     computeUnitLimit(ctx.computeUnits ?? DEFAULT_COMPUTE_UNITS),
     precompileInstruction(data),
-    await submitAttestationInstruction({
+    await getSubmitAttestationInstructionAsync({
       payer,
       credential,
       schema,
       attestation,
-      enclaveEntry: await enclaveEntryAddress(measurementId),
+      enclaveEntry: (await findEnclaveEntryPda({ measurementId }))[0],
     }),
   ];
 }
@@ -201,10 +198,11 @@ export function createRelayer(opts: RelayerOptions): Relayer {
     credential: address(deployment.credential),
     schema: address(deployment.schema),
     attester: async () => {
-      const entry = entryFromAccount(await chain.account(await enclaveEntryAddress(measurementId)));
+      const [entryAddress] = await findEnclaveEntryPda({ measurementId });
+      const entry = entryFromAccount(await chain.account(entryAddress));
       if (entry === undefined) throw gatewayError('enclave_not_registered', 'chain', 503);
       if (entry.revokedAt !== 0n) throw gatewayError('enclave_revoked', 'chain', 503);
-      return entry.attester;
+      return Uint8Array.from(entry.attester);
     },
   };
   return {

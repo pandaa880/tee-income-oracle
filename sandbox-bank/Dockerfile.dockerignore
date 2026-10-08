@@ -7,6 +7,8 @@
 !pnpm-workspace.yaml
 !sandbox-bank/package.json
 !sandbox-bank/src/
+!packages/encoding/package.json
+!packages/encoding/src/encoding.ts
 !enclave/pinned/
 sandbox-bank/src/**/*.test.ts
 sandbox-bank/src/testing/

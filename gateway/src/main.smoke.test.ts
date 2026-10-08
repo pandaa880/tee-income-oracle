@@ -1,4 +1,4 @@
-// Runs the real entry point under plain Node type stripping with an empty environment. It must
+// Runs the real entry point (`node --import tsx src/main.ts`) with an empty environment. It must
 // load its whole import graph (no ERR_MODULE_NOT_FOUND, ERR_UNSUPPORTED_DIR_IMPORT, syntax or
 // type-stripping errors) and then stop on a configuration error before it listens.
 import { spawnSync } from 'node:child_process';
@@ -18,8 +18,8 @@ const REQUIRED_VARS = [
   'ALLOWED_ORIGIN',
 ];
 
-describe('node src/main.ts with an empty environment', () => {
-  const result = spawnSync(process.execPath, ['src/main.ts'], {
+describe('node --import tsx src/main.ts with an empty environment', () => {
+  const result = spawnSync(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
     cwd: GATEWAY_DIR,
     env: {},
     encoding: 'utf8',
@@ -31,7 +31,7 @@ describe('node src/main.ts with an empty environment', () => {
     expect(result.status).toBe(1);
   });
 
-  it('loads the whole import graph under plain Node', () => {
+  it('loads the whole import graph under tsx', () => {
     expect(result.stderr).not.toMatch(LOAD_FAILURES);
   });
 

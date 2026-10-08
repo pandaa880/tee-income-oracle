@@ -1,5 +1,6 @@
 // Test code only. Fake enclave, bank, relayer and FIU-key manager around the REAL session
 // store, with one ordered event log so tests can assert the exact call/stage order.
+import { b64Encode } from '@tio/encoding';
 import type { Deps } from '../flow.ts';
 import { createSessionStore } from '../sessions.ts';
 
@@ -95,7 +96,7 @@ export function fakeWorld(over: Overrides = {}): FakeWorld {
       return {
         session_id: SESSION_ID,
         key_material: {},
-        fi_request_body_b64: Buffer.from(FI_REQUEST_BODY).toString('base64'),
+        fi_request_body_b64: b64Encode(FI_REQUEST_BODY),
         fi_request_jws: FI_REQUEST_JWS,
         intent: 'tee-income-oracle: bind session\nsession: x',
         intent_expires: clock.t + 600,

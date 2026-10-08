@@ -11,16 +11,28 @@
     "./sas-setup": "./src/sas-setup.ts"
   },
   "scripts": {
-    "sas:setup": "node src/sas-setup-cli.ts",
+    "sas:setup": "node --import tsx src/sas-setup-cli.ts",
+    "oracle:init": "node --import tsx src/oracle-init-cli.ts",
+    "pool:setup": "node --import tsx src/pool-setup-cli.ts",
+    "enclave:rotate": "node --import tsx src/enclave-rotate-cli.ts",
+    "e2e:devnet": "node --import tsx src/e2e-devnet-cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../.oxlintrc.json --type-aware --deny-warnings src",
     "format": "oxfmt -c ../.oxfmtrc.json src",
     "format:check": "oxfmt -c ../.oxfmtrc.json --check src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:programs": "vitest run --config vitest.programs.config.ts"
   },
   "dependencies": {
+    "@noble/hashes": "2.4.0",
+    "@solana-program/system": "0.13.0",
+    "@solana-program/token": "0.15.0",
     "@solana/kit": "7.1.1",
+    "@tio/demo-pool-client": "workspace:*",
+    "@tio/encoding": "workspace:*",
+    "@tio/oracle-client": "workspace:*",
     "sas-lib": "2.0.0-beta.1",
+    "tsx": "4.23.15",
     "zod": "4.6.5"
   },
   "devDependencies": {

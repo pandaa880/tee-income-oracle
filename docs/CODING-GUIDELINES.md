@@ -190,7 +190,7 @@ scope. See `AGENTS.md` for the full wording.
   casing). Don't rename at the boundary.
 
 ### Language
-- `"strict": true`, plus `noUncheckedIndexedAccess`. ESM only. Node 24 LTS (`.nvmrc`); scripts run `.ts` directly via Node type stripping, so only erasable syntax (`erasableSyntaxOnly`).
+- `"strict": true`, plus `noUncheckedIndexedAccess`. ESM only. Node 24 LTS (`.nvmrc`); scripts run `.ts` directly. `sandbox-bank` uses Node type stripping, so only erasable syntax (`erasableSyntaxOnly`). `gateway` and `ops` load the Codama clients (`enum`, extensionless imports), so they run with `node --import tsx`; their own code still sticks to erasable syntax.
 - No `any`. Use `unknown` at boundaries and narrow it.
 - **Validate every external input with `zod`** (HTTP bodies, env vars, RPC
   data) before use.
@@ -200,7 +200,9 @@ scope. See `AGENTS.md` for the full wording.
   `findSasEventAuthorityPda`) default to *our* program id when called on
   their own. Always pass `{ programAddress: <that program> }`.
 - Bytes are `Uint8Array`. Encode/decode explicitly (hex, base64, base64url,
-  base58) with one helper module; no ad-hoc `Buffer.toString` scattered around.
+  base58) with one helper module, `@tio/encoding` (`packages/encoding`, strict
+  canonical decoders); no ad-hoc `Buffer.toString` / `Buffer.from(…, 'hex')`
+  scattered around.
 
 ### Servers (gateway, sandbox-bank)
 - Capture the **raw body** before any JSON middleware on routes that carry
@@ -268,7 +270,10 @@ Stdlib only unless a dependency is agreed.
 - **A negative test asserts the specific error**: the error code, variant or
   message (`assertRaisesRegex`, `matches!(err, E::Revoked)`). "It raised
   something" isn't enough, because a different check can fail for a
-  different reason and the test still goes green.
+  different reason and the test still goes green. In TypeScript that means
+  `toThrow(/message/)`, `toThrow(SomeErrorClass)` or
+  `toMatchObject({ code })`, never a bare `toThrow()` / `toThrow(Error)` /
+  `rejects.toThrow()`.
 - **Tamper tests prove the baseline first.** Check that the untouched input
   passes, then that the tampered input fails *for the expected reason*.
 - **A parsed but unused field usually means a missing check.** If you decode

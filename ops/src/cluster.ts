@@ -1,3 +1,6 @@
+import { OpsError } from './errors.ts';
+import type { ChainClients } from './send.ts';
+
 export type Cluster = 'localnet' | 'devnet';
 
 const CLUSTERS: readonly Cluster[] = ['localnet', 'devnet'];
@@ -50,4 +53,10 @@ export function parseCluster(arg: string | undefined): Cluster {
     throw new Error(`--cluster must be one of ${CLUSTERS.join(', ')}, got ${String(arg)}`);
   }
   return cluster;
+}
+
+/** Throws `cluster_mismatch` unless the RPC serves `cluster`; call before reading or sending. */
+export async function assertCluster(input: ChainClients & { cluster: Cluster }): Promise<void> {
+  const check = checkCluster(input.cluster, await input.rpc.getGenesisHash().send());
+  if (!check.ok) throw new OpsError(check.error.code, check.error.message);
 }

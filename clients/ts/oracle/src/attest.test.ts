@@ -1,8 +1,6 @@
-// Unit tests for the hand-written, kit-only attestation helpers (`attest.ts`).
-// The cross-check tests (ORACLE_PROGRAM_ID, enclave PDA, entry decoder, submit
-// instruction) compare against the Codama client and are deleted at the kit-8 move
-// together with the three workaround builders (BACKLOG).
-import { generateKeyPairSigner, getAddressEncoder, address, type Address } from '@solana/kit';
+// Unit tests for the hand-written attestation helpers (`attest.ts`): the parts Codama cannot
+// generate (FORMATS §8 message, precompile data, SAS attestation address and reader, constants).
+import { getAddressEncoder, address, type Address } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 
 import { SAS_PROGRAM_ID as OPS_SAS_PROGRAM_ID } from '../../../../ops/src/sas-schema.ts';
@@ -13,13 +11,7 @@ import {
   sasShapedAccount,
   signMessage,
 } from '../../../../programs/oracle/tests/src/attest.ts';
-import {
-  ORACLE_PROGRAM_ADDRESS,
-  findEnclaveEntryPda,
-  getEnclaveEntryDecoder,
-  getEnclaveEntryEncoder,
-  getSubmitAttestationInstructionAsync,
-} from './generated/index.ts';
+import { ORACLE_PROGRAM_ADDRESS } from './generated/index.ts';
 import {
   DOMAIN_TAG,
   MAX_SIGNATURE_LIFETIME_SECS,
@@ -41,12 +33,9 @@ import {
   attestationAddress,
   buildMessage,
   buildPrecompileData,
-  decodeEnclaveEntry,
-  enclaveEntryAddress,
   parseSasAttestation,
   payloadIssuedAt,
   precompileInstruction,
-  submitAttestationInstruction,
 } from './attest.ts';
 
 const PROGRAM = address('HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8');
@@ -296,78 +285,5 @@ describe('parseSasAttestation', () => {
     const data = sasAccount(WALLET, payload, 99n, signer);
     new DataView(data.buffer).setUint32(SAS_DATA_LEN_OFFSET, 82, true);
     expect(() => parseSasAttestation(SAS_PROGRAM_ID, data)).toThrow(/data length is not 83/);
-  });
-});
-
-const shape = (ix: { accounts?: readonly { address: Address; role: number }[] }) =>
-  (ix.accounts ?? []).map((a) => ({ address: a.address, role: a.role }));
-
-describe('kit-7 workaround: cross-checks against the Codama client', () => {
-  it.each([0, 1, 7, 128, 254])('enclaveEntryAddress(%i) equals findEnclaveEntryPda', async (id) => {
-    const [expected] = await findEnclaveEntryPda({ measurementId: id });
-    expect(await enclaveEntryAddress(id)).toBe(expected);
-  });
-
-  const entry = {
-    version: 1,
-    bump: 253,
-    measurementId: 9,
-    measurementKind: 2,
-    measurement: new Uint8Array(32).fill(0xaa),
-    attester: new Uint8Array(20).fill(0xbb),
-    attestationDocHash: new Uint8Array(32).fill(0xcc),
-    registeredAt: 1_790_000_000n,
-    revokedAt: 1_790_000_500n,
-  };
-
-  it('decodeEnclaveEntry equals the generated decoder on encoder output', () => {
-    const bytes = new Uint8Array(getEnclaveEntryEncoder().encode(entry));
-    const generated = getEnclaveEntryDecoder().decode(bytes);
-    const { discriminator: _ignored, ...expected } = generated;
-    expect(decodeEnclaveEntry(bytes)).toEqual(expected);
-  });
-
-  it('decodeEnclaveEntry reads an active entry (revokedAt 0)', () => {
-    const bytes = new Uint8Array(getEnclaveEntryEncoder().encode({ ...entry, revokedAt: 0n }));
-    expect(decodeEnclaveEntry(bytes).revokedAt).toBe(0n);
-  });
-
-  it('decodeEnclaveEntry rejects a wrong discriminator', () => {
-    const bytes = new Uint8Array(getEnclaveEntryEncoder().encode(entry));
-    bytes[0] = (bytes[0] ?? 0) ^ 0xff;
-    expect(() => decodeEnclaveEntry(bytes)).toThrow(/not an oracle EnclaveEntry/);
-  });
-
-  it('decodeEnclaveEntry rejects a wrong length', () => {
-    const bytes = new Uint8Array(getEnclaveEntryEncoder().encode(entry));
-    expect(() => decodeEnclaveEntry(bytes.subarray(0, bytes.length - 1))).toThrow(
-      /enclave entry must be 112 bytes/,
-    );
-    expect(() => decodeEnclaveEntry(new Uint8Array(bytes.length + 1))).toThrow(
-      /enclave entry must be 112 bytes/,
-    );
-  });
-
-  it('submitAttestationInstruction has the same data and accounts as getSubmitAttestationInstructionAsync', async () => {
-    const payer = await generateKeyPairSigner();
-    const attestation = await attestationAddress(CREDENTIAL, SCHEMA, WALLET);
-    const enclaveEntry = await enclaveEntryAddress(3);
-    const mine = await submitAttestationInstruction({
-      payer,
-      credential: CREDENTIAL,
-      schema: SCHEMA,
-      attestation,
-      enclaveEntry,
-    });
-    const generated = await getSubmitAttestationInstructionAsync({
-      payer,
-      credential: CREDENTIAL,
-      schema: SCHEMA,
-      attestation,
-      enclaveEntry,
-    });
-    expect(mine.programAddress).toBe(generated.programAddress);
-    expect(mine.data).toEqual(generated.data);
-    expect(shape(mine)).toEqual(shape(generated));
   });
 });

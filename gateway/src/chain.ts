@@ -15,6 +15,7 @@ import {
   sendAndConfirmTransactionFactory,
 } from '@solana/kit';
 
+import { b64Decode } from '@tio/encoding';
 import { CONFIRM_TIMEOUT_MS, rpcSignal } from './timeouts.ts';
 
 export type SignedTransaction = Parameters<ReturnType<typeof sendAndConfirmTransactionFactory>>[0];
@@ -50,7 +51,7 @@ export function kitChain(
         .getAccountInfo(at, { encoding: 'base64', commitment: 'confirmed' })
         .send({ abortSignal: rpcSignal() });
       if (value === null) return null;
-      return { owner: value.owner, data: new Uint8Array(Buffer.from(value.data[0], 'base64')) };
+      return { owner: value.owner, data: b64Decode(value.data[0]) };
     },
   };
 }
