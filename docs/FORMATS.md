@@ -1363,7 +1363,10 @@ bound memory and RPC cost, not request rate. Exposing the bank publicly breaks t
   (the enclave requests [today − 365 d, today]; the spare day on each side
   covers a session that crosses UTC midnight). Approval by the borrower is
   implied (demo). At most 1024 consents are kept; when full, the oldest
-  **unused** one is dropped (a flood can only make a borrower ask again).
+  **used** one is dropped, else the oldest unused one, so `/Consent` never
+  refuses for lack of room (completed sessions would otherwise lock new
+  borrowers out for a day). A replayed consent that was dropped is refused
+  as `InvalidConsentId`; a flood can only make a borrower ask again.
 - **`/FI/request`** checks, in order: FIU JWS (`kid` registered via
   `/fiu-keys`, signature over the raw bytes; before any RPC read) →
   `SignatureDoesNotMatch`; the key's attester still active →
@@ -1380,7 +1383,9 @@ bound memory and RPC cost, not request rate. Exposing the bank publicly breaks t
 - **`/FI/fetch`**: not FIU-signed (the data is encrypted to the enclave).
   Unknown or expired session (600 s, the enclave's TTL) → `InvalidSessionId`;
   `txnid` ≠ the session's → `InvalidRequest`; second fetch → `DataGone`. At
-  most 256 sessions.
+  most 256 sessions; when full, the oldest fetched one is dropped (a later
+  fetch of it gets `InvalidSessionId`), and only 256 unfetched sessions
+  make `/FI/request` answer `ServiceUnavailable`.
 - **Registry reads** (§13): `Config`, then every `EnclaveEntry` PDA below
   `next_measurement_id` (`getMultipleAccounts`, batches of 100; account
   `version` must be 1 and `measurement_id` its PDA seed). One snapshot at
@@ -1404,10 +1409,12 @@ bound memory and RPC cost, not request rate. Exposing the bank publicly breaks t
 **Keys and config** (environment): `SANDBOX_AA_PRIVATE_JWK`,
 `SANDBOX_FIP_PRIVATE_JWK` (the §2 demo keys, JSON text), `SOLANA_RPC_URL`,
 `ORACLE_PROGRAM_ID` (default the §13 id), `PORT` (8081), `PINNED_DIR`
-(default `enclave/pinned/`), `BANK_TOKEN` (optional: when set, every route
-but `/health` needs `authorization: Bearer <token>`; RFC 6750 b64token:
-`A-Z a-z 0-9 - . _ ~ + /` then optional trailing `=`, at least 32
-characters; compared in constant time). The bank refuses to start if a key is flagged
+(default `enclave/pinned/`), `BANK_TOKEN` (every route but `/health` needs
+`authorization: Bearer <token>`; RFC 6750 b64token: `A-Z a-z 0-9 - . _ ~ +
+/` then optional trailing `=`, at least 32 characters; compared in constant
+time), `BANK_ALLOW_NO_TOKEN` (exactly `1` runs the bank without a token, for
+a local or private-network bank only; `start:local` sets it). The bank
+refuses to start without `BANK_TOKEN` unless that opt-out is set, or if a key is flagged
 `private_key_test_only`, is under 2048 bits, or its public half (`e, kid,
 kty, n`) differs from the pinned file the enclave compiles in.
 

@@ -2,7 +2,8 @@
  * Local run: `pnpm --filter @tio/sandbox-bank start:local`. Loads the demo
  * keys from `sandbox-bank/.secrets/` (made once by `gen:demo-keys`, never
  * committed) unless the variables are already set, defaults the RPC to a
- * local validator, then starts the service.
+ * local validator, allows running without `BANK_TOKEN`, then starts the
+ * service.
  */
 
 import { readFileSync } from 'node:fs';
@@ -24,5 +25,7 @@ function demoKey(name: string): string {
 process.env['SANDBOX_AA_PRIVATE_JWK'] ??= demoKey('aa');
 process.env['SANDBOX_FIP_PRIVATE_JWK'] ??= demoKey('fip');
 process.env['SOLANA_RPC_URL'] ??= 'http://127.0.0.1:8899';
+// Local only: no gateway token unless one is set (FORMATS §15).
+process.env['BANK_ALLOW_NO_TOKEN'] ??= '1';
 
 await import('./main.ts');

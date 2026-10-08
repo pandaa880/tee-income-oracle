@@ -79,24 +79,38 @@ describe('ConsentStore', () => {
     expect(store.get('c')).toBeDefined();
   });
 
-  it('never evicts a used consent: it skips to the oldest unused one', () => {
-    const store = createConsentStore({ now: () => T0, cap: 2 });
-    store.add(consent('a'));
-    store.add(consent('b'));
-    store.markUsed('a');
-    expect(store.add(consent('c'))).toBe(true);
-    expect(store.get('a')?.used).toBe(true);
-    expect(store.get('b')).toBeUndefined();
-  });
-
-  it('refuses (false) only when full of used consents', () => {
+  it('when full of used consents, add succeeds and evicts the oldest used one', () => {
     const store = createConsentStore({ now: () => T0, cap: 2 });
     store.add(consent('a'));
     store.add(consent('b'));
     store.markUsed('a');
     store.markUsed('b');
-    expect(store.add(consent('c'))).toBe(false);
-    expect(store.get('c')).toBeUndefined();
+    expect(store.add(consent('c'))).toBe(true);
+    expect(store.get('a')).toBeUndefined();
+    expect(store.get('b')?.used).toBe(true);
+    expect(store.get('c')).toBeDefined();
+  });
+
+  it('evicts a used consent before an unused one when the used one is older', () => {
+    const store = createConsentStore({ now: () => T0, cap: 2 });
+    store.add(consent('a'));
+    store.add(consent('b'));
+    store.markUsed('a');
+    expect(store.add(consent('c'))).toBe(true);
+    expect(store.get('a')).toBeUndefined();
+    expect(store.get('b')?.used).toBe(false);
+    expect(store.get('c')).toBeDefined();
+  });
+
+  it('evicts a used consent before an unused one even when the used one is newer', () => {
+    const store = createConsentStore({ now: () => T0, cap: 2 });
+    store.add(consent('a'));
+    store.add(consent('b'));
+    store.markUsed('b');
+    expect(store.add(consent('c'))).toBe(true);
+    expect(store.get('a')?.used).toBe(false);
+    expect(store.get('b')).toBeUndefined();
+    expect(store.get('c')).toBeDefined();
   });
 
   it('sweeps expired consents before the cap check', () => {
@@ -111,14 +125,15 @@ describe('ConsentStore', () => {
     expect(store.get('c')).toBeDefined();
   });
 
-  it('does not sweep a used consent that is still valid when full', () => {
+  it('a valid used consent is not swept, but is evicted by the cap when full', () => {
     const clock = { t: T0 };
     const store = createConsentStore({ now: () => clock.t, cap: 1 });
     store.add(consent('a', T0 + 100));
     store.markUsed('a');
     clock.t = T0 + 99;
-    expect(store.add(consent('b'))).toBe(false);
-    expect(store.get('a')).toBeDefined();
+    expect(store.add(consent('b'))).toBe(true);
+    expect(store.get('a')).toBeUndefined();
+    expect(store.get('b')).toBeDefined();
   });
 
   it('defaults to a cap of 1024', () => {
@@ -172,6 +187,28 @@ describe('SessionStore', () => {
     store.add(session('a'));
     store.add(session('b'));
     expect(store.add(session('c'))).toBe(false);
+  });
+
+  it('when full of fetched sessions, add evicts the oldest fetched one', () => {
+    const store = createSessionStore({ now: () => T0, cap: 2 });
+    store.add(session('a'));
+    store.add(session('b'));
+    store.markFetched('a');
+    store.markFetched('b');
+    expect(store.add(session('c'))).toBe(true);
+    expect(store.get('a')).toBeUndefined();
+    expect(store.get('b')?.fetched).toBe(true);
+    expect(store.get('c')).toBeDefined();
+  });
+
+  it('evicts a fetched session before an unfetched one, even a newer fetched one', () => {
+    const store = createSessionStore({ now: () => T0, cap: 2 });
+    store.add(session('a'));
+    store.add(session('b'));
+    store.markFetched('b');
+    expect(store.add(session('c'))).toBe(true);
+    expect(store.get('a')?.fetched).toBe(false);
+    expect(store.get('b')).toBeUndefined();
   });
 
   it('sweeps expired sessions before the cap check', () => {

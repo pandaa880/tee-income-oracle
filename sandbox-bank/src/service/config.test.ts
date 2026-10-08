@@ -33,6 +33,7 @@ function env(over: Record<string, string | undefined> = {}): Record<string, stri
     SANDBOX_FIP_PRIVATE_JWK: FIP_PRIVATE,
     SOLANA_RPC_URL: 'http://127.0.0.1:8899',
     PINNED_DIR: pinnedDir(goodPins),
+    BANK_ALLOW_NO_TOKEN: '1',
     ...over,
   };
 }
@@ -185,8 +186,27 @@ describe('loadConfig: refused', () => {
 describe('loadConfig: BANK_TOKEN (bearer token for the gateway)', () => {
   const TOKEN = 'bank-token-0123456789-abcdefghijklmnop'; // 38 chars
 
-  it('is optional: absent means token is undefined', () => {
-    expect(loadConfig(env()).token).toBeUndefined();
+  it('with the explicit opt-out, an absent token means token is undefined', () => {
+    expect(loadConfig(env({ BANK_ALLOW_NO_TOKEN: '1' })).token).toBeUndefined();
+  });
+
+  it('is required: no token and no opt-out is a ConfigError naming BANK_TOKEN', () => {
+    const error = thrown(() => loadConfig(env({ BANK_ALLOW_NO_TOKEN: undefined })));
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as Error).message).toContain('BANK_TOKEN');
+  });
+
+  it.each(['true', '0', '', 'yes', ' 1'])(
+    'the opt-out must be exactly "1": BANK_ALLOW_NO_TOKEN=%j is still a ConfigError',
+    (value) => {
+      const error = thrown(() => loadConfig(env({ BANK_ALLOW_NO_TOKEN: value })));
+      expect(error).toBeInstanceOf(ConfigError);
+      expect((error as Error).message).toContain('BANK_TOKEN');
+    },
+  );
+
+  it('a token plus the opt-out keeps the token', () => {
+    expect(loadConfig(env({ BANK_TOKEN: TOKEN, BANK_ALLOW_NO_TOKEN: '1' })).token).toBe(TOKEN);
   });
 
   it('accepts a token of exactly 32 characters', () => {
