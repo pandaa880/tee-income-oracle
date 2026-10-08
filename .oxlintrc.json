@@ -32,6 +32,7 @@
             "assertFunctionNames": [
               "expect",
               "expectError",
+              "expectUnauthorized",
               "expectMismatch",
               "expectRejected",
               "expectThrown",

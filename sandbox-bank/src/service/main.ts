@@ -23,15 +23,21 @@ function main(): void {
     programId: config.programId,
     now,
   });
-  const app = createApp({
-    aa: config.aa,
-    fip: config.fip,
-    registry,
-    now,
-    random: (n) => new Uint8Array(randomBytes(n)),
-  });
+  const app = createApp(
+    {
+      aa: config.aa,
+      fip: config.fip,
+      registry,
+      now,
+      random: (n) => new Uint8Array(randomBytes(n)),
+    },
+    config.token === undefined ? {} : { token: config.token },
+  );
   const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
-    process.stdout.write(`sandbox-bank listening on :${info.port} (oracle ${config.programId})\n`);
+    const caller = config.token === undefined ? 'no token, local only' : 'bearer token required';
+    process.stdout.write(
+      `sandbox-bank listening on :${info.port} (oracle ${config.programId}; ${caller})\n`,
+    );
   });
   // PID 1 in the container: stop on `docker stop` instead of waiting for SIGKILL.
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {

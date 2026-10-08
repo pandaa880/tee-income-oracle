@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   const payer = await relayerSigner(config);
   const rpc = createSolanaRpc(config.rpcUrl);
   const enclave = createEnclaveClient(config.enclaveUrl);
-  const bank = createBankClient(config.bankUrl);
+  const bank = createBankClient(config.bankUrl, fetch, config.bankToken);
 
   const info = await enclave.info();
   await checkEnclaveEntry(rpc, config.measurementId, info.attester_address);

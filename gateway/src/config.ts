@@ -11,6 +11,7 @@
  *   PORT                                    default 8082
  *   ALLOWED_ORIGIN                          the web origin for CORS (required)
  *   TRUST_PROXY                             '1': client IP from X-Forwarded-For
+ *   BANK_TOKEN                              bearer token for the bank: ≥ 32 token68 chars (optional)
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -49,6 +50,8 @@ export type Config = {
   port: number;
   allowedOrigin: string;
   trustProxy: boolean;
+  /** Sent as `authorization: Bearer …` on every bank call (FORMATS §15). */
+  bankToken?: string;
 };
 
 type Env = Record<string, string | undefined>;
@@ -92,6 +95,18 @@ function allowedOrigin(env: Env): string {
     throw new ConfigError('ALLOWED_ORIGIN must be an exact origin like https://app.example');
   }
   return value;
+}
+
+/** RFC 6750 token68, ≥ 32 chars; the bank's `BANK_TOKEN` rule is the same. */
+const BANK_TOKEN_PATTERN = /^[A-Za-z0-9._~+/=-]{32,}$/;
+
+function bankToken(env: Env): { bankToken?: string } {
+  const value = env['BANK_TOKEN'];
+  if (value === undefined) return {};
+  if (!BANK_TOKEN_PATTERN.test(value)) {
+    throw new ConfigError('BANK_TOKEN must be at least 32 characters of A-Z a-z 0-9 . _ ~ + / = -');
+  }
+  return { bankToken: value };
 }
 
 function integer(env: Env, name: string, min: number, max: number, fallback?: number): number {
@@ -206,5 +221,6 @@ export function loadConfig(env: Env, repoRoot: string): Config {
     port: integer(env, 'PORT', 1, 65_535, 8082),
     allowedOrigin: allowedOrigin(env),
     trustProxy: env['TRUST_PROXY'] === '1',
+    ...bankToken(env),
   };
 }

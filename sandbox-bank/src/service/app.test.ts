@@ -897,3 +897,110 @@ describe('review round 1 regressions', () => {
     expectError(await request(h, { consent }), 400, 'InvalidConsentId');
   }, 60_000);
 });
+
+const bearer = (value: string): Record<string, string> => ({ authorization: value });
+
+describe('bank bearer token (options.token)', () => {
+  const TOKEN = 'bank-token-0123456789-abcdefghijklmnop'; // 38 chars
+  const UNAUTHORIZED_MSG = 'The caller or key is not authorized.';
+
+  function guarded(): Harness {
+    const registry = fakeRegistry();
+    registry.active.add(toHex(ATTESTER));
+    const clock = { t: NOW0 };
+    const app = createApp(
+      { aa: keys.aa, fip: keys.fip, registry, now: () => clock.t, random: counterRandom() },
+      { token: TOKEN },
+    );
+    return { app, registry, clock };
+  }
+
+  const authed = bearer(`Bearer ${TOKEN}`);
+  const CONSENT_BODY = { persona_id: 'salaried_steady' };
+
+  function expectUnauthorized(reply: Reply): void {
+    expectError(reply, 401, 'Unauthorized');
+    expect(reply.json['txnid']).toBe('');
+    expect(reply.json['errorMsg']).toBe(UNAUTHORIZED_MSG);
+  }
+
+  const routeBodies: [string, Body][] = [
+    ['/fiu-keys', registerBody()],
+    ['/Consent', CONSENT_BODY],
+    ['/FI/request', { ver: '1.1.3' }],
+    ['/FI/fetch', { ver: '1.1.3', txnid: 't', sessionId: 's' }],
+  ];
+
+  it.each(routeBodies)('%s without an authorization header is 401', async (path, body) => {
+    expectUnauthorized(await read(await post(guarded(), path, body)));
+  });
+
+  it.each(routeBodies)('%s with Bearer wrong is 401', async (path, body) => {
+    expectUnauthorized(await read(await post(guarded(), path, body, bearer('Bearer wrong'))));
+  });
+
+  it('a Basic scheme carrying the right token is 401', async () => {
+    const res = await post(guarded(), '/Consent', CONSENT_BODY, bearer(`Basic ${TOKEN}`));
+    expectUnauthorized(await read(res));
+  });
+
+  it('the bare token without a scheme is 401', async () => {
+    const res = await post(guarded(), '/Consent', CONSENT_BODY, bearer(TOKEN));
+    expectUnauthorized(await read(res));
+  });
+
+  it('a token differing only in its last character is 401', async () => {
+    const almost = TOKEN.slice(0, -1) + (TOKEN.endsWith('p') ? 'q' : 'p');
+    const res = await post(guarded(), '/Consent', CONSENT_BODY, bearer(`Bearer ${almost}`));
+    expectUnauthorized(await read(res));
+  });
+
+  it('the correct token reaches /Consent (200 with a signed consent)', async () => {
+    const reply = await read(await post(guarded(), '/Consent', CONSENT_BODY, authed));
+    expect(reply.status).toBe(200);
+    expect(typeof reply.json['consentId']).toBe('string');
+  });
+
+  it('the correct token reaches /fiu-keys (200)', async () => {
+    const reply = await read(await post(guarded(), '/fiu-keys', registerBody(), authed));
+    expect(reply.status).toBe(200);
+  });
+
+  it('the register, consent, request flow works when every call carries the token', async () => {
+    const h = guarded();
+    expect((await read(await post(h, '/fiu-keys', registerBody(), authed))).status).toBe(200);
+    const consent = await read(await post(h, '/Consent', CONSENT_BODY, authed));
+    expect(consent.status).toBe(200);
+    const body = bodyBytes(fiRequestJson({ consent }));
+    const headers = { ...authed, 'x-jws-signature': signDetached(body, keys.fiu) };
+    const ack = await read(await post(h, '/FI/request', body, headers));
+    expect(ack.status).toBe(200);
+  });
+
+  it('GET /health is open without a header', async () => {
+    const res = await guarded().app.request('/health');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ status: 'ok' });
+  });
+
+  it('an unknown route without a header is 401, not 404', async () => {
+    expectUnauthorized(await read(await guarded().app.request('/nope')));
+  });
+
+  it('an oversize body without a header is 401, not 413 (auth before the body)', async () => {
+    const res = await post(guarded(), '/Consent', 'a'.repeat(64 * 1024 + 1));
+    expectUnauthorized(await read(res));
+  });
+
+  it('an oversize body with the right token is still 413', async () => {
+    const res = await post(guarded(), '/Consent', 'a'.repeat(64 * 1024 + 1), authed);
+    expectError(await read(res), 413, 'InvalidRequest');
+  });
+
+  it('without a token option, no header is needed and a stray one is ignored', async () => {
+    const h = setup();
+    expect((await read(await post(h, '/Consent', CONSENT_BODY))).status).toBe(200);
+    const stray = await post(h, '/Consent', CONSENT_BODY, bearer('Bearer anything'));
+    expect((await read(stray)).status).toBe(200);
+  });
+});

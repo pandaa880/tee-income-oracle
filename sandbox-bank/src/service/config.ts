@@ -30,12 +30,16 @@ export interface Config {
   readonly programId: string;
   readonly port: number;
   readonly pinnedDir: string;
+  /** Bearer token the gateway must send (FORMATS §15); unset = open, local only. */
+  readonly token?: string;
 }
 
 /** The oracle program (FORMATS §13). */
 const ORACLE_PROGRAM_ID = 'HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8';
 const DEFAULT_PINNED_DIR = fileURLToPath(new URL('../../../enclave/pinned/', import.meta.url));
 const MIN_RSA_BITS = 2048;
+/** RFC 6750 token68, ≥ 32 chars; the gateway's `BANK_TOKEN` rule is the same. */
+const TOKEN_PATTERN = /^[A-Za-z0-9._~+/=-]{32,}$/;
 
 const EnvSchema = z.object({
   SANDBOX_AA_PRIVATE_JWK: z.string().min(1),
@@ -49,6 +53,7 @@ const EnvSchema = z.object({
     .pipe(z.number().int().min(1).max(65_535))
     .default(8081),
   PINNED_DIR: z.string().min(1).default(DEFAULT_PINNED_DIR),
+  BANK_TOKEN: z.string().regex(TOKEN_PATTERN).optional(),
 });
 
 const PrivateJwkSchema = z.looseObject({
@@ -81,6 +86,7 @@ export function loadConfig(env: Readonly<Record<string, string | undefined>>): C
     programId: vars.ORACLE_PROGRAM_ID,
     port: vars.PORT,
     pinnedDir: vars.PINNED_DIR,
+    ...(vars.BANK_TOKEN === undefined ? {} : { token: vars.BANK_TOKEN }),
   };
 }
 

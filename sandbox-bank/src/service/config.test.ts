@@ -181,3 +181,42 @@ describe('loadConfig: refused', () => {
     expect(text).not.toContain(jwk.p);
   });
 });
+
+describe('loadConfig: BANK_TOKEN (bearer token for the gateway)', () => {
+  const TOKEN = 'bank-token-0123456789-abcdefghijklmnop'; // 38 chars
+
+  it('is optional: absent means token is undefined', () => {
+    expect(loadConfig(env()).token).toBeUndefined();
+  });
+
+  it('accepts a token of exactly 32 characters', () => {
+    const t = 'k'.repeat(32);
+    expect(loadConfig(env({ BANK_TOKEN: t })).token).toBe(t);
+  });
+
+  it('accepts a longer token', () => {
+    expect(loadConfig(env({ BANK_TOKEN: TOKEN })).token).toBe(TOKEN);
+  });
+
+  it('refuses a 31-character token, names BANK_TOKEN, never prints the value', () => {
+    const short = 'secret-token-value-xyz-0123456a'.slice(0, 31);
+    expect(short).toHaveLength(31);
+    const error = thrown(() => loadConfig(env({ BANK_TOKEN: short })));
+    expect(error).toBeInstanceOf(ConfigError);
+    const message = (error as Error).message;
+    expect(message).toContain('BANK_TOKEN');
+    expect(message).not.toContain(short);
+  });
+
+  it.each([
+    ['nothing (empty)', ''],
+    ['a trailing newline', `${TOKEN}\n`],
+    ['inner whitespace', `${TOKEN.slice(0, 20)} ${TOKEN.slice(20)}`],
+    ['a non-ASCII character', `${TOKEN}é`],
+  ])('refuses a token with %s (not RFC 6750 token68)', (_, bad) => {
+    const error = thrown(() => loadConfig(env({ BANK_TOKEN: bad })));
+    expect(error).toBeInstanceOf(ConfigError);
+    expect((error as Error).message).toContain('BANK_TOKEN');
+    if (bad !== '') expect((error as Error).message).not.toContain(bad);
+  });
+});

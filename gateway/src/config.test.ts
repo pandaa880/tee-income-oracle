@@ -243,3 +243,34 @@ describe('loadConfig: RELAYER_KEYPAIR is validated and never echoed', () => {
     expect(JSON.stringify(e.cause ?? null)).not.toContain('garbage-secret-xyz');
   });
 });
+
+describe('loadConfig: BANK_TOKEN', () => {
+  it('is optional: absent means bankToken is undefined', () => {
+    expect(loadConfig(env(), REPO_ROOT).bankToken).toBeUndefined();
+  });
+
+  it('maps a token of exactly 32 characters to bankToken', () => {
+    const t = 'k'.repeat(32);
+    expect(loadConfig(env({ BANK_TOKEN: t }), REPO_ROOT).bankToken).toBe(t);
+  });
+
+  it('rejects 31 characters, names BANK_TOKEN, repeats nothing of the value', () => {
+    const short = 'garbage-token-xyz-0123456789abc'.slice(0, 31);
+    expect(short).toHaveLength(31);
+    const e = configError({ BANK_TOKEN: short });
+    expect(e.message).toContain('BANK_TOKEN');
+    expect(e.message).not.toContain(short);
+    expect(JSON.stringify(e.cause ?? null)).not.toContain(short);
+  });
+
+  it.each([
+    ['empty (a blank secret is a deploy mistake)', ''],
+    ['a trailing newline', `${'k'.repeat(32)}\n`],
+    ['inner whitespace', `${'k'.repeat(16)} ${'k'.repeat(16)}`],
+    ['a non-ASCII character', `${'k'.repeat(32)}é`],
+  ])('rejects a token that is %s', (_, bad) => {
+    const message = configError({ BANK_TOKEN: bad }).message;
+    expect(message).toContain('BANK_TOKEN');
+    if (bad !== '') expect(message).not.toContain(bad);
+  });
+});
