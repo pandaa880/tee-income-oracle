@@ -6,3 +6,7 @@ packages:
   - "sandbox-bank"
   - "verifier"
   - "web"
+allowBuilds:
+  # tsx's esbuild ships its binary as an optional dependency; its postinstall only
+  # re-checks it, so no install script runs.
+  esbuild: false

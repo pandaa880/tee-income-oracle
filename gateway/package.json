@@ -7,8 +7,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node src/main.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.src.json",
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../.oxlintrc.json --type-aware --deny-warnings src",
     "format": "oxfmt -c ../.oxfmtrc.json src",
     "format:check": "oxfmt -c ../.oxfmtrc.json --check src",
@@ -20,6 +20,7 @@
     "@tio/oracle-client": "workspace:*",
     "@tio/sandbox-bank": "workspace:*",
     "hono": "4.13.13",
+    "tsx": "4.23.15",
     "zod": "4.6.5"
   },
   "devDependencies": {

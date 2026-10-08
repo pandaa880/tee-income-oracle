@@ -9,6 +9,10 @@ skip-lint = false
 demo-pool = "DvDkXcQFJAvCvrMfoujKu2BWfWqVYRmL8WW9hpMgW8KC"
 oracle = "HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8"
 
+[programs.devnet]
+demo-pool = "DvDkXcQFJAvCvrMfoujKu2BWfWqVYRmL8WW9hpMgW8KC"
+oracle = "HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8"
+
 [provider]
 cluster = "localnet"
 wallet = "~/.config/solana/tee-income-oracle.json"

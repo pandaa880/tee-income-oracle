@@ -4,16 +4,12 @@
  * address and reader. Codama can't generate these: the precompile is a native
  * program and the attestation account belongs to SAS, not to the oracle IDL.
  *
- * Imports `@solana/kit` only (never `./generated`), so it loads under plain
- * Node type stripping — the gateway runs that way.
+ * Everything the IDL describes (instructions, PDAs, the registry account) comes
+ * from the Codama client in `./generated`.
  */
 import {
-  type AccountMeta,
-  AccountRole,
-  type AccountSignerMeta,
   type Address,
   type Instruction,
-  type TransactionSigner,
   address,
   getAddressDecoder,
   getAddressEncoder,
@@ -24,8 +20,6 @@ import {
 export const ORACLE_PROGRAM_ID = address('HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8');
 export const SAS_PROGRAM_ID = address('22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG');
 export const SECP256K1_PROGRAM = address('KeccakSecp256k11111111111111111111111111111');
-const INSTRUCTIONS_SYSVAR = address('Sysvar1nstructions1111111111111111111111111');
-const SYSTEM_PROGRAM = address('11111111111111111111111111111111');
 
 export const DOMAIN_TAG = 'TIO-ATTEST-v1';
 export const PAYLOAD_LEN = 83;
@@ -181,93 +175,5 @@ export function parseSasAttestation(owner: Address, data: Uint8Array): StoredAtt
     signer: addr(SAS_SIGNER_OFFSET),
     payload: data.slice(SAS_DATA_OFFSET, SAS_DATA_OFFSET + PAYLOAD_LEN),
     expiry: v.getBigInt64(SAS_EXPIRY_OFFSET, true),
-  };
-}
-
-// --- kit-7 workaround ------------------------------------------------------
-// The Codama kit-7 client can't load under plain Node (extensionless imports,
-// `enum`), so the gateway uses these three instead. Each is cross-checked
-// against the generated code in attest.test.ts. Delete them and that test at
-// the kit-8 move (BACKLOG "Kit 7 pin → kit 8 later").
-
-const ENCLAVE_ENTRY_DISCRIMINATOR = new Uint8Array([110, 87, 213, 112, 185, 91, 210, 91]);
-const ENCLAVE_ENTRY_LEN = 112;
-const SUBMIT_ATTESTATION_DISCRIMINATOR = new Uint8Array([238, 220, 255, 105, 183, 211, 40, 83]);
-
-async function oraclePda(seeds: (string | Uint8Array)[]): Promise<Address> {
-  const [pda] = await getProgramDerivedAddress({ programAddress: ORACLE_PROGRAM_ID, seeds });
-  return pda;
-}
-
-/** Oracle registry PDA `["enclave", measurement_id: u8]`. */
-export function enclaveEntryAddress(measurementId: number): Promise<Address> {
-  return oraclePda(['enclave', Uint8Array.of(measurementId)]);
-}
-
-export type EnclaveEntry = {
-  version: number;
-  bump: number;
-  measurementId: number;
-  measurementKind: number;
-  measurement: Uint8Array;
-  attester: Uint8Array;
-  attestationDocHash: Uint8Array;
-  registeredAt: bigint;
-  /** 0 while active. */
-  revokedAt: bigint;
-};
-
-/** Decodes an oracle `EnclaveEntry` account (112 bytes, Anchor discriminator first). */
-export function decodeEnclaveEntry(data: Uint8Array): EnclaveEntry {
-  requireLength('enclave entry', data, ENCLAVE_ENTRY_LEN);
-  if (!ENCLAVE_ENTRY_DISCRIMINATOR.every((b, i) => data[i] === b)) {
-    throw new Error('account is not an oracle EnclaveEntry');
-  }
-  const v = view(data);
-  return {
-    version: v.getUint8(8),
-    bump: v.getUint8(9),
-    measurementId: v.getUint8(10),
-    measurementKind: v.getUint8(11),
-    measurement: data.slice(12, 44),
-    attester: data.slice(44, 64),
-    attestationDocHash: data.slice(64, 96),
-    registeredAt: v.getBigInt64(96, true),
-    revokedAt: v.getBigInt64(104, true),
-  };
-}
-
-export type SubmitAttestationAccounts = {
-  payer: TransactionSigner;
-  credential: Address;
-  schema: Address;
-  attestation: Address;
-  enclaveEntry: Address;
-};
-
-/** `oracle.submit_attestation` (no args), accounts in IDL order. */
-export async function submitAttestationInstruction(
-  a: SubmitAttestationAccounts,
-): Promise<Instruction<string, readonly (AccountMeta | AccountSignerMeta)[]>> {
-  const sasSigner = await oraclePda(['sas_signer']);
-  const [sasEventAuthority] = await getProgramDerivedAddress({
-    programAddress: SAS_PROGRAM_ID,
-    seeds: ['__event_authority'],
-  });
-  return {
-    programAddress: ORACLE_PROGRAM_ID,
-    accounts: [
-      { address: a.payer.address, role: AccountRole.WRITABLE_SIGNER, signer: a.payer },
-      { address: sasSigner, role: AccountRole.READONLY },
-      { address: a.credential, role: AccountRole.READONLY },
-      { address: a.schema, role: AccountRole.READONLY },
-      { address: a.attestation, role: AccountRole.WRITABLE },
-      { address: a.enclaveEntry, role: AccountRole.READONLY },
-      { address: INSTRUCTIONS_SYSVAR, role: AccountRole.READONLY },
-      { address: sasEventAuthority, role: AccountRole.READONLY },
-      { address: SAS_PROGRAM_ID, role: AccountRole.READONLY },
-      { address: SYSTEM_PROGRAM, role: AccountRole.READONLY },
-    ],
-    data: SUBMIT_ATTESTATION_DISCRIMINATOR,
   };
 }

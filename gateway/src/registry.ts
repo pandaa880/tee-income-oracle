@@ -6,11 +6,13 @@
  */
 import type { Address, Rpc, SolanaRpcApi } from '@solana/kit';
 import {
+  ENCLAVE_ENTRY_DISCRIMINATOR,
   type EnclaveEntry,
-  ORACLE_PROGRAM_ID,
-  decodeEnclaveEntry,
-  enclaveEntryAddress,
-} from '@tio/oracle-client/attest';
+  findEnclaveEntryPda,
+  getEnclaveEntryDecoder,
+  getEnclaveEntrySize,
+} from '@tio/oracle-client';
+import { ORACLE_PROGRAM_ID } from '@tio/oracle-client/attest';
 
 import { gatewayError } from './errors.ts';
 import { rpcSignal } from './timeouts.ts';
@@ -22,7 +24,13 @@ export function entryFromAccount(
   account: { owner: Address; data: Uint8Array } | null,
 ): EnclaveEntry | undefined {
   if (account === null || account.owner !== ORACLE_PROGRAM_ID) return undefined;
-  return decodeEnclaveEntry(account.data);
+  // The generated decoder checks neither the length nor the discriminator.
+  const { data } = account;
+  if (data.length !== getEnclaveEntrySize()) throw new Error('enclave entry has the wrong length');
+  if (!ENCLAVE_ENTRY_DISCRIMINATOR.every((byte, i) => data[i] === byte)) {
+    throw new Error('account is not an oracle EnclaveEntry');
+  }
+  return getEnclaveEntryDecoder().decode(data);
 }
 
 /** The entry at `measurementId`, or undefined if there is none. */
@@ -30,7 +38,7 @@ export async function readEnclaveEntry(
   rpc: RegistryRpc,
   measurementId: number,
 ): Promise<EnclaveEntry | undefined> {
-  const at = await enclaveEntryAddress(measurementId);
+  const [at] = await findEnclaveEntryPda({ measurementId });
   const { value } = await rpc
     .getAccountInfo(at, { encoding: 'base64' })
     .send({ abortSignal: rpcSignal() });

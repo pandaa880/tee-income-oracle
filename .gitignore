@@ -33,6 +33,7 @@ CLAUDE.local.md
 .agent/
 .agents/
 .pi/
+.codegraph/
 skills-lock.json
 
 # OS
