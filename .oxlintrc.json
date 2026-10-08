@@ -25,7 +25,21 @@
       "rules": {
         "typescript/no-unsafe-type-assertion": "off",
         "vitest/no-conditional-expect": "off",
-        "vitest/require-to-throw-message": "off"
+        "vitest/require-to-throw-message": "off",
+        "vitest/expect-expect": [
+          "error",
+          {
+            "assertFunctionNames": [
+              "expect",
+              "expectError",
+              "expectUnauthorized",
+              "expectMismatch",
+              "expectRejected",
+              "expectThrown",
+              "expectBaselineSucceeds"
+            ]
+          }
+        ]
       }
     }
   ],

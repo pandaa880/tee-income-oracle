@@ -3,9 +3,10 @@ target/
 .anchor/
 
 # Node
-node_modules/
+node_modules
 dist/
 .next/
+.vitest/
 
 # Python
 __pycache__/
@@ -19,6 +20,8 @@ __pycache__/
 **/*.pem
 **/*.key
 test-vectors/*.key
+# Sandbox-bank demo private keys (public halves live in enclave/pinned/)
+sandbox-bank/.secrets/
 
 # Nitro enclave build output
 *.eif
@@ -30,7 +33,17 @@ CLAUDE.local.md
 .agent/
 .agents/
 .pi/
+.codegraph/
 skills-lock.json
 
 # OS
 .DS_Store
+
+# ops runtime files under the committed deployments/ tree (enclave:rotate lock and
+# per-attempt pending attestations, the deployment-file write lock and
+# writeDeployment temp files). Archived
+# attestation-<id>.hex files and <cluster>.json are committed.
+deployments/**/.rotate.lock
+deployments/**/attestation-pending*.hex
+deployments/**/*.tmp
+deployments/**/*.lock

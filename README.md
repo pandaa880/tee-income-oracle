@@ -1,18 +1,20 @@
 # TEE Income Oracle
 
-A borrower consents through India's Account Aggregator (AA) rail. The signed,
-encrypted bank statement is decrypted, verified and scored **inside an AWS
-Nitro enclave** (hosted on Marlin Oyster), so no plaintext exists outside it,
-not even for the operator. The enclave signs a small risk-tier result with a
-key its remote attestation binds to this repo's code. That result is written
-to Solana through the Solana Attestation Service (SAS), where any lending
-program can read and check it.
+A borrower consents through India's Account Aggregator (AA) rail. The bank
+encrypts the statement to a key born inside the enclave, and the AA signs the
+response that carries it. That statement is decrypted, verified and scored
+**inside an AWS Nitro enclave** (hosted on Marlin Oyster), so no plaintext
+exists outside it, not even for the operator. The enclave signs a small
+risk-tier result with a key its remote attestation binds to this repo's code.
+That result is written to Solana through the Solana Attestation Service
+(SAS), where any lending program can read and check it.
 
 The hackathon build uses a **sandbox bank** that speaks the real ReBIT
 protocol with test keys: simulated bank, real protocol.
 
 - How it works and why it's secure: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 - Every wire and data format: [`docs/FORMATS.md`](docs/FORMATS.md)
+- How the devnet demo is deployed: [`docs/DEPLOY.md`](docs/DEPLOY.md)
 - Coding rules: [`docs/CODING-GUIDELINES.md`](docs/CODING-GUIDELINES.md)
 - Git workflow and releases: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - For AI agents: [`AGENTS.md`](AGENTS.md)
@@ -47,6 +49,27 @@ flowchart LR
   GW -- "transaction" --> SOL
 ```
 
+**Who signs what.** On the real AA rail the enclave can check one signature
+on the data path: the AA's, over the fetch response. That response names the
+bank and carries its ciphertext and key material. The ReBIT spec gives it no
+field for a signature made by the bank, and the statement schema has none
+either. So for real data the provenance claim is "a licensed AA states that
+this bank returned this statement", and the AA is part of the trust base. The
+sandbox bank also signs the statement with a FIP key. That is an extension of
+this repo, kept so the enclave can check a bank signature wherever a provider
+supplies one. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6.
+
+**What else you trust, and what the tier is not.** Besides AWS Nitro, the
+enclave code and the AA, the demo trusts Marlin's base image and one
+operator wallet that holds the program upgrade authority and every admin
+role (a multisig with a timelock beyond the demo). The tier is a
+policy-based affordability screen over one bank account, chosen by the
+borrower, as a snapshot: every non-bounce credit counts as income, and one
+person can use several wallets. A live AA also needs a stable FIU key or a
+re-onboarding flow, since the enclave's FIU key is new on every boot.
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3, §5 and §6 list each of
+these.
+
 ### How the code is tested
 
 `tio-core` is the code the enclave runs. It is checked against two
@@ -75,7 +98,10 @@ layer and must fail with exactly its error code (see
 ```
 programs/oracle/     Anchor. Enclave registry, verifies the enclave's secp256k1
                      signature (precompile), writes the SAS attestation.
+clients/ts/oracle/   TypeScript client for the oracle, generated from its IDL (Codama).
+packages/encoding/   Shared strict byte encodings (hex, base64, base64url) for the TS code.
 programs/demo-pool/  Anchor. Reads and checks the SAS attestation, lends testnet tokens.
+clients/ts/demo-pool/  TypeScript client for the demo pool, generated the same way.
 tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
 enclave/             Rust HTTP wrapper around tio-core. Runs in the Oyster CVM.
 gateway/             Node/TS, untrusted. Orchestrates sessions, relays signed bytes,
@@ -84,9 +110,14 @@ sandbox-bank/        Node/TS mock FIP + AA speaking ReBIT with test keys. Also t
                      test-vector generator.
 verifier/            TS. Checks the Nitro attestation to AWS's root, the image id,
                      and the attester key on chain.
+ops/                 TS admin scripts: oracle init, SAS credential + schema, demo pool,
+                     attested enclave rotation, devnet end-to-end run.
+deployments/         Public addresses per cluster, written by ops.
 web/                 Next.js. Borrower flow, lender dashboard, verify page.
 test-vectors/        Generated fixtures, including golden vectors from Sahamati's
                      reference implementation.
+test-fixtures/       Hand-calculated scoring cases; the SAS program binary dumped
+                     from devnet for offline tests.
 docs/                Architecture, formats, coding guidelines.
 ```
 
@@ -98,7 +129,10 @@ docs/                Architecture, formats, coding guidelines.
 
 Two build worlds:
 - **Rust/Anchor**: a Cargo workspace (`programs/*`, `tio-core`). See the root `Cargo.toml`.
-- **Node/TS**: a pnpm workspace (`gateway/`, `sandbox-bank/`, `verifier/`, `web/`).
+- **Node/TS**: a pnpm workspace (`clients/ts/*`, `gateway/`, `ops/`, `packages/*`,
+  `programs/*/tests`, `sandbox-bank/`, `verifier/`, `web/`). Solana client code uses `@solana/kit` 7 and
+  `sas-lib` 2.0.0-beta.1; the program clients are generated with Codama; local chain tests run
+  on embedded [surfpool](https://solana.com/docs/tools/surfpool) (`@solana/surfpool`).
 
 `enclave/` is not in the Cargo workspace. It builds as a Docker image, pinned
 by digest and deployed with docker-compose on Marlin Oyster.
@@ -110,7 +144,40 @@ pipeline: it ties the response and consent to the session, checks the
 window, verifies, decrypts, parses and scores the statement, and builds the
 attestation payload and the message to sign. It is pinned to reference golden
 vectors and cross-checked against the TypeScript test-vector generator in
-`sandbox-bank`. Next: the programs, enclave, gateway and web.
+`sandbox-bank`. `ops` creates and verifies the SAS credential and schema
+(tested on surfpool against the deployed SAS binary). The `oracle` program has
+its enclave registry (register and revoke attested enclave builds, ids never
+reused, two-step admin change) and accepts enclave results: it checks the
+enclave's secp256k1 signature through the precompile, the registry entry and
+the Solana clock, then writes the SAS attestation (refresh replaces only an
+older one). The `demo-pool` program lends test tokens on that attestation,
+read inside its own instruction: it checks that the oracle's signer wrote
+it, that it is fresh, and that the enclave build behind it is approved by
+the pool and not revoked, then lends up to the tier's limit (one open loan
+per borrower; `repay` closes it). All of them are tested on an embedded
+surfpool, the SAS writes against the deployed SAS binary. The `enclave`
+serves the HTTP API around `tio-core` (sessions, wallet binding, evaluate,
+secp256k1-signed results, an attester-signed FIU key) and builds as a
+reproducible arm64 image for Oyster; it is tested in-process against every
+test vector and runs on Marlin Oyster. The `sandbox-bank` serves the ReBIT FIP + AA
+API (consent, FI request, fetch) and accepts an enclave's FIU key only if
+its attester is active in the on-chain registry; it runs locally, in
+Docker, and on Azure Container Apps, where every route but `/health`
+needs the gateway's bearer token. The `gateway` drives a whole session for the web (consent, enclave
+session, wallet-signed intent, FI request and fetch, evaluate), streams each
+stage over SSE and relays the signed result to the oracle; a local end-to-end
+test runs the real enclave container, bank and programs through it. The
+`ops` scripts set a cluster up (oracle config, SAS, demo pool) and register
+the running Oyster enclave from its verified attestation; they are tested on
+surfpool and run on devnet.
+
+**On devnet now:** both programs, the enclave on Marlin Oyster (image id in
+[`deployments/devnet.json`](deployments/devnet.json), reproducible from the
+repo), and the gateway and sandbox bank on Azure Container Apps. The
+headless end-to-end run passes on devnet (tiers A, B, C attested on chain,
+REJECT leaves nothing, tier A borrows and repays), also after an enclave
+restart with a new key. How it is deployed: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+Next: the web app (borrower flow, verify page).
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

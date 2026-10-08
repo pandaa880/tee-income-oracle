@@ -1,0 +1,14 @@
+# Deployed with `oyster-cvm deploy --docker-compose enclave/docker-compose.yml`.
+# The Oyster image id hashes these exact bytes (comments included), not the
+# Docker image, so the image MUST be pinned by digest: the digest is what
+# binds the measured enclave to the code. Set it from
+# `enclave/scripts/build-image.sh --push <repo>`; the digest below was built
+# from commit 5fe2324.
+services:
+  enclave:
+    image: docker.io/pandaa880/tio-enclave@sha256:744d5f078f379af1db5c80c0e231dc2fd3572a123af1013ab811a0f201a483ab
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      # Oyster's per-boot secp256k1 attester key (32 raw bytes), read-only.
+      - /app/ecdsa.sec:/app/ecdsa.sec:ro

@@ -1,23 +1,47 @@
 # sandbox-bank
 
 Node/TS mock **FIP + AA** that speaks the real ReBIT protocol with test data:
-"simulated bank, real protocol". When a real AA replaces it, the enclave code
-doesn't change; only the pinned keys and the base URL do.
+"simulated bank, real protocol". When a real AA replaces it, the enclave's
+protocol code doesn't change, but the pinned keys and the base URL do, and
+so does FIU key onboarding. This bank accepts a new FIU key on every enclave
+boot because the on-chain registry vouches for it (`POST /fiu-keys` below).
+A real AA onboards an FIU's public key out of band, so a key that changes per
+boot needs either a stable key (e.g. sealed by a KMS to the enclave's
+measurement) or a re-onboarding flow with that AA (`docs/ARCHITECTURE.md` §6).
 
-- Serves three borrower personas (DEPOSIT schema, 6–12 months): salaried/steady,
-  lumpy trader, stressed.
-- On `POST /FI/request`: verifies the enclave's FIU signature, signs the FI
-  JSON with the FIP key, encrypts it to the enclave's session key (Curve25519
-  `wei25519` → HKDF → AES-256-GCM), and signs the fetch response with the AA
-  key. Also issues the consent artefact.
-- **Keys:** the running service uses **demo keys that are never committed**
-  (`.env` / secret store). Only their public halves are pinned in the enclave.
+- Serves four borrower personas (DEPOSIT schema, 6–12 months): salaried/steady,
+  lumpy trader, declining, stressed. The live service rebuilds each statement
+  so it ends on the day the enclave asks for.
+- HTTP API (`docs/FORMATS.md` §15):
+  - `POST /fiu-keys`: registers an enclave's FIU key. The attester address
+    recovered from its binding signature (§8.1) must be an active entry in the
+    on-chain oracle registry (§13).
+  - `POST /Consent`: issues an AA-signed consent for a persona.
+  - `POST /FI/request`: verifies the enclave's FIU signature and that its
+    attester is still active, applies the consent rules (one request per
+    consent), signs the FI JSON with the FIP key and encrypts it to the
+    enclave's session key (Curve25519 `wei25519`/X25519 → HKDF → AES-256-GCM).
+    Replies with a session id.
+  - `POST /FI/fetch`: the AA-signed fetch response, once per session.
+- **Gateway only:** the bank must be reachable only from the gateway, which
+  rate-limits (FORMATS §15). `BANK_TOKEN` is required, set on both (every
+  route but `/health` needs `authorization: Bearer <token>`, checked before
+  the body is read); only a local or private-network bank may run without
+  it, and only with `BANK_ALLOW_NO_TOKEN=1` (`start:local` sets it). The devnet deployment uses the
+  token, because its Azure environment has no private networking
+  (`docs/DEPLOY.md` §4). `/fiu-keys` and `/Consent` need no other
+  authentication.
+- **Keys:** the running service uses **demo keys that are never committed**.
+  `pnpm --filter @tio/sandbox-bank gen:demo-keys` makes them once (it refuses
+  to overwrite): private JWKs in `sandbox-bank/.secrets/` (gitignored; back
+  them up outside the repo), public halves in `enclave/pinned/`, compiled into
+  the enclave image. New demo keys mean a new image id.
 - The same crypto module is the **test-vector generator**. It writes
   `test-vectors/` with fixed test keys, including the negative cases (one
   broken layer each; see `docs/FORMATS.md` §11).
 
-**Status:** the test-vector generator works; the HTTP service isn't built
-yet.
+**Status:** the HTTP service, the test-vector generator and the demo-key
+generator work. The service runs locally and in Docker; it isn't deployed yet.
 
 It writes the cases that `tio-core` must accept or reject: see
 [how the code is tested](../README.md#how-the-code-is-tested) and the
@@ -27,14 +51,24 @@ It writes the cases that `tio-core` must accept or reject: see
 
 Dependencies point down only: `crypto/` is pure primitives (`node:crypto`,
 no runtime dependencies), `rebit/` builds the ReBIT messages on top of it, and
-`vectors/` is the test-data logic. The HTTP service will reuse
-`crypto/` and `rebit/` unchanged; only `vectors/` is test-only.
+`vectors/` is the test-data logic. `chain/` holds what needs noble (secp256k1
+recovery, keccak) or Solana RPC: the §8.1 binding and the registry reader.
+`service/` is the HTTP server (Hono). It reuses `crypto/`, `rebit/` and the
+persona builder from `vectors/`. `testing/` holds test-only helpers.
 
 ```mermaid
 flowchart TD
   subgraph cli["CLIs"]
     GK["gen-keys.ts<br/>make test keys once"]
     GV["gen-vectors.ts<br/>write test-vectors/"]
+  end
+  subgraph service["src/service/ · HTTP service (FORMATS §15)"]
+    APP["app · bank<br/>routes, checks, ReBIT errors"]
+    STORE["stores · config · live-personas"]
+  end
+  subgraph chain["src/chain/ · noble + Solana RPC"]
+    BIND["fiu-binding<br/>§8.1 attester recovery"]
+    REG["registry<br/>§13 reader, cached"]
   end
   subgraph vectors["src/vectors/ · test data"]
     GEN["generate.ts<br/>all cases + manifest"]
@@ -51,7 +85,8 @@ flowchart TD
     PAY["payload<br/>83-byte payload · 232-byte message · base58"]
   end
   subgraph rebit["src/rebit/ · ReBIT messages (FORMATS §3, §5)"]
-    MSG["key-material · fi-request<br/>fetch-response · consent"]
+    MSG["key-material · fi-request<br/>fetch-response · consent · timestamp"]
+    SEAL["seal<br/>FIP side: sign, wrap, encrypt"]
   end
   subgraph crypto["src/crypto/ · primitives (node:crypto only)"]
     ECDH["ecdh + wei25519<br/>key exchange"]
@@ -61,6 +96,16 @@ flowchart TD
   end
   OUT[("test-vectors/")]
 
+  APP --> STORE
+  APP --> BIND
+  APP --> REG
+  APP --> SEAL
+  APP --> MSG
+  STORE --> PER
+  SEAL --> ECDH
+  SEAL --> CIPH
+  SEAL --> JWS
+  CASES --> SEAL
   GK --> KEYS
   GV --> GEN
   GV --> KEYS
@@ -91,6 +136,26 @@ pnpm --filter @tio/sandbox-bank typecheck     # tsc
 pnpm --filter @tio/sandbox-bank lint          # oxlint --type-aware
 pnpm --filter @tio/sandbox-bank format:check  # oxfmt
 pnpm gen:vectors                              # rewrite test-vectors/ (deterministic)
+pnpm --filter @tio/sandbox-bank start:local   # run the service; demo keys from .secrets/
 ```
 
-Runs on Node 24 with native TypeScript type stripping (no build step).
+`start:local` reads the demo keys from `.secrets/` (run `gen:demo-keys` once
+first) and defaults `SOLANA_RPC_URL` to a local validator. `start` (and the
+image) read everything from the environment: `SANDBOX_AA_PRIVATE_JWK`,
+`SANDBOX_FIP_PRIVATE_JWK` (JSON text), `SOLANA_RPC_URL`, optional
+`ORACLE_PROGRAM_ID`, `PORT` (8081) and `PINNED_DIR`. The service refuses to
+start with a test key or with a key that differs from `enclave/pinned/`.
+
+Docker image (build context: the repo root; `sandbox-bank/Dockerfile.dockerignore`
+keeps `.secrets/` and tests out):
+
+```bash
+docker build -f sandbox-bank/Dockerfile -t tio-sandbox-bank:dev .
+docker run --rm -p 8081:8081 -e SANDBOX_AA_PRIVATE_JWK="$(cat sandbox-bank/.secrets/aa.demo-private.jwk.json)" \
+  -e SANDBOX_FIP_PRIVATE_JWK="$(cat sandbox-bank/.secrets/fip.demo-private.jwk.json)" \
+  -e SOLANA_RPC_URL=https://api.devnet.solana.com -e BANK_ALLOW_NO_TOKEN=1 tio-sandbox-bank:dev
+```
+
+Runs on Node 24 with native TypeScript type stripping (no build step), so
+only erasable TypeScript works: no parameter properties, `enum` or
+`namespace` (vitest accepts them; `node` does not).

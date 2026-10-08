@@ -1,0 +1,41 @@
+{
+  "name": "@tio/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c ../.oxlintrc.json --type-aware --deny-warnings src",
+    "format": "oxfmt -c ../.oxfmtrc.json src",
+    "format:check": "oxfmt -c ../.oxfmtrc.json --check src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.3",
+    "@solana/kit": "7.1.1",
+    "@tio/encoding": "workspace:*",
+    "@tio/oracle-client": "workspace:*",
+    "@tio/sandbox-bank": "workspace:*",
+    "hono": "4.13.13",
+    "tsx": "4.23.15",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "@solana/surfpool": "1.6.0",
+    "@tio/demo-pool-client": "workspace:*",
+    "@tio/ops": "workspace:*",
+    "@tio/oracle-tests": "workspace:*",
+    "@types/node": "24.19.0",
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}

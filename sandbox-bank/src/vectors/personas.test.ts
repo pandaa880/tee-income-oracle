@@ -1,7 +1,8 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { reduceFi } from '../scoring/reduce.ts';
 import { score } from '../scoring/score.ts';
-import { buildPersonas, type Persona } from './personas.ts';
+import { NOW_UNIX, buildPersonas, type Persona } from './personas.ts';
 import { DEFAULT_POLICY } from './policy.ts';
 
 interface FinvuTransaction {
@@ -32,6 +33,14 @@ interface FinvuFi {
     readonly endDate: string;
     readonly Transaction: readonly FinvuTransaction[];
   };
+}
+
+function isoDay(unix: number): string {
+  return new Date(unix * 1000).toISOString().slice(0, 10);
+}
+
+function dayNumber(isoDate: string): number {
+  return Date.parse(`${isoDate}T00:00:00Z`) / 86_400_000;
 }
 
 function asFi(persona: Persona): FinvuFi {
@@ -241,5 +250,120 @@ describe('buildPersonas', () => {
       expect(full.od_days).toBeGreaterThanOrEqual(30);
       expect(full.bounces).toBeGreaterThan(3);
     });
+  });
+});
+
+describe('buildPersonas anchor (live bank re-anchors the statement each day)', () => {
+  const DAY = 86_400;
+  const FIRST_ANCHOR = Date.UTC(2026, 9, 7) / 1000; // 2026-10-07T00:00:00Z
+  const SWEEP_DAYS = 400;
+
+  // sha256 of JSON.stringify(fi) of the pre-anchor generator, so `pnpm gen:vectors` stays byte-identical.
+  const DEFAULT_FI_SHA256: Record<string, string> = {
+    salaried_steady: 'da58939e519e9017db96d92916e22c23ba23a0977a9a36710db0db96bf04de5e',
+    trader_lumpy: '893adefe714b220b395b42ba5b83d92c7fbc67d5a583bc0f6ba626ed0df1bf0b',
+    declining: 'a9c03560da2e02b0a6a1f02f8cb26916633ad94bea32d8588ead9156f5f4838f',
+    stressed: 'f128b88b4a8b451f67e6b6f4d3aeab54c410bf68ae2aef6cbc8940b868fb477a',
+  };
+
+  it('the default anchor is NOW_UNIX: no argument equals buildPersonas(NOW_UNIX)', () => {
+    expect(buildPersonas()).toEqual(buildPersonas(NOW_UNIX));
+  });
+
+  it('the default output is unchanged by the anchor parameter (pinned hashes)', () => {
+    const hashes = Object.fromEntries(
+      buildPersonas().map((p) => [
+        p.persona_id,
+        createHash('sha256').update(JSON.stringify(p.fi)).digest('hex'),
+      ]),
+    );
+    expect(hashes).toEqual(DEFAULT_FI_SHA256);
+  });
+
+  it('a different anchor gives a different statement', () => {
+    const today = buildPersonas(FIRST_ANCHOR).map((p) => JSON.stringify(p.fi));
+    const tomorrow = buildPersonas(FIRST_ANCHOR + DAY).map((p) => JSON.stringify(p.fi));
+    expect(tomorrow).not.toEqual(today);
+  });
+
+  it('is deterministic per anchor', () => {
+    expect(buildPersonas(FIRST_ANCHOR + 17 * DAY)).toEqual(buildPersonas(FIRST_ANCHOR + 17 * DAY));
+  });
+
+  it('keeps the persona order and expected tiers for any anchor', () => {
+    const personas = buildPersonas(FIRST_ANCHOR + 100 * DAY);
+    expect(personas.map((p) => [p.persona_id, p.expected_tier])).toEqual([
+      ['salaried_steady', 'A'],
+      ['trader_lumpy', 'B'],
+      ['declining', 'C'],
+      ['stressed', 'REJECT'],
+    ]);
+  });
+
+  it('ends the statement on the anchor day', () => {
+    const anchor = FIRST_ANCHOR + 40 * DAY;
+    for (const p of buildPersonas(anchor)) {
+      expect(asFi(p).Transactions.endDate).toBe(isoDay(anchor));
+    }
+  });
+
+  it('starts at most 365 days before the anchor, whatever the month lengths', () => {
+    // 2028-03-01 minus 12 calendar months is 366 days (the leap day); 2027-08-31 is a 365-day control.
+    for (const anchor of [Date.UTC(2028, 2, 1) / 1000, Date.UTC(2027, 7, 31) / 1000]) {
+      for (const p of buildPersonas(anchor)) {
+        const startDay = dayNumber(asFi(p).Transactions.startDate);
+        expect(startDay).toBeGreaterThanOrEqual(anchor / DAY - 365);
+      }
+    }
+  });
+
+  it('has no transaction after the anchor', () => {
+    const anchor = FIRST_ANCHOR + 3 * DAY;
+    for (const p of buildPersonas(anchor)) {
+      const last = asFi(p).Transactions.Transaction.at(-1);
+      expect(new Date(last?.transactionTimestamp ?? 0).getTime()).toBeLessThanOrEqual(
+        anchor * 1000,
+      );
+    }
+  });
+
+  it(`every day for ${SWEEP_DAYS} days: tier, end date, start clamp, no late txn, long enough`, () => {
+    const failures: string[] = [];
+    for (let d = 0; d < SWEEP_DAYS; d += 1) {
+      const anchor = FIRST_ANCHOR + d * DAY;
+      for (const p of buildPersonas(anchor)) {
+        const fi = asFi(p);
+        const label = `${isoDay(anchor)} ${p.persona_id}`;
+        const { startDate, endDate, Transaction: txns } = fi.Transactions;
+        const tier = score(reduceFi(JSON.stringify(p.fi)), DEFAULT_POLICY).outcome;
+        if (tier !== p.expected_tier) failures.push(`${label}: tier ${tier}`);
+        if (endDate !== isoDay(anchor)) failures.push(`${label}: endDate ${endDate}`);
+        if (dayNumber(startDate) < anchor / DAY - 365)
+          failures.push(`${label}: start ${startDate}`);
+        if (dayNumber(endDate) - dayNumber(startDate) < DEFAULT_POLICY.window.min_days) {
+          failures.push(`${label}: statement ${startDate}..${endDate} shorter than policy minimum`);
+        }
+        const late = txns.filter((t) => new Date(t.transactionTimestamp).getTime() > anchor * 1000);
+        if (late.length > 0) failures.push(`${label}: ${late.length} txn after anchor`);
+        if (txns.length === 0) failures.push(`${label}: no transactions`);
+      }
+    }
+    expect(failures).toEqual([]);
+  }, 120_000);
+});
+
+describe('buildPersonas across the leap-day clamp', () => {
+  it('keeps every tier on the days where the 365-day clamp moves the start (Feb–Mar 2028)', () => {
+    const failures: string[] = [];
+    for (let d = 0; d < 45; d += 1) {
+      const anchor = Date.UTC(2028, 1, 15) / 1000 + d * 86_400;
+      for (const p of buildPersonas(anchor)) {
+        const tier = score(reduceFi(JSON.stringify(p.fi)), DEFAULT_POLICY).outcome;
+        if (tier !== p.expected_tier) {
+          failures.push(`${isoDay(anchor)} ${p.persona_id}: tier ${tier}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
   });
 });

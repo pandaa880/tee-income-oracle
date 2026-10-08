@@ -39,12 +39,14 @@ same PR updates this file, both implementations and the regenerated vectors.
 | Contract | Id today | Bump when |
 |---|---|---|
 | Enclave signed message (§8) | domain tag `TIO-ATTEST-v1` | any change to the signed bytes or their order |
+| FIU key binding (§8.1) | domain tag `TIO-FIU-KEY-v1` | any change to the signed bytes or the JWK members |
 | Enclave HTTP API (§10) | path prefix `/v1/` | a breaking request/response change (adding optional fields isn't breaking) |
+| Gateway HTTP API (§16) | path prefix `/v1/` | a breaking request/response or event change (adding optional fields isn't breaking) |
 | Scoring policy (§6) | `"v": 2` | a policy schema change |
 | Attestation payload + SAS schema (§7) | SAS schema `version` (part of the schema PDA) | a payload layout change → create a new schema version; old attestations stay readable; pools pin the schema address they accept |
 | `proof_type` values (§7) | `1 = tee_nitro_oyster`; `2 = tee_nitro_aws` reserved | append-only; never reuse or renumber |
 | Enclave build | platform measurement (Oyster image id, or AWS PCR0 hash) + on-chain `measurement_id` | every enclave change (automatic); the release notes list it. **`measurement_id`s are append-only: an id is never reused, even after revoke** |
-| Anchor programs | program id + IDL; every account starts with `version: u8` | an account layout change → migration path |
+| Anchor programs | program id + IDL; every account starts with `version: u8` (oracle accounts: §13, demo pool: §14) | an account layout change → migration path |
 | Test vectors (§11) | `manifest.json` generator version | a vector file-format change |
 
 ---
@@ -199,9 +201,10 @@ checks pass, and an earlier transaction's error wins over a later one's.
 | FIU request key (test) | RSA-2048 JWK, `kid` UUIDv4; stands in for the enclave's per-boot key | private: `test-vectors/keys/fiu.test-private.jwk.json` |
 | Rogue key (test) | RSA-2048 JWK, `kid` UUIDv4; never pinned (builds the `unknown_kid` case) | private: `test-vectors/keys/rogue.test-private.jwk.json` |
 | Public halves (test) | RSA public JWK (`kty`,`n`,`e`,`kid`) of each key above | `test-vectors/keys/<name>.public.jwk.json` |
-| Pinned public keys | RSA public JWK (`kty`,`n`,`e`,`kid`) | `enclave/pinned/*.jwk.json`, compiled in with `include_bytes!` |
-| FIU request key | RSA-2048, generated in the enclave at boot | public JWK exposed by `GET /v1/info` |
-| Enclave attester key | secp256k1, provided by Oyster at `/app/ecdsa.sec` | eth address exposed by `GET /v1/info` |
+| Pinned public keys | RSA public JWK (`kty`,`n`,`e`,`kid`) | `enclave/pinned/aa.jwk.json`, `enclave/pinned/fip.jwk.json` (demo keys), compiled in with `include_bytes!` |
+| Demo FIP / AA signing keys | RSA-2048 JWK, `kid` UUIDv4; made once by `pnpm --filter @tio/sandbox-bank gen:demo-keys` | private: `sandbox-bank/.secrets/{aa,fip}.demo-private.jwk.json` (gitignored); public: `enclave/pinned/` |
+| FIU request key | RSA-2048, generated in the enclave at boot, `kid` UUIDv4 | public JWK exposed by `GET /v1/info`, with the attester's §8.1 binding signature |
+| Enclave attester key | secp256k1, provided by Oyster at `/app/ecdsa.sec` (32 raw bytes, new on every boot) | eth address exposed by `GET /v1/info` |
 | Test enclave keys | Curve25519 scalar (used in both §3 modes) + secp256k1, fixed | `test-vectors/keys/enclave.test-private.json` |
 
 ### Two key sets: committed test keys vs secret demo keys
@@ -209,7 +212,7 @@ checks pass, and an earlier transaction's error wins over a later one's.
 | Key set | Committed? | Used by | Pinned in a deployed enclave? |
 |---|---|---|---|
 | **Test-vector keys** (`test-vectors/keys/*.test-private.*`, golden-vector keys flagged `private_key_test_only`) | **Yes**, on purpose, so anyone can reproduce the vectors | offline unit tests only | **Never** |
-| **Demo sandbox-bank keys** (FIP + AA signing keys for the running sandbox bank) | **Never.** Private halves live only in `sandbox-bank`'s `.env` / secret store | the live sandbox bank | Public halves only, in `enclave/pinned/` |
+| **Demo sandbox-bank keys** (FIP + AA signing keys for the running sandbox bank) | **Never.** Private halves live only in `sandbox-bank/.secrets/` (gitignored, backed up outside the repo) and the deployed service's secret store | the live sandbox bank | Public halves only, in `enclave/pinned/` |
 
 Why two sets: a committed private key is public. If the deployed enclave
 pinned a committed key, anyone could forge "signed bank data" and the enclave
@@ -220,9 +223,16 @@ Rules:
 - `enclave/pinned/` holds **only** demo (or, later, real FIP/AA) public keys.
   Test-vector public keys stay in `test-vectors/` and reach unit tests as
   inputs.
-- **Startup guard:** the enclave keeps a compiled-in deny-list of every
-  test-key `kid` and SPKI hash from `test-vectors/`. At boot it refuses to
-  start (exit non-zero, `test_key_pinned`) if any pinned key matches.
+- **Startup guard:** the enclave keeps a compiled-in deny-list
+  (`enclave/src/guard.rs`) of every test-key `kid` and the SHA-256 of every
+  test RSA modulus (the big-endian bytes of the JWK `n`) under
+  `test-vectors/`, including the golden RFC 7515 / 7520 keys; a test checks
+  the list covers them all. At boot, before loading any other key, it
+  refuses to start (exit non-zero, `test_key_pinned`) if any pinned key
+  matches by `kid` or by modulus, so renaming a test key's `kid` doesn't get
+  it past. Known limit: a modulus re-encoded with a leading zero byte hashes
+  differently. That guards against mistakes, not against someone committing
+  a disguised test key on purpose.
 - Committing private keys is allowed **only** under `test-vectors/`, with the
   `test-private` naming or flag. Anywhere else it's a bug; `.gitignore` blocks
   `*.pem`, `*.key` and `id.json`.
@@ -455,16 +465,20 @@ IV break AES-GCM: the XOR of the plaintexts leaks and the GHASH key can be
 recovered (NIST SP 800-38D). Until a provider shows per-account keys or
 nonces, multi-account and multi-FIP responses are refused.
 
-**FIP signature (our sandbox; OPEN (a) for real FIPs):** the plaintext inside
+**FIP signature (sandbox extension, not part of ReBIT):** the plaintext inside
 `encryptedFI` is a JSON envelope:
 
 ```json
 { "fi": "<base64 of the FI JSON bytes>", "jws": "<detached JWS by the FIP key over those bytes>" }
 ```
 
-The enclave checks the FIP JWS over the decoded `fi` bytes. If real FIPs turn
-out not to sign, this envelope becomes optional and step 6 of the evaluate
-pipeline is skipped for them.
+The enclave checks the FIP JWS over the decoded `fi` bytes. The ReBIT spec
+defines no such signature for the FIU: `FIFetchResponse` carries only `fipID`,
+`encryptedFI` and `KeyMaterial`, signed as a whole by the AA, and the DEPOSIT
+schema has no signature element (checked 2026-10-05, AA 2.1.0 / FIP 2.2.0 /
+`deposit_v2.0.0.xsd`). For a real provider this envelope is therefore absent
+unless that provider adds one; it then becomes optional and step 6 of the
+evaluate pipeline is skipped, leaving the AA signature as the provenance check.
 
 ### 5.3 Consent artefact — compact JWS by the AA key
 
@@ -607,7 +621,7 @@ UTC. Transaction order = (`transactionTimestamp`, input index).
   due near the same day bounces that month, still has the bounce explained by the known loan.
 - A loan with fewer than `min_occurrences` payments in the statement (default 2: a single payment) is
   not seen.
-- Income = every non-bounce credit, so self-transfers, loan proceeds and refunds count. FIP signatures prove
+- Income = every non-bounce credit, so self-transfers, loan proceeds and refunds count. Signatures prove
   where the data came from, not that a credit is income.
 - `day_tol` has no month-end wrap (the 31st and the 1st are 30 days apart).
 - Transactions with equal timestamps keep input order; reordering them can change an end-of-day balance.
@@ -640,6 +654,43 @@ The raw bytes are the same either way; `_lo` = bytes 0..16 of the hash.
 
 SAS attestation account total: 256 bytes.
 
+**Credential and schema.** Created once per cluster by `ops` (`sas:setup`,
+see `ops/README.md`), which verifies them on re-runs and never changes them:
+
+| Thing | Value |
+|---|---|
+| Credential name | `tee-income-oracle` (PDA seed, so ≤ 32 bytes) |
+| Credential authority | the admin wallet |
+| Credential authorized signers | exactly `[sas_signer]` = PDA `["sas_signer"]` of the oracle program. Any other signer could write attestations the oracle never checked |
+| Schema name / version | `tio-income-tier` / `1` |
+| Schema description | `TEE Income Oracle attestation payload v1 (FORMATS section 7)` |
+| Schema layout + field names | as above |
+
+Addresses: credential = `["credential", authority, name]`, schema =
+`["schema", credential, name, version_u8]` under the SAS program. They depend
+only on the admin wallet, names and version, so the same admin gets the same
+addresses on every cluster. `sas:setup` writes them to
+`deployments/<cluster>.json` (snake_case, public data):
+`cluster, sas_program, oracle_program, sas_signer, authority, credential,
+schema, schema_name, schema_version`.
+
+**Deployment file.** Several `ops` scripts write `deployments/<cluster>.json`;
+each merges its own keys in and keeps the rest:
+
+| Key | Written by | Value |
+|---|---|---|
+| the nine above | `sas:setup` | SAS program, oracle program, credential, schema |
+| `demo_pool_program`, `mint` | `pool:setup` | base58; `mint` is classic SPL Token, 6 decimals, no freeze authority |
+| `pools` | `pool:setup` (adds its pool, keeps the others) | `[{ address, pool_id }]`, the pools `enclave:rotate` keeps approving |
+| `enclaves` | `enclave:rotate` | `[{ measurement_id, image_id, attester, attestation_file }]`: hex image id (§13 `measurement`), `0x` eth address, path of the archived document relative to the deployment file; one record per id |
+
+Archived attestation documents: `deployments/<cluster>/attestation-<id>.hex`,
+the exact hex returned by the enclave's Oyster attestation server (port 1301,
+`/attestation/hex`) and checked by `oyster-cvm verify`. `sha256` of the decoded
+bytes is the entry's `attestation_doc_hash` (§13), so anyone can re-verify the
+document behind a registry entry after the enclave is gone. Never edited or
+overwritten.
+
 **Verified on devnet 2026-09-27** (throwaway spike, `sas-lib` 1.0.10, SAS
 `22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG`):
 - The schema layout above is accepted and stored as `0,0,0,4,4,4,4,8,2,2`.
@@ -652,10 +703,40 @@ SAS attestation account total: 256 bytes.
   - data length that doesn't match the layout (82 bytes) → error `0x6`;
   - a second attestation for the same (credential, schema, nonce) → the
     system program's "account already in use". **Refreshing a borrower's
-    attestation needs `close_attestation` first.**
+    attestation needs `close_attestation` first**; `submit_attestation` does
+    that itself (§13).
 - The attestation address equals `["attestation", credential, schema, nonce]`
   as derived by `deriveAttestationPda`, and the stored `nonce` is the borrower
   wallet.
+
+**How the oracle writes it** (SAS source at commit `12582e23d4`, which matches
+the devnet binary in `test-fixtures/sas/`; create and close are unchanged in
+SAS 2.0). Tested on surfpool against that binary.
+- Instructions, built by hand (the published Rust client pins
+  solana-program 2.x): `CreateAttestation` = `[6] ‖ nonce 32 ‖ u32 len ‖ data
+  ‖ expiry i64`, accounts payer (w, s), authority (s), credential, schema,
+  attestation (w), system program. `CloseAttestation` = `[7]`, accounts payer
+  (w), authority (s), credential, attestation (w), event authority (PDA
+  `["__event_authority"]` under SAS), system program, SAS program.
+- **SAS `expiry`** = `issued_at + 30 days` (oracle constant
+  `ATTESTATION_TTL_SECS`; the enclave doesn't sign it). SAS rejects an expiry
+  in the past with `0x6` too, not only a bad data length; `0` would mean
+  "never expires".
+- **Close refunds whatever account is passed as `payer`**, unchecked by SAS.
+  The oracle always passes its own payer (the relayer), who also pays the new
+  rent, so a refresh costs about nothing. The first payer's rent goes to
+  whoever relays the refresh.
+- **Stored account** (256 B): `disc u8 (= 2) ‖ nonce 32 ‖ credential 32 ‖
+  schema 32 ‖ u32 len ‖ data 83 ‖ signer 32 ‖ expiry i64 ‖ token_account 32`.
+  The payload starts at byte 101, so `issued_at` is at byte 168. The oracle
+  reads an existing account only after checking owner = SAS, length 256 and
+  discriminator 2. It doesn't re-check the stored `signer`: the admin sets
+  the credential's signers, and an admin who added another signer could
+  write attestations directly anyway. A program that lends on an
+  attestation is different: it must check the stored `signer` (byte 184;
+  `expiry` is at byte 216), as the demo pool does (§14).
+- Anyone can send lamports to an attestation address before it exists. SAS
+  creates over them (tops up below rent), so this can't block a wallet.
 
 ---
 
@@ -674,6 +755,65 @@ sig = secp256k1_sign_recoverable(keccak256(msg))  → 65 B r‖s‖v
 ```
 The Solana secp256k1 precompile hashes `msg` with keccak256 itself and checks
 the recovered 20-byte eth address.
+
+**Precompile instruction** (program `KeccakSecp256k11111111111111111111111111111`,
+no accounts). It must be the instruction directly before
+`submit_attestation`, at transaction index `P`, with exactly this 329-byte
+layout:
+
+| Offset | Size | Content |
+|---|---|---|
+| 0 | 1 | signature count = `1` |
+| 1 | 11 | offsets, LE: signature `32`, ix `P` · eth address `12`, ix `P` · message `97`, size `232`, ix `P` |
+| 12 | 20 | enclave eth address |
+| 32 | 64 | `r ‖ s` |
+| 96 | 1 | recovery id `v` (`0` or `1`; the precompile rejects 27/28) |
+| 97 | 232 | `msg` |
+
+The precompile's instruction-index fields are plain one-byte transaction
+indexes with no "this instruction" value, so the oracle compares the whole
+offsets block, built for `P`, byte for byte (CODING-GUIDELINES §2). The
+precompile accepts high-s signatures, so a signature's bytes are never used
+as a replay key; replay is stopped by the strictly increasing `issued_at`
+(§13).
+
+**Clock rules** (Solana clock `now`, oracle constants):
+`issued_at ≤ now + 300` (`MAX_SKEW_SECS`), `now ≤ expiry`, and
+`0 < expiry − issued_at ≤ 600` (`MAX_SIGNATURE_LIFETIME_SECS`). The
+enclave's clock comes from its untrusted host; together the rules bound how
+early or late a signature can be used. The enclave sets `expiry = now + 600`.
+Solana's `Clock::unix_timestamp` is the stake-weighted median of validator
+vote timestamps, bounded to ±25% of the expected time since the epoch start
+(under Alpenglow the leader sets it, never below its parent's). If it lags
+real time by more than 300 s, submissions fail with `IssuedInFuture` until it
+catches up: a liveness risk, never a wrong acceptance.
+
+The enclave (`enclave/src/attester.rs`, k256) signs keccak256(`msg`) with
+a recoverable ECDSA signature normalized to low-s, `v ∈ {0, 1}`.
+
+### 8.1 FIU key binding — FROZEN
+
+Only the secp256k1 attester key is in the Nitro attestation document. The
+FIU request key (§2) is born inside the enclave too, but its public half
+reaches the bank through the untrusted gateway, which could swap in its own
+FIU key (and its own §3 session key) and get the statement encrypted to
+itself. So at boot the attester key signs the FIU public key once:
+
+```
+msg = b"TIO-FIU-KEY-v1"                 14 B
+    ‖ sha256(JCS(fiu_public_jwk))        32 B
+                                       = 46 B
+sig = secp256k1_sign_recoverable(keccak256(msg))  → 65 B r‖s‖v, low-s, v ∈ {0,1}
+```
+`fiu_public_jwk` has exactly the members `e`, `kid`, `kty` (`"RSA"`), `n`
+(base64url, no padding); its JCS bytes are
+`{"e":…,"kid":…,"kty":"RSA","n":…}`. `GET /v1/info` returns the JWK (as
+those JCS bytes) and `fiu_key_signature_hex`. A bank (the sandbox bank,
+§15) recovers the eth address from the signature and accepts the FIU key
+only if that address is the `attester` of an active oracle registry entry
+(§13); then it checks the FI request's FIU JWS with that key, and the entry
+again, before encrypting anything. The key and its binding live for one boot, like the
+attester key.
 
 ---
 
@@ -697,11 +837,53 @@ string and verifies; any difference → reject.
 
 | Route | Request | Response |
 |---|---|---|
-| `GET /v1/info` | — | `{ app_version, attester_address, fiu_public_jwk, pinned_kids: [..] }` |
-| `POST /v1/sessions` | `{ policy, fi_data_range: {from,to} }` | `{ session_id, key_material, fi_request_body_b64, fi_request_jws, intent, intent_expires }` |
+| `GET /v1/info` | — | `{ app_version, attester_address, fiu_public_jwk, fiu_key_signature_hex, pinned_kids: [..] }` |
+| `POST /v1/sessions` | `{ policy, wallet, consent_jws, measurement_id }` | `{ session_id, key_material, fi_request_body_b64, fi_request_jws, intent, intent_expires }` |
 | `POST /v1/sessions/{id}/bind` | `{ wallet, signature_b58 }` | `{ status: "bound" }` |
 | `POST /v1/sessions/{id}/evaluate` | `{ fetch_response_b64, fetch_response_jws, consent_jws }` | `{ tier, payload_hex, signature_hex, expiry }` or `{ tier: "REJECT" }` |
 
+- Requests are JSON with exactly the members listed (unknown members →
+  `bad_request`); responses carry exactly the members listed and nothing
+  else (the evaluate response is built from the outcome and the signed
+  payload only; scores never leave). `{id}` is a UUID; anything else →
+  `session_not_found`.
+- **Create.** `policy` is the lender's §6 policy object (`bad_policy`).
+  `wallet` is the borrower's base58 public key (the §9 intent names it).
+  `consent_jws` is the AA-signed consent (§5.3): the FI request (§5.1)
+  carries its `consentId` and signature segment, so the consent must exist
+  before the session; create checks its AA signature and reads the id
+  (JWS codes, `bad_consent_signature`, `consent_invalid`), and evaluate
+  re-checks all of it (§10.1). `measurement_id` (`0..=254`) is this
+  enclave's registry id (§13), set by the gateway: the id only exists after
+  registration, which needs the enclave's attester address, and a wrong id
+  only fails on-chain (§13 checks 8 and 10). The **enclave** sets the
+  requested range: `to` = today 00:00 UTC by its own clock (the clock
+  evaluate's check 10b reads), `from` = `to` − 365 days. `KeyMaterial`
+  expires at now + 24 h; `intent_expires` = now + 600 s = the session TTL.
+  The oracle program id, SAS credential and schema are compiled into the
+  image (`enclave/src/config.rs`), so they are part of its measurement.
+- **Bind** once, with the session's wallet (`bad_request` otherwise) and an
+  Ed25519 signature over the exact §9 intent (`verify_strict`).
+- **Evaluate** takes the session before reading the body: unknown, expired
+  or unbound → 404 / 410 / 409 without the body being read, and any
+  evaluate call on a bound session uses it up, whatever the body or the
+  result (single-use). `expiry` = the enclave's now + 600 s (§8).
+- **Limits:** at most 256 open sessions (expired ones are swept first);
+  session TTL 600 s; at most 32 create/bind requests in flight and 4
+  evaluate requests in flight (reading, waiting or running), and 2
+  evaluations running at once, each slot taken before any body byte is read
+  and held until the request (for evaluate: the computation) ends, even if
+  the client disconnects; evaluate body ≤ 8 MiB, other bodies ≤ 64 KiB;
+  every body must arrive within 30 s (`body_timeout`). Every body must be a
+  JSON object (a positional array is `bad_request`). Base58 values (`wallet`,
+  `signature_b58`) longer than 44 / 88 characters are refused before they
+  are decoded.
+- **Enclave codes** (HTTP status): `bad_request` (400), `bad_intent_signature`
+  (401), `session_not_found` (404), `session_not_bound`,
+  `session_already_bound` (409), `body_timeout` (408), `session_expired`
+  (410), `body_too_large` (413), `too_many_sessions`, `too_many_requests`,
+  `too_many_evaluations` (503; a refused evaluate doesn't use the session
+  up), `internal_error` (500). `tio-core` codes below are sent with 422.
 - Bodies that are signed travel as base64 of the **exact bytes** (`*_b64`), so
   nothing in between can re-serialize them and break the signature.
 - Errors: `{ error: { code, message } }` with stable `code` strings
@@ -892,3 +1074,469 @@ form above and **accept** these variants:
 | `amount` | JSON number; balances as strings | Accept number or string, parse to paise without floats |
 | Decrypted FI format | Finvu sample shows JSON | **OPEN:** some FIPs may send XML. MVP is JSON-only; XML → reject with `unsupported_fi_format` |
 
+
+---
+
+## 13. Oracle accounts (registry) — FROZEN
+
+Program `oracle`, id `HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8`. Borsh,
+little-endian, each account starts with Anchor's 8-byte discriminator. Account
+`version` is `1` (§0.1).
+
+**`Config`**, PDA `["config"]`, one per program:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | u8 | `1` |
+| `bump` | u8 | PDA bump |
+| `admin` | Pubkey | registers and revokes enclave builds; never the all-zero address |
+| `pending_admin` | Option\<Pubkey\> (1-byte tag + 32) | proposed next admin, `None` unless a change is in progress |
+| `next_measurement_id` | u8 | id the next registration gets. Only increases; `255` is never assigned (max 255 entries) |
+
+**`EnclaveEntry`**, PDA `["enclave", [measurement_id]]` (one byte):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | u8 | `1` |
+| `bump` | u8 | PDA bump |
+| `measurement_id` | u8 | equals the PDA seed; the payload's `measurement_id` (§7) |
+| `measurement_kind` | u8 | `1` = Oyster image id, `2` = AWS PCR0 hash. Same numbers as `proof_type` (§7) |
+| `measurement` | [u8; 32] | the platform measurement; never all zeros |
+| `attester` | [u8; 20] | Ethereum-style address of the enclave's secp256k1 key (what the precompile recovers); never all zeros |
+| `attestation_doc_hash` | [u8; 32] | SHA-256 of the attestation document checked off-chain; never all zeros |
+| `registered_at` | i64 | unix seconds, Solana clock |
+| `revoked_at` | i64 | `0` = active, else unix seconds of the revoke. The only "active" flag |
+
+**Instructions:**
+
+| Instruction | Signer | Effect | Errors |
+|---|---|---|---|
+| `initialize(admin)` | the program's upgrade authority | creates `Config` with `admin`, counter `0` | account already in use (system 0), `ProgramDataMismatch` (6007), `NotUpgradeAuthority` (6000), `ZeroAdmin` (6008) |
+| `register_enclave(kind, measurement, attester, attestation_doc_hash)` | `admin` | creates the entry at `next_measurement_id`, then increments it; event `EnclaveRegistered` | entry not the PDA of `next_measurement_id` (2006; e.g. two registrations built from the same counter, the second fails), `NotAdmin` (6001), `UnknownMeasurementKind` (6002), `ZeroMeasurement` (6003), `ZeroAttester` (6004), `ZeroAttestationDocHash` (6009), `RegistryFull` (6005) |
+| `revoke_enclave(measurement_id)` | `admin` | sets `revoked_at`; event `EnclaveRevoked`. One-way | account not initialized (3012), `NotAdmin` (6001), entry not the PDA of `measurement_id` (2006), `AlreadyRevoked` (6006) |
+| `propose_admin(new_admin)` | `admin` | sets `pending_admin` (replacing any earlier proposal); event `AdminProposed` | `NotAdmin` (6001), `ZeroAdmin` (6008) |
+| `accept_admin()` | the pending admin | `admin` = signer, `pending_admin` = `None`; event `AdminChanged` | `NotPendingAdmin` (6010; also when nothing is pending) |
+| `submit_attestation()` | anyone (the relayer pays) | checks the enclave signature and writes the §7 payload to SAS as `sas_signer`; replaces an older attestation for the same wallet; event `AttestationSubmitted` | see below |
+
+Errors are listed in check order. Anchor loads accounts and creates `init`
+accounts before it checks other constraints, so "already in use" and "not
+initialized" come first; a failed later check still aborts the whole
+transaction. An enclave restart gets a new attester key, so it is registered
+as a new entry and the old one is revoked.
+
+**`submit_attestation`.** No instruction arguments: every value comes from
+the §8 message inside the secp256k1 precompile instruction right before it
+(§8 layout), so the bytes checked are the bytes signed.
+
+Accounts: `payer` (signer, w; pays rent, receives the refund on refresh),
+`sas_signer` (PDA `["sas_signer"]`, no data), `credential`, `schema`,
+`attestation` (w), `enclave_entry`, `instructions` (the instructions sysvar),
+`sas_event_authority` (PDA `["__event_authority"]` under SAS), `sas_program`,
+`system_program`.
+
+Check order:
+
+| # | Check | Error |
+|---|---|---|
+| — | Anchor: entry not initialized; `sas_signer` / event authority not the PDA; wrong sysvar / SAS program | 3012; 2006; 2012 |
+| 1 | instruction at current − 1 is the secp256k1 precompile (and current isn't 0) | `PrecompileNotFound` (6011) |
+| 2 | precompile data is exactly the §8 layout for its own index | `InvalidPrecompileLayout` (6012) |
+| 3 | message starts with `TIO-ATTEST-v1` | `WrongDomainTag` (6013) |
+| 4 | message program id = this program | `WrongProgramId` (6014) |
+| 5 | `credential` = message credential | `CredentialMismatch` (6015) |
+| 6 | `schema` = message schema | `SchemaMismatch` (6016) |
+| 7 | `attestation` = SAS PDA of (credential, schema, wallet), checked before it is read | `AttestationAddressMismatch` (6017) |
+| 8 | `enclave_entry.measurement_id` = payload `measurement_id` | `EnclaveEntryMismatch` (6018) |
+| 9 | entry active | `EnclaveRevoked` (6019) |
+| 10 | precompile eth address = `entry.attester` | `AttesterMismatch` (6020) |
+| 11 | payload `proof_type` = `entry.measurement_kind` | `ProofTypeMismatch` (6021) |
+| 12 | tier ∈ {1, 2, 3} | `InvalidTier` (6022) |
+| 13 | `issued_at ≤ now + 300` | `IssuedInFuture` (6023) |
+| 14 | `now ≤ expiry` | `SignatureExpired` (6024) |
+| 15 | `0 < expiry − issued_at ≤ 600` | `ExpiryTooFar` (6025) |
+| 16 | existing account (non-empty) is a SAS attestation: owner SAS, 256 B, discriminator 2 | `InvalidExistingAttestation` (6027) |
+| 17 | new `issued_at` > stored `issued_at` | `StaleAttestation` (6026) |
+
+Then, for an existing attestation, CPI SAS `close_attestation`, and CPI SAS
+`create_attestation` (nonce = wallet, data = payload, expiry =
+`issued_at + 30 days`, §7). A bad signature fails in the precompile before
+the oracle runs (precompile error `2`, InvalidSignature).
+
+**Replay and refresh.** Strictly increasing `issued_at` per wallet stops an
+exact replay and stops an older, still-unexpired signature from replacing a
+newer tier. Refreshing is close + create inside one instruction.
+
+Event `AttestationSubmitted { subject, measurement_id, tier, issued_at,
+refreshed }`. Measured on surfpool: 17,575 CU to create, 22,968 to refresh;
+the transaction (compute-budget ix + precompile + submit) is 882 bytes.
+
+**Id budget.** Ids are never reused, so every registration (each enclave
+restart or image update) spends one of the 255 for the life of this
+deployment. Running out needs a migration: a new payload version with a
+wider `measurement_id` (§7, so a new SAS schema version), a new registry
+layout, and pools moving to the new schema. Fine for the hackathon; revisit
+before a long-running deployment.
+
+**Admin.** The two-step change lets a lost or compromised admin key be
+replaced without redeploying, as long as the current admin can still sign.
+Beyond the demo, `admin` should be a multisig (e.g. a Squads vault); if the
+admin key itself is lost, the only way out is a program upgrade, so keep the
+program upgradeable (and its upgrade authority safe) until then.
+
+---
+
+## 14. Demo pool accounts — FROZEN
+
+Program `demo_pool`, id `DvDkXcQFJAvCvrMfoujKu2BWfWqVYRmL8WW9hpMgW8KC`. Borsh,
+little-endian, each account starts with Anchor's 8-byte discriminator. Account
+`version` is `1` (§0.1). A minimal lender that shows how a program reads the
+§7 attestation inside its own instruction (no CPI). It lends classic SPL
+Token mints only.
+
+**`Pool`**, PDA `["pool", admin, [pool_id]]`, 240 bytes. One per lender and
+`pool_id`; the admin is a seed, so nobody can take another lender's address:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | u8 | `1` |
+| `bump` | u8 | PDA bump |
+| `vault_bump` | u8 | bump of the vault PDA |
+| `pool_id` | u8 | seed; lets one admin run several pools |
+| `admin` | Pubkey | the creator; the only key that may `update_pool` |
+| `mint` | Pubkey | the lent token; never changes |
+| `credential`, `schema` | Pubkey ×2 | SAS accounts whose attestations the pool accepts (§0.1: a pool pins the schema version it reads); never change |
+| `params.policy_hash` | [u8; 32] | scoring policy the pool requires (§6) |
+| `params.tier_limits` | [u64; 3] | largest principal for tier A, B, C in the mint's base units; `0` = the pool doesn't lend to that tier. `A > 0` and `A ≥ B ≥ C` |
+| `params.max_age_secs` | u32 | oldest attestation: `now − issued_at` |
+| `params.max_window_age_secs` | u32 | oldest statement: `issued_at − window_to` |
+| `params.min_window_secs` | u32 | shortest statement: `window_to − window_from` |
+| `params.approved_measurements` | [u8; 32] | enclave builds the pool trusts: bit `id` set = registry entry `id` approved (byte `id / 8`, bit `id % 8` from the least significant) |
+
+`params` (`PoolParams`, 100 bytes) is everything `update_pool` replaces.
+
+**`Loan`**, PDA `["loan", pool, borrower]`, 131 bytes. Exists while the loan is
+open, so a borrower has at most one per pool:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `version` | u8 | `1` |
+| `bump` | u8 | PDA bump |
+| `tier` | u8 | tier of the attestation used (1 = A, 2 = B, 3 = C) |
+| `pool`, `borrower` | Pubkey ×2 | the seeds |
+| `rent_payer` | Pubkey | who paid this account's rent; `repay` refunds it there |
+| `amount` | u64 | principal, base units |
+| `borrowed_at` | i64 | unix seconds, Solana clock |
+| `attestation_issued_at` | i64 | `issued_at` of the attestation used |
+
+**Vault**: an SPL token account at PDA `["vault", pool]`, mint = `pool.mint`,
+authority = the `Pool` PDA, so only `borrow` can move tokens out. It is
+funded with a plain token transfer; there is no deposit or withdraw
+instruction.
+
+**Instructions:**
+
+| Instruction | Signers | Effect | Errors |
+|---|---|---|---|
+| `create_pool(pool_id, credential, schema, params)` | `admin` (pays) | creates `Pool` and the vault; event `PoolCreated` | account already in use (system 0), pool or vault not the PDA (2006), `InvalidTierLimits` (6001) |
+| `update_pool(params)` | `admin` | replaces `params`; event `PoolUpdated` | pool not initialized (3012), `NotAdmin` (6000), `InvalidTierLimits` (6001) |
+| `borrow(amount)` | `payer`, `borrower` | checks below, then sends `amount` from the vault to the borrower's token account and creates `Loan`; event `Borrowed` | see below |
+| `repay()` | `borrower` | sends `loan.amount` from the borrower's token account to the vault and closes `Loan` to `rent_payer`; event `Repaid` | loan not initialized (3012; no open loan), `mint` not the pool's (2001), vault or loan not the PDA (2006), token account of another mint / owner (2014 / 2015), `rent_payer` not the stored one (2001), SPL Token insufficient funds (`1`) |
+
+`credential` and `schema` are not checked to be SAS accounts at `create_pool`:
+`borrow` derives the attestation address from them and only SAS can own that
+address, so a wrong value gives a pool that never lends.
+
+**`borrow`.** Accounts: `payer` (signer, w; pays the `Loan` rent, may be a
+relayer), `borrower` (signer), `pool`, `mint`, `vault` (w), `borrower_token`
+(w; any token account of `mint` owned by `borrower`, created by the client),
+`loan` (w, created here), `attestation` (the SAS PDA
+`["attestation", pool.credential, pool.schema, borrower]`, §7),
+`enclave_entry` (the oracle's `EnclaveEntry` for the payload's
+`measurement_id`, §13), `token_program`, `system_program`.
+
+The borrower must sign and the attestation address is derived from that
+key, so a wallet can only borrow on its own attestation.
+
+Check order:
+
+| # | Check | Error |
+|---|---|---|
+| — | Anchor: account not initialized / owned by another program / wrong type; `borrower` or `payer` not a signer; open loan (`loan` exists); `pool`, `vault`, `loan`, `attestation` not the PDA; `mint` not the pool's; token account of another mint / owner | 3012 / 3007 / 3002; 3010; system 0; 2006; 2001; 2014 / 2015 |
+| 1 | `amount > 0` | `ZeroAmount` (6002) |
+| 2 | attestation: owner = SAS, 256 bytes, discriminator 2 (also fails when there is no attestation) | `InvalidAttestation` (6003) |
+| 3 | stored `signer` = the oracle's PDA `["sas_signer"]` | `WrongAttestationSigner` (6004) |
+| 4 | `now < expiry`; an `expiry` of `0` is rejected | `AttestationExpired` (6005) |
+| 5 | tier ∈ {1, 2, 3} and its limit > 0 | `TierNotAccepted` (6006) |
+| 6 | `amount ≤` the tier's limit | `AmountOverTierLimit` (6007) |
+| 7 | payload `policy_hash` = `params.policy_hash` | `PolicyMismatch` (6008) |
+| 8 | `now − issued_at ≤ max_age_secs` | `AttestationTooOld` (6009) |
+| 9 | `issued_at − window_to ≤ max_window_age_secs` | `WindowTooOld` (6010) |
+| 10 | `window_to − window_from ≥ min_window_secs`; a window that ends before it starts fails | `WindowTooShort` (6011) |
+| 11 | bit `measurement_id` set in `approved_measurements` | `MeasurementNotApproved` (6012) |
+| 12 | `enclave_entry.measurement_id` = payload `measurement_id` | `EnclaveEntryMismatch` (6013) |
+| 13 | `enclave_entry.revoked_at == 0` | `EnclaveRevoked` (6014) |
+
+Then the token transfer (a vault short of funds fails in the SPL Token
+program with `1`) and the `Loan` account. An open loan is reported by the
+system program (`0`, "already in use") when Anchor creates `loan`.
+
+Why each group is there:
+- **2–3, the attestation is the oracle's.** SAS lets anyone create
+  attestations under their own credential, and a credential's authority can
+  add signers. Only the oracle's PDA signs after checking an enclave
+  signature (§13), so the pool pins the credential and schema through the
+  address and then requires that signer.
+- **4, 8–10, freshness.** SAS expiry is `issued_at + 30 days` (§7); the pool's
+  own limits can be tighter and also cover the statement window, which stops
+  a borrower from reusing an old result or one scored on an old or short
+  statement. Arithmetic that overflows fails the rule. An `issued_at` ahead
+  of the cluster clock (at most 300 s, §8) passes the age rule.
+- **7, the lender's rules.** A tier only means something under the policy
+  that produced it.
+- **11–13, the enclave build.** The pool approves builds itself (it doesn't
+  have to trust every future registration), and the registry can revoke one.
+  Revoking an entry stops lending on every attestation it produced;
+  borrowers attest again with the new build. Open loans are not affected.
+
+**Not checked, on purpose:**
+- Stored `nonce`, `credential`, `schema`: implied by the attestation address,
+  because SAS only creates an attestation at the PDA of those three values.
+- The stored data length: fixed by the 256-byte account size.
+- `proof_type`: the oracle checked it against the registry entry (§13).
+- `consent_hash`, `token_account`: not used by a lender.
+- The SAS schema's "paused" flag: it stops new attestations, not reads.
+- The mint's `freeze_authority`: the pool accepts any classic SPL Token
+  mint. Whoever holds a freeze authority can freeze the vault or a
+  borrower's token account; `repay` then fails and that loan stays open. No
+  tokens can be taken. A lender picks a mint whose freeze authority it
+  trusts.
+
+**Limits of the demo.** Principal only: no interest, tenor, liquidation or
+withdrawal of vault funds. No admin change, pause or close.
+
+**Cost**, measured on surfpool: `borrow` 23,690 CU in a 526-byte transaction,
+`repay` 13,204 CU in 419 bytes (each with one compute-budget instruction).
+Both derive PDAs on chain, so the exact number varies with the addresses.
+
+**Token program.** The pool uses the classic SPL Token account types. Moving
+to Anchor's `token_interface` types (Token and Token-2022) later is a code
+change only: `Pool` and `Loan` store just the mint and the vault address,
+and existing vaults stay valid. Token-2022 mints need an explicit decision
+per extension first (transfer fee, transfer hook, permanent delegate,
+default frozen state).
+
+---
+
+## 15. Sandbox bank HTTP API — FROZEN (demo)
+
+The live mock FIP + AA (`sandbox-bank`, `node src/service/main.ts`). It
+speaks ReBIT where ReBIT defines the call (§5) and adds one route,
+`/fiu-keys`, that stands in for the Sahamati Central Registry lookup of an
+FIU's key. Bodies are JSON (`ver` = §5's version string), at most 64 KiB
+(413), read once as exact bytes. Every success reply carries
+`x-jws-signature` = the AA's detached JWS (§4) over its exact bytes.
+
+**Deployment invariant.** Only the gateway can call the bank: over a private
+network, or, where the host has none (Azure Container Apps express: an
+"internal" app still answers on its public URL), with a shared bearer token
+(`BANK_TOKEN` below). The gateway is its only client and owns rate
+limiting. Two routes need no authentication beyond that caller rule
+(`/fiu-keys`, `/Consent`), and their caps below are sized for that: they
+bound memory and RPC cost, not request rate. Exposing the bank publicly breaks this.
+
+| Route | Request | Reply |
+|---|---|---|
+| `POST /fiu-keys` | `{ fiu_public_jwk, fiu_key_signature_hex }` (`GET /v1/info`'s values, §8.1) | `{ kid, attester: "0x…" }` |
+| `POST /Consent` | `{ persona_id }` (`salaried_steady`, `trader_lumpy`, `declining`, `stressed`) | `{ ver, timestamp, consentId, signedConsent }` |
+| `POST /FI/request` | §5.1 body, header `x-jws-signature` (FIU detached JWS) | `{ ver, timestamp, txnid, consentId, sessionId }` |
+| `POST /FI/fetch` | `{ ver, timestamp, txnid, sessionId }` (ReBIT AA 2.0 shape) | the §5.2 fetch response, AA-signed |
+| `GET /health` | — | `{ status: "ok" }` |
+
+- **`/fiu-keys`**: JWK exactly `e, kid, kty: "RSA", n`, RSA ≥ 2048 bits;
+  signature 130 hex characters, `v ∈ {0, 1}`, low-s (else `InvalidKey`).
+  The recovered address must be the `attester` of an active registry entry
+  (`Unauthorized`; registry unreadable → `ServiceUnavailable`). The gateway
+  calls it once per enclave boot. The bank keeps the newest 16 keys by `kid`.
+- **`/Consent`**: the §5.3 consent, AA-signed (RS256), `status ACTIVE`,
+  `fetchType ONETIME`, `consentStart` = now − 60 s, `consentExpiry` = now +
+  24 h, `FIDataRange` = [today 00:00 UTC − 366 d, today 00:00 UTC + 1 d]
+  (the enclave requests [today − 365 d, today]; the spare day on each side
+  covers a session that crosses UTC midnight). Approval by the borrower is
+  implied (demo). At most 1024 consents are kept; when full, the oldest
+  **used** one is dropped, else the oldest unused one, so `/Consent` never
+  refuses for lack of room (completed sessions would otherwise lock new
+  borrowers out for a day). A replayed consent that was dropped is refused
+  as `InvalidConsentId`; a flood can only make a borrower ask again.
+- **`/FI/request`** checks, in order: FIU JWS (`kid` registered via
+  `/fiu-keys`, signature over the raw bytes; before any RPC read) →
+  `SignatureDoesNotMatch`; the key's attester still active →
+  `Unauthorized` / `ServiceUnavailable`; body shape → `InvalidRequest`;
+  consent known → `InvalidConsentId`, not expired → `InvalidConsentStatus`,
+  unused → `InvalidConsentUse`, `Consent.digitalSignature` = the issued
+  signature segment → `InvalidConsentDetail`; `FIDataRange` valid §12
+  date-times, `from < to`, inside the consent's range → `InvalidDateRange`;
+  `KeyMaterial` (§3) → `InvalidKey`. Only then is the consent marked used
+  (a refused request never uses it up) and the statement encrypted (§3,
+  §5.2: FIP envelope, one `FI[]`, one `data[]`). The persona's statement
+  ends on the requested `to` day (or today, if `to` is later), so it lies
+  inside the requested window across UTC midnight.
+- **`/FI/fetch`**: not FIU-signed (the data is encrypted to the enclave).
+  Unknown or expired session (600 s, the enclave's TTL) → `InvalidSessionId`;
+  `txnid` ≠ the session's → `InvalidRequest`; second fetch → `DataGone`. At
+  most 256 sessions; when full, the oldest fetched one is dropped (a later
+  fetch of it gets `InvalidSessionId`), and only 256 unfetched sessions
+  make `/FI/request` answer `ServiceUnavailable`.
+- **Registry reads** (§13): `Config`, then every `EnclaveEntry` PDA below
+  `next_measurement_id` (`getMultipleAccounts`, batches of 100; account
+  `version` must be 1 and `measurement_id` its PDA seed). One snapshot at
+  most every 5 s (concurrent misses share one read), each read timed out at
+  5 s; a positive answer is cached 30 s per attester, so a revoke takes
+  effect within 35 s. A failed read is never cached and never "active".
+- **Errors**: ReBIT `ErrorResponse` `{ ver, txnid, timestamp, errorCode,
+  errorMsg }`; `txnid` is the request's when its body was read, else `""`;
+  `errorMsg` is fixed per code and never repeats request data.
+
+| `errorCode` | HTTP |
+|---|---|
+| `InvalidRequest`, `SignatureDoesNotMatch`, `InvalidKey`, `InvalidDateRange`, `InvalidConsentId`, `InvalidConsentStatus`, `InvalidConsentDetail`, `InvalidConsentUse`, `InvalidSessionId` | 400 |
+| `InvalidRequest` (unknown route) | 404 |
+| `InvalidRequest` (body over 64 KiB) | 413 |
+| `Unauthorized` (also: `BANK_TOKEN` set and the request lacks `authorization: Bearer <token>`; checked before the body is read, every route but `/health`) | 401 |
+| `DataGone` | 410 |
+| `InternalError` | 500 |
+| `ServiceUnavailable` (registry unreadable, store full) | 503 |
+
+**Keys and config** (environment): `SANDBOX_AA_PRIVATE_JWK`,
+`SANDBOX_FIP_PRIVATE_JWK` (the §2 demo keys, JSON text), `SOLANA_RPC_URL`,
+`ORACLE_PROGRAM_ID` (default the §13 id), `PORT` (8081), `PINNED_DIR`
+(default `enclave/pinned/`), `BANK_TOKEN` (every route but `/health` needs
+`authorization: Bearer <token>`; RFC 6750 b64token: `A-Z a-z 0-9 - . _ ~ +
+/` then optional trailing `=`, at least 32 characters; compared in constant
+time), `BANK_ALLOW_NO_TOKEN` (exactly `1` runs the bank without a token, for
+a local or private-network bank only; `start:local` sets it). The bank
+refuses to start without `BANK_TOKEN` unless that opt-out is set, or if a key is flagged
+`private_key_test_only`, is under 2048 bits, or its public half (`e, kid,
+kty, n`) differs from the pinned file the enclave compiles in.
+
+---
+
+## 16. Gateway HTTP API — FROZEN (demo)
+
+The gateway (`gateway/`, `node src/main.ts`) is the web's only server. It is
+**untrusted** (ARCHITECTURE §2): it carries the enclave's signed FI request
+and the AA-signed fetch response as exact bytes, relays the enclave's signed
+result on chain and pays the fees. It can delay or drop a session; it can't
+read bank data or forge a tier.
+
+| Route | Request | Reply |
+|---|---|---|
+| `POST /v1/sessions` | `{ wallet, persona_id }` | `{ session_id, intent, intent_expires }` |
+| `POST /v1/sessions/{id}/complete` | `{ signature_b58 }` | `text/event-stream` (below) |
+| `GET /v1/info` | — | `{ cluster, oracle_program, credential, schema, measurement_id, policy_hash, attester_address }` |
+| `GET /health` | — | `{ status: "ok" }` |
+
+- **Bodies** are JSON objects with exactly the members listed (unknown
+  members, wrong types, not JSON → `bad_request`), at most 4 KiB
+  (`body_too_large`, 413). `wallet`: base58, 32–44 characters.
+  `persona_id`: `salaried_steady`, `trader_lumpy`, `declining` or
+  `stressed` (the §15 personas). `signature_b58`: base58, at most 88
+  characters, the wallet's Ed25519 `signMessage` over the exact `intent`
+  string (§9).
+- **Create** checks the enclave's FIU key first (below), asks the bank for an
+  AA-signed consent for the persona (§15 `/Consent`), and opens an enclave
+  session with the configured policy, the wallet, that consent and the
+  configured `measurement_id` (§10). `intent` / `intent_expires` are the
+  enclave's.
+- **Complete** checks the body, then takes the session (single use: any
+  complete after that answers `session_not_found`). Errors up to this point
+  are JSON with their HTTP status. Then the reply is `200 text/event-stream`:
+
+  | Event | Data |
+  |---|---|
+  | `stage` | `{"stage": "bind" \| "fi_request" \| "fi_fetch" \| "evaluate" \| "submit"}`, sent as each stage starts, in this order |
+  | `result` | `{"tier": "A" \| "B" \| "C", "tx", "attestation", "expiry", "payload_hex"}` or `{"tier": "REJECT"}` (no `submit` stage) |
+  | `error` | `{"code", "message", "stage"}`; ends the stream, no `result` |
+
+  `tx` is the relayer's own transaction signature, or `null` when the
+  attestation already held exactly this payload from an earlier transaction
+  (the gateway never guesses a signature from the account's history).
+  `attestation` is the SAS attestation address (§7), `expiry` the §8 message
+  expiry, `payload_hex` the 83-byte §7 payload. A `: keep-alive` comment is
+  sent every 15 s so proxies don't close a quiet stream. A client that
+  disconnects doesn't stop the flow: the attestation may still land.
+- **Stages.** `bind`: enclave `/bind` (§10). `fi_request`: the enclave's
+  `fi_request_body_b64` bytes and `fi_request_jws`, sent to the bank
+  verbatim. `fi_fetch`: bank `/FI/fetch` with the ack's `txnid` and
+  `sessionId`. `evaluate`: enclave `/evaluate` with base64 of the exact
+  fetched bytes, their JWS and the consent. `submit`: one v0 transaction
+  `[SetComputeUnitLimit(60 000), secp256k1 precompile (index 1, §8 layout),
+  oracle.submit_attestation]` paid by the relayer (§13).
+- **Relay retry rules.** The oracle needs a strictly newer `issued_at` per
+  wallet (§13 check 17), so one result can never land twice and re-signing is
+  safe. After a failed send: a signature of ours that is `confirmed` or
+  `finalized` without error → success (`processed` or an unknown status
+  doesn't count); else the attestation already holds this payload →
+  success, `tx: null`; else `StaleAttestation` (6026) → `stale_attestation`;
+  else `EnclaveRevoked` (6019, revoked after the registry read) →
+  `enclave_revoked`;
+  else an expired blockhash → one re-sign with a fresh blockhash; else
+  `tx_failed`.
+- **Errors**: `{ error: { code, message, stage } }`, `stage` ∈ `gateway`,
+  `bank`, `enclave`, `chain`. Enclave codes (§10) and ReBIT `errorCode`s
+  (§15) pass through unchanged with their stage; an upstream 4xx keeps its
+  status, a 5xx answers 502. An upstream code must match
+  `^[A-Za-z][A-Za-z0-9_]{0,63}$`, else the reply is `upstream_unavailable`
+  (it's logged and returned, so an untrusted upstream can't inject text).
+  `message` is a fixed string per gateway code and one generic string for any
+  upstream code; it never carries upstream or request text.
+
+| Code | HTTP | Stage |
+|---|---|---|
+| `bad_request` | 400 | gateway |
+| `not_found` (unknown route), `session_not_found` | 404 | gateway |
+| `session_expired` | 410 | gateway |
+| `body_too_large` | 413 | gateway |
+| `rate_limited` | 429 | gateway |
+| `internal_error` (any unexpected exception, no detail) | 500 | gateway |
+| `too_many_sessions` | 503 | gateway |
+| `upstream_unavailable` (network error, 30 s timeout, redirect, reply not JSON / wrong shape / over 64 KiB, fetch reply over 6 MiB, missing `x-jws-signature`) | 502 | bank or enclave |
+| `enclave_rotated` (the enclave's attester differs from the one at boot) | 503 | enclave |
+| `stale_attestation` | 409 | chain |
+| `tx_failed` (any other chain failure, incl. an RPC timeout) | 502 | chain |
+| `enclave_not_registered`, `enclave_revoked`, `attester_mismatch` (boot check; the first two also before every submit, which re-reads the registry entry; `enclave_revoked` also when the send fails with 6019) | 503 | chain |
+
+- **Limits.** At most 256 open sessions, TTL 600 s (= the enclave's
+  `intent_expires`), single use. Create only is rate-limited: a token bucket
+  per client IP (burst 5, 10 per minute) and a global one (burst 20, 60 per
+  minute); a request needs a token from both. The client IP is the socket
+  address, or with `TRUST_PROXY=1` the **last** `X-Forwarded-For` hop: the one
+  our single trusted proxy (the Azure ingress) appended. Earlier hops are
+  client-written. Another proxy in front (a CDN) would need a different rule.
+  RPC calls time out after 15 s, a send + confirm after 100 s.
+- **FIU key.** At boot and before every create the gateway reads the
+  enclave's `/v1/info`. A new `kid` (enclave restart) is registered with the
+  bank (§15 `/fiu-keys`); a bank `SignatureDoesNotMatch` on `/FI/request`
+  forces a re-registration on the next create. A different attester means a
+  new registry entry, which needs a new `MEASUREMENT_ID`: `enclave_rotated`
+  until the gateway restarts.
+- **Boot** (any failure exits 1 before listening): config → enclave
+  `/v1/info` → `EnclaveEntry[MEASUREMENT_ID]` exists, is active and holds the
+  enclave's attester → FIU key registered with the bank → relayer balance
+  (warning below 0.05 SOL) → listen.
+- **Config** (environment, a `ConfigError` names the variable and never
+  echoes a secret): `ENCLAVE_URL`, `BANK_URL`, `SOLANA_RPC_URL` (http(s)),
+  `SOLANA_WS_URL` (ws(s); default the RPC URL as ws(s), port 8899 → 8900),
+  `CLUSTER` (reads `deployments/<cluster>.json`; its program ids must equal
+  the compiled-in ones), `MEASUREMENT_ID` (0–254), `POLICY_PATH` (default
+  `test-vectors/policy/default.json`; the file must be exact JCS with no
+  trailing newline, so `policy_hash` = sha256 of its bytes = the §6 hash the
+  enclave puts in the payload), `RELAYER_KEYPAIR` (Solana CLI keypair JSON),
+  `ALLOWED_ORIGIN` (one exact web origin for CORS, never `*`),
+  `TRUST_PROXY` (`1` or unset), `PORT` (8082), `BANK_TOKEN` (optional; the
+  bank's token, sent as `authorization: Bearer <token>` on every bank call;
+  same rule as §15; with a token, `BANK_URL` must be `https:`, or `http:` only
+  to localhost, `[::1]`, a loopback or private IPv4, a single-label name or
+  a `.internal` name, since RFC 6750 bearer tokens need a confidential channel).
+- **Deployment invariant.** The gateway is the bank's only client (§15) and
+  the only caller that should drive the enclave; it is the public endpoint
+  and owns rate limiting.

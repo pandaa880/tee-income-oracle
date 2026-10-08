@@ -1,0 +1,14 @@
+# Context for sandbox-bank/Dockerfile (BuildKit reads <Dockerfile>.dockerignore).
+# Only the lockfile, the bank's sources and the pinned public keys; never
+# sandbox-bank/.secrets/ (the demo private keys) or tests.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!sandbox-bank/package.json
+!sandbox-bank/src/
+!packages/encoding/package.json
+!packages/encoding/src/encoding.ts
+!enclave/pinned/
+sandbox-bank/src/**/*.test.ts
+sandbox-bank/src/testing/

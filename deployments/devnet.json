@@ -1,0 +1,33 @@
+{
+  "cluster": "devnet",
+  "sas_program": "22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG",
+  "oracle_program": "HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8",
+  "sas_signer": "HznYLdoTuhm53WjdvNcQBbGT71n9msXgpJcKiya2Moti",
+  "authority": "3gJtuaoBxuAMTvphyRx1KXDHKg2FQfbHCWsvQ4rMgSND",
+  "credential": "F8K44XAxQ66GWjtpnnTidox81YHcr2VN5ogFofFViCP7",
+  "schema": "991nZUZr63g1pZJ7VQ8GQWk5fVbP7WsuX7crsY5q8qKV",
+  "schema_name": "tio-income-tier",
+  "schema_version": 1,
+  "mint": "AHDKGxzRcfers64PPHKAUi7rDMMTTcxb2nsGyUS6qXnU",
+  "demo_pool_program": "DvDkXcQFJAvCvrMfoujKu2BWfWqVYRmL8WW9hpMgW8KC",
+  "pools": [
+    {
+      "address": "HNx4j5GqjiHpHWHZfdwa9vJVoQJfFcuHicHtGpEHtQcx",
+      "pool_id": 0
+    }
+  ],
+  "enclaves": [
+    {
+      "measurement_id": 0,
+      "image_id": "7dd33d974511a825c871f267ebdc6b34fb9cdc2c63210e27a31a8c7cfb96daff",
+      "attester": "0xc39b71ae1d2bbc0919ee8c1250728a9b2380052b",
+      "attestation_file": "devnet/attestation-0.hex"
+    },
+    {
+      "measurement_id": 1,
+      "image_id": "7dd33d974511a825c871f267ebdc6b34fb9cdc2c63210e27a31a8c7cfb96daff",
+      "attester": "0xb6dda6eed87322334ba37809bd451a852ae6574c",
+      "attestation_file": "devnet/attestation-1.hex"
+    }
+  ]
+}

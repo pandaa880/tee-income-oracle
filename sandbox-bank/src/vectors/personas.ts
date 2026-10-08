@@ -48,7 +48,7 @@ interface Spec {
   readonly odLimitPaise: number; // 0 = no overdraft
   readonly openingPaise: number;
   readonly holder: { readonly name: string; readonly dob: string; readonly pan: string };
-  readonly monthEvents: (monthStart: number, prng: Prng) => readonly TxnEvent[];
+  readonly monthEvents: (monthStart: number, prng: Prng, anchor: number) => readonly TxnEvent[];
 }
 
 const SPECS: readonly Spec[] = [
@@ -98,22 +98,32 @@ const SPECS: readonly Spec[] = [
   },
 ];
 
-/** Personas in fixed order: salaried_steady, trader_lumpy, declining, stressed. */
-export function buildPersonas(): readonly Persona[] {
+/** Longest statement the enclave can accept: its requested window is 365 days (FORMATS §10). */
+const MAX_STATEMENT_DAYS = 365;
+
+/**
+ * Personas in fixed order: salaried_steady, trader_lumpy, declining, stressed.
+ * `anchorUnix` is the statement's end: the vectors use the fixed generator
+ * clock; the live bank passes today 00:00 UTC. The statement starts `months`
+ * calendar months before the anchor's day, but never more than 365 days
+ * before it (12 months across a leap day are 366).
+ */
+export function buildPersonas(anchorUnix: number = NOW_UNIX): readonly Persona[] {
   return SPECS.map((spec) => ({
     persona_id: spec.id,
     description: spec.description,
     expected_tier: spec.tier,
-    fi: buildFi(spec),
+    fi: buildFi(spec, anchorUnix),
   }));
 }
 
-function buildFi(spec: Spec): JsonValue {
+function buildFi(spec: Spec, anchor: number): JsonValue {
   const prng = createPrng(seedBytes(spec.id, 'persona'));
-  const start = addMonths(dayStart(NOW_UNIX), -spec.months);
+  const day = dayStart(anchor);
+  const start = Math.max(addMonths(day, -spec.months), day - MAX_STATEMENT_DAYS * DAY);
   const events = monthStarts(start, spec.months)
-    .flatMap((m) => spec.monthEvents(m, prng))
-    .filter((e) => e.at >= start && e.at <= NOW_UNIX)
+    .flatMap((m) => spec.monthEvents(m, prng, anchor))
+    .filter((e) => e.at >= start && e.at <= anchor)
     .toSorted((a, b) => a.at - b.at);
   const { transactions, closingPaise } = applyEvents(spec, events, prng);
   return {
@@ -122,10 +132,10 @@ function buildFi(spec: Spec): JsonValue {
     linkedAccRef: uuidFromSeed(seedBytes(spec.id, 'linkedAccRef')),
     version: '2.0',
     Profile: { Holders: { type: 'SINGLE', Holder: holder(spec) } },
-    Summary: summary(spec, closingPaise),
+    Summary: summary(spec, closingPaise, anchor),
     Transactions: {
       startDate: isoDate(start),
-      endDate: isoDate(NOW_UNIX),
+      endDate: isoDate(anchor),
       Transaction: transactions,
     },
   };
@@ -217,22 +227,21 @@ function traderMonth(m: number, prng: Prng): readonly TxnEvent[] {
   return events;
 }
 
-/** First month of `declining`'s gig phase: May 2026, so it covers the recent window. */
-const GIG_START = addMonths(firstOfMonth(NOW_UNIX), -4);
-/** The month whose late one-off expense leaves too little for the next EMI. */
-const DRAIN_MONTH = addMonths(firstOfMonth(NOW_UNIX), -3);
-
 /**
- * Steady salary until GIG_START, then three smaller gig credits a month.
- * Only the EMI is posted when the money is short (and bounces); everything
- * else is skipped, so the balance never goes negative. One large expense late
- * in DRAIN_MONTH makes exactly the next EMI bounce.
+ * Steady salary until the gig start (4 months before the anchor's month, so
+ * the gig phase covers the recent window), then three smaller gig credits a
+ * month. Only the EMI is posted when the money is short (and bounces);
+ * everything else is skipped, so the balance never goes negative. One large
+ * expense late in the drain month (3 months before the anchor's month) makes
+ * exactly the next EMI bounce.
  */
-function decliningMonth(m: number, prng: Prng): readonly TxnEvent[] {
+function decliningMonth(m: number, prng: Prng, anchor: number): readonly TxnEvent[] {
+  const gigStart = addMonths(firstOfMonth(anchor), -4);
+  const drainMonth = addMonths(firstOfMonth(anchor), -3);
   const events: TxnEvent[] = [
     ev(m, 5, prng, 'DEBIT', 'OTHERS', 2_000_000, 'ACH-DR-ICICI PERSONAL LOAN EMI', 'emi'),
   ];
-  if (m < GIG_START) {
+  if (m < gigStart) {
     events.push(
       ev(m, 1, prng, 'CREDIT', 'FT', 9_000_000, 'NEFT-SAL-NORTHWIND LOGISTICS'),
       ev(m, 3, prng, 'DEBIT', 'UPI', 2_000_000, 'UPI-RENT-GREEN PARK', 'skip_if_short'),
@@ -245,7 +254,7 @@ function decliningMonth(m: number, prng: Prng): readonly TxnEvent[] {
       events.push(ev(m, day, prng, 'CREDIT', 'UPI', paise, 'UPI-CR-GIG PLATFORM PAYOUT'));
     }
   }
-  if (m === DRAIN_MONTH) {
+  if (m === drainMonth) {
     events.push(
       ev(m, 28, prng, 'DEBIT', 'FT', 15_000_000, 'NEFT-DR-CITY HOSPITAL', 'skip_if_short'),
     );
@@ -302,11 +311,11 @@ function holder(spec: Spec): JsonValue {
   };
 }
 
-function summary(spec: Spec, closingPaise: number): JsonValue {
+function summary(spec: Spec, closingPaise: number, anchor: number): JsonValue {
   return {
     currentBalance: formatPaise(closingPaise),
     currency: 'INR',
-    balanceDateTime: isoUtc(NOW_UNIX),
+    balanceDateTime: isoUtc(anchor),
     type: spec.accountType,
     branch: 'Pune',
     facility: spec.accountType === 'CURRENT' ? 'CC' : 'OD',

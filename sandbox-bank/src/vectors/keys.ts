@@ -5,18 +5,13 @@
  * never-committed demo keys.
  */
 
-import {
-  createPrivateKey,
-  createPublicKey,
-  generateKeyPairSync,
-  randomBytes,
-  randomUUID,
-} from 'node:crypto';
+import { createPrivateKey, createPublicKey, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { fromHex, toHex } from '../crypto/encoding.ts';
 import type { PinnedKey, RsaKey } from '../crypto/jws.ts';
+import { generateRsaJwkPair } from '../crypto/rsa-jwk.ts';
 
 export const RSA_KEY_NAMES = ['fip', 'aa', 'fiu', 'rogue'] as const;
 export type RsaKeyName = (typeof RSA_KEY_NAMES)[number];
@@ -36,14 +31,12 @@ export interface TestKeys {
 export function generateKeyFiles(): ReadonlyMap<string, string> {
   const files = new Map<string, string>();
   for (const name of RSA_KEY_NAMES) {
-    const { privateKey } = generateKeyPairSync('rsa', {
-      modulusLength: 2048,
-      publicExponent: 65537,
-    });
-    const kid = randomUUID();
-    const jwk = privateKey.export({ format: 'jwk' });
-    files.set(`${name}.test-private.jwk.json`, json({ ...jwk, kid, private_key_test_only: true }));
-    files.set(`${name}.public.jwk.json`, json({ kty: 'RSA', n: jwk.n, e: jwk.e, kid }));
+    const { privateJwk, publicJwk } = generateRsaJwkPair();
+    files.set(
+      `${name}.test-private.jwk.json`,
+      json({ ...privateJwk, private_key_test_only: true }),
+    );
+    files.set(`${name}.public.jwk.json`, json(publicJwk));
   }
   files.set(
     ENCLAVE_KEY_FILE,

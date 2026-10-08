@@ -1,0 +1,71 @@
+[package]
+name = "tio-enclave"
+version = "0.1.0"
+description = "TEE Income Oracle enclave: HTTP wrapper around tio-core, run in an Oyster CVM."
+edition = "2021"
+rust-version = "1.89.0"
+license = "Apache-2.0"
+publish = false
+
+# Not a member of the root Cargo workspace: it builds as a Docker image for
+# Marlin Oyster (docs: enclave/README.md), with its own Cargo.lock.
+[workspace]
+
+# Every dependency here runs inside the enclave's trust boundary. Ask before
+# adding one (AGENTS.md). None of them is an HTTP *client*: the enclave makes
+# no outbound calls, and Oyster can't block them, so that has to hold in code.
+[dependencies]
+tio-core = { path = "../tio-core" }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+# secp256k1 attester signing: recoverable ECDSA over keccak256, low-s.
+k256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+sha3 = { version = "0.10", default-features = false }
+sha2 = { version = "0.10", default-features = false }
+# Wallet intent (FORMATS §9): Ed25519, same dalek family as tio-core's curve25519-dalek.
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "zeroize"] }
+bs58 = { version = "0.5", default-features = false, features = ["alloc"] }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+uuid = { version = "1", default-features = false, features = ["v4", "std"] }
+rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
+base64 = { version = "0.22", default-features = false, features = ["alloc"] }
+serde = { version = "1", default-features = false, features = ["derive", "std"] }
+serde_json = { version = "1", default-features = false, features = ["std", "raw_value"] }
+thiserror = { version = "2", default-features = false }
+zeroize = { version = "1.8", default-features = false, features = ["alloc"] }
+# Already in the tree through axum: its `LengthLimitError` tells an oversized
+# evaluate body (413) from bad framing (400).
+http-body-util = "0.1"
+
+[dev-dependencies]
+# Already in the tree through axum; used only to drive the router in-process.
+tower = { version = "0.5", default-features = false, features = ["util"] }
+# Also in the tree through axum: a body that never arrives (timeout test).
+http-body = "1"
+# Same crate as above; `test-util` pauses time for the timeout test.
+tokio = { version = "1", default-features = false, features = ["test-util"] }
+
+[features]
+# Lets tests plant a test-vector session. Never enabled in the image
+# (enclave/Dockerfile builds with default features).
+test-hooks = []
+
+# Needs `AppState::plant_session` to load test-vector sessions.
+[[test]]
+name = "router"
+required-features = ["test-hooks"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+cast_possible_truncation = "deny"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1

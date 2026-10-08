@@ -33,6 +33,9 @@ scope. See `AGENTS.md` for the full wording.
     as the code. Crypto text there names the exact crate that does each
     secret-dependent step, and error-variant docs in code match the FORMATS
     error-code list.
+11. **Errors about key or secret files name the file and the problem, never
+    the contents.** No key bytes, PEM text or parsed fields in an error,
+    log line or test failure message.
 
 ## 2. Rust
 
@@ -95,6 +98,13 @@ scope. See `AGENTS.md` for the full wording.
   `#[serde(flatten)]` / `Value`, silently keep the last value.
 - **Strict decoders.** base64url for JWS/JWK is `URL_SAFE_NO_PAD`: no `=`,
   no non-canonical trailing bits, so each value has one accepted encoding.
+- **Bound the encoded length before decoding.** Base58 decoding is quadratic
+  in the input: reject text longer than the target size can encode to, then
+  decode into a fixed buffer (`enclave::config::decode_base58_fixed`).
+  Never `into_vec()` network input and check the length afterwards.
+- **The enclave's HTTP bodies go through `tio_core::from_json_object`** too,
+  not `serde_json::from_slice`: the object-only rule above applies at every
+  boundary, including our own API.
 
 ### Crypto hygiene
 - `#![forbid(unsafe_code)]` in `tio-core`.
@@ -103,8 +113,9 @@ scope. See `AGENTS.md` for the full wording.
   umbrella crate (e.g. `aes-gcm`) doesn't turn it on in the inner crates
   (`aes`, `ghash`/`polyval`, `crypto-bigint`). Check
   `cargo tree -p tio-core -e features -i zeroize`, and confirm the wiping
-  `Drop` actually runs on the enclave target (x86_64), not only on the dev
-  machine: autodetect backends can skip it. Residuals that can't be wiped get
+  `Drop` actually runs on the enclave target (arm64 on Oyster, built with
+  `--cfg polyval_force_soft`), not only on the dev machine: autodetect
+  backends can skip it. Residuals that can't be wiped get
   a `Known residual:` comment.
 - Use audited crates (RustCrypto: `curve25519-dalek`, `crypto-bigint`, `hkdf`,
   `aes-gcm`, `sha2`, `k256`, `rsa`). No hand-rolled primitives.
@@ -113,19 +124,51 @@ scope. See `AGENTS.md` for the full wording.
 ### Anchor programs
 - Every account constrained: `seeds` + `bump`, `has_one`, `owner`, `address`.
   No unchecked `AccountInfo` without a `/// CHECK:` comment that explains why.
-- Checked arithmetic only (`checked_add`, …). No `as` casts that can truncate.
+- Checked arithmetic only (`checked_add`, …). No `as` casts that can truncate
+  (`clippy::cast_possible_truncation` is denied in `programs/*`; for a
+  constant, declare it with the narrow type instead of casting).
 - One `#[error_code]` enum per program; messages say what failed.
 - Every program account starts with a `version: u8` field, so a future
   layout change can be detected and migrated (FORMATS → Version identifiers).
-- Reading a foreign account (the SAS attestation): check the owner program id
-  and discriminator before deserializing.
+- Reading a foreign account (the SAS attestation): check the owner program id,
+  size and discriminator before deserializing. A field that a check could use
+  but deliberately doesn't (e.g. the stored SAS `signer`) is named in
+  `docs/FORMATS.md` with the reason.
+- A `seeds` constraint on an `Account<T>` that this program only ever
+  creates at that PDA repeats the owner + discriminator check. Keep it only
+  with a comment that says so: no test can show it is there.
+- A program that takes a caller-chosen mint decides what the mint's
+  `freeze_authority` (and, for Token-2022, each extension) means for it, and
+  `docs/FORMATS.md` records the decision.
 - Precompile introspection: the signature, address and message
   instruction-index fields in the secp256k1 offsets must all point at the
   precompile instruction itself. Otherwise an attacker can make the precompile
   verify bytes stored in a different instruction.
 
+### Enclave HTTP server
+- Every limit is enforced in the enclave itself: its port is public, not
+  only reachable by the gateway. **Every route that buffers a body takes an
+  in-flight slot before reading it** (`try_acquire` → 503) and has a read
+  timeout; a per-request size limit alone doesn't bound memory.
+- A concurrency permit for work done in `spawn_blocking` is an owned permit
+  (`Arc<Semaphore>::acquire_owned`) **moved into the closure**. A permit held
+  by the handler is released when the client disconnects, while the blocking
+  work (and its buffers) keeps running.
+- Removing an item from a capped store frees its slot, so work that runs
+  after the removal needs its own limit.
+- Parse path parameters into their type (`Uuid`) before using or logging
+  them; log only the parsed value.
+- A test-only feature gets `compile_error!` under
+  `all(feature = "…", not(debug_assertions))`, so it can't reach a release
+  build (the image).
+- Request types that carry signed or bank-derived bytes don't derive `Debug`.
+
 ### Tooling
 - `cargo fmt` and `cargo clippy --all-targets -- -D warnings` must pass.
+  Read clippy's exit code, not filtered output.
+- A check that must fail closed on `None` is written
+  `x.is_none_or(|v| bad(v))`. Clippy rejects `!x.is_some_and(..)`
+  (`nonminimal_bool`).
 - `Cargo.lock` committed. Pin versions; no `*` or git dependencies without a
   pinned rev.
 - Keep dependencies minimal in the enclave — every crate is inside the trust
@@ -147,21 +190,36 @@ scope. See `AGENTS.md` for the full wording.
   casing). Don't rename at the boundary.
 
 ### Language
-- `"strict": true`, plus `noUncheckedIndexedAccess`. ESM only. Node 24 LTS (`.nvmrc`); scripts run `.ts` directly via Node type stripping, so only erasable syntax (`erasableSyntaxOnly`).
+- `"strict": true`, plus `noUncheckedIndexedAccess`. ESM only. Node 24 LTS (`.nvmrc`); scripts run `.ts` directly. `sandbox-bank` uses Node type stripping, so only erasable syntax (`erasableSyntaxOnly`). `gateway` and `ops` load the Codama clients (`enum`, extensionless imports), so they run with `node --import tsx`; their own code still sticks to erasable syntax.
 - No `any`. Use `unknown` at boundaries and narrow it.
 - **Validate every external input with `zod`** (HTTP bodies, env vars, RPC
   data) before use.
 - `bigint` for `u64`/`i64` values (lamports, token amounts, timestamps from
   chain). Never `number` for on-chain integers.
+- Generated PDA helpers for another program's PDA (`seeds::program`, e.g.
+  `findSasEventAuthorityPda`) default to *our* program id when called on
+  their own. Always pass `{ programAddress: <that program> }`.
 - Bytes are `Uint8Array`. Encode/decode explicitly (hex, base64, base64url,
-  base58) with one helper module; no ad-hoc `Buffer.toString` scattered around.
+  base58) with one helper module, `@tio/encoding` (`packages/encoding`, strict
+  canonical decoders); no ad-hoc `Buffer.toString` / `Buffer.from(…, 'hex')`
+  scattered around.
 
 ### Servers (gateway, sandbox-bank)
 - Capture the **raw body** before any JSON middleware on routes that carry
   signatures.
-- Errors return `{ error: { code, message } }`. No stack traces in responses.
+- Errors return `{ error: { code, message } }` (the sandbox bank, which speaks ReBIT,
+  returns ReBIT's `ErrorResponse` instead, FORMATS §15). No stack traces in responses.
 - Config only from env, validated at startup. `.env.example` lists every key.
 - Rate-limit and cap body size on every public route.
+- A service that relies on being internal-only (no rate limit of its own) states that
+  deployment invariant in `docs/FORMATS.md`, not only in a code comment.
+- Every outbound network call (RPC, HTTP) has a timeout or `AbortSignal`; a hung
+  upstream must become an error, never a hung request. For kit that means
+  `.send({ abortSignal })` and an `abortSignal` on `sendAndConfirm`.
+- An identifier from an untrusted upstream (an error code) is checked against a
+  short pattern before it is logged or returned, so it can't forge log lines or
+  carry text. Lookup tables keyed by external strings are `Map`s (a plain object
+  answers `constructor`).
 
 ### Web (Next.js)
 - The browser is untrusted. No keys, no privileged logic.
@@ -212,7 +270,10 @@ Stdlib only unless a dependency is agreed.
 - **A negative test asserts the specific error**: the error code, variant or
   message (`assertRaisesRegex`, `matches!(err, E::Revoked)`). "It raised
   something" isn't enough, because a different check can fail for a
-  different reason and the test still goes green.
+  different reason and the test still goes green. In TypeScript that means
+  `toThrow(/message/)`, `toThrow(SomeErrorClass)` or
+  `toMatchObject({ code })`, never a bare `toThrow()` / `toThrow(Error)` /
+  `rejects.toThrow()`.
 - **Tamper tests prove the baseline first.** Check that the untouched input
   passes, then that the tampered input fails *for the expected reason*.
 - **A parsed but unused field usually means a missing check.** If you decode
@@ -240,7 +301,38 @@ Stdlib only unless a dependency is agreed.
   (e.g. `\u0041` written as `A`) can't turn the test into a no-op.
 - **Check order is tested.** When the docs fix an order ("`alg` before
   `kid`"), a test combines two faults and asserts the one reported first.
-  The documented order names every early return in the code path.
+  The documented order names every early return in the code path. Each pair
+  of neighbouring checks gets such a test.
+- **Seeds from an argument get a wrong-PDA test.** When a PDA's seeds come
+  from an instruction argument or from signed bytes, a test passes the PDA
+  of a different value and asserts the error.
+- **Failures outside our program assert where and what.** A test expecting
+  a precompile, system-program or SAS failure asserts the failing
+  instruction index and that program's error code, not just "not a custom
+  error": otherwise an unrelated failure (bad account, stale blockhash)
+  passes it.
+- **Pre-funded PDAs.** Every PDA a program creates, directly or by CPI, gets
+  a test where the address already holds lamports, once below rent and once
+  at or above it. Anyone can send lamports to an address before it exists,
+  and the two balances take different code paths.
+- **Each `has_one` and token constraint gets a negative test in every
+  instruction that declares it.** Another program (SPL Token) often rejects
+  the same input with a different code, which keeps the tests green after
+  the constraint is deleted.
+- **Shared test constants are exported once.** Framework error codes and
+  account offsets live in one module and are imported, not redeclared per
+  test file.
+- **A resource-guard test fails if the guard is released early.** For a
+  permit, lock or limit, make the guarded work block (a gated test clock,
+  a channel) and assert the resource is still held mid-flight, including
+  after the caller is cancelled. "Free before and after" passes with the
+  guard released too soon. Open the gate in a drop guard, so a failing
+  assertion can't hang the runtime.
+- **Tests that share state use distinct ids.** Parallel tests planting the
+  same id into one shared store race; give each test its own id or state.
+- **Mutation restores use plain `cp`** (not `cp -p`). Keeping the old
+  timestamp makes cargo reuse the mutated build, so the next mutant is
+  tested against the wrong binary.
 
 ## 6. Git, commits and PRs
 The workflow lives in `CONTRIBUTING.md` → **Git workflow** (single source).

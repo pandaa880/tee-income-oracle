@@ -7,3 +7,6 @@ test-vectors/policy/** linguist-generated=true
 test-vectors/vectors/** linguist-generated=true
 test-vectors/negative/** linguist-generated=true
 test-vectors/manifest.json linguist-generated=true
+
+# Dumped third-party program binaries (see test-fixtures/sas/SOURCE.md).
+test-fixtures/sas/*.so binary
