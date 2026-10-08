@@ -124,7 +124,9 @@ pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4>
    `revoke_enclave` for every other active entry.
 5. Rename the document to `attestation-<id>.hex`, add the entry to `enclaves`,
    and print the `az containerapp update … MEASUREMENT_ID=<id>` command that
-   points the gateway at the new entry.
+   points the gateway at the new entry. On an Azure Container Apps express
+   environment that update doesn't replace the running replica: recreate the
+   gateway app instead (`docs/DEPLOY.md` §6).
 
 The archive is the evidence behind an on-chain hash, so it is never
 overwritten. Only one rotation runs at a time: the run holds

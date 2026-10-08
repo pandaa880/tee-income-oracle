@@ -37,7 +37,7 @@ const ERRORS: Readonly<Record<RebitCode, { status: RebitStatus; message: string 
   InvalidConsentDetail: { status: 400, message: 'The consent details do not match.' },
   InvalidConsentUse: { status: 400, message: 'The consent has already been used.' },
   InvalidSessionId: { status: 400, message: 'No such session, or it has expired.' },
-  Unauthorized: { status: 401, message: 'The key is not bound to an active registered enclave.' },
+  Unauthorized: { status: 401, message: 'The caller or key is not authorized.' },
   DataGone: { status: 410, message: 'The data for this session was already fetched.' },
   InternalError: { status: 500, message: 'Internal error.' },
   ServiceUnavailable: { status: 503, message: 'Service temporarily unavailable.' },

@@ -31,8 +31,10 @@ pnpm --filter @tio/gateway start
 
 Boot refuses to start (exit 1) unless the enclave answers, its registry entry
 `MEASUREMENT_ID` is active with the enclave's attester, and the bank accepts
-the enclave's FIU key. All variables: FORMATS §16 → Config, and
-`.env.example`.
+the enclave's FIU key. When the bank isn't on a private network, set the same
+`BANK_TOKEN` on both: the gateway sends it as `authorization: Bearer …` on
+every bank call. All variables: FORMATS §16 → Config, and `.env.example`.
+Deploying to devnet (Oyster + Azure Container Apps): `docs/DEPLOY.md`.
 
 Docker (context = repo root; secrets only from the environment):
 

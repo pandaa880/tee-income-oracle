@@ -200,6 +200,7 @@ describe.skipIf(process.env['TIO_E2E'] !== '1')('gateway end to end (local)', ()
         SOLANA_RPC_URL: h.surfnet.rpcUrl,
         PORT: String(BANK_PORT),
         PINNED_DIR: join(ROOT, 'enclave/pinned'),
+        BANK_ALLOW_NO_TOKEN: '1', // local bank, reached only by this test
       },
     });
     bank.stdout?.on('data', (d: Buffer) => bankLog.push(d.toString()));

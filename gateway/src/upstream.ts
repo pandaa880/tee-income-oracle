@@ -168,6 +168,13 @@ export function createEnclaveClient(baseUrl: string, fetchFn: Fetch = fetch): En
 
 // --- sandbox bank (FORMATS §15) -------------------------------------------
 
+/** `init` with `extra` added to its headers. */
+function withHeaders(init: RequestInit, extra: Record<string, string>): RequestInit {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(extra)) headers.set(name, value);
+  return { ...init, headers };
+}
+
 const fiuKeySchema = z.object({ kid: z.string(), attester: z.string() });
 const consentSchema = z.object({
   ver: z.string(),
@@ -200,9 +207,16 @@ export type BankClient = {
   }) => Promise<{ bytes: Uint8Array; jws: string }>;
 };
 
-export function createBankClient(baseUrl: string, fetchFn: Fetch = fetch): BankClient {
+/** `token`: sent as `authorization: Bearer <token>` on every call (FORMATS §15). */
+export function createBankClient(
+  baseUrl: string,
+  fetchFn: Fetch = fetch,
+  token?: string,
+): BankClient {
+  const auth: Record<string, string> =
+    token === undefined ? {} : { authorization: `Bearer ${token}` };
   const post = (path: string, init: RequestInit, maxBytes?: number) =>
-    send(fetchFn, 'bank', joinUrl(baseUrl, path), init, maxBytes);
+    send(fetchFn, 'bank', joinUrl(baseUrl, path), withHeaders(init, auth), maxBytes);
   return {
     registerFiuKey: async (body) =>
       parseReply('bank', await post('/fiu-keys', jsonPost(body)), fiuKeySchema),

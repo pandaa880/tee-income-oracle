@@ -75,7 +75,7 @@ test-fixtures/        Hand-calculated scoring cases; `sas/` = SAS binary dumped 
 web/                  Next.js. Borrower flow, lender dashboard, verify page.
 test-vectors/         Generated fixtures + TEST-ONLY keys. Positive and negative cases.
 docs/                 ARCHITECTURE.md, FORMATS.md (wire formats, source of truth),
-                      CODING-GUIDELINES.md.
+                      CODING-GUIDELINES.md, DEPLOY.md (devnet runbook).
 ```
 
 ## Exploring the code: codegraph
@@ -113,7 +113,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; not deployed yet); `enclave` serves the §10 HTTP API around `tio-core` (not deployed yet); `gateway` orchestrates sessions over the §16 HTTP API (SSE stages) and relays the attestation transaction (runs locally, end to end on localnet; not deployed yet); `ops` has the admin scripts for a cluster (oracle init, SAS credential/schema, demo pool, attested enclave rotation, devnet E2E; tested on surfpool, not yet run on devnet); the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
+has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; deployed on Azure Container Apps behind `BANK_TOKEN`); `enclave` serves the §10 HTTP API around `tio-core` (deployed on Marlin Oyster); `gateway` orchestrates sessions over the §16 HTTP API (SSE stages) and relays the attestation transaction (end to end on localnet and on devnet, deployed on Azure Container Apps); `ops` has the admin scripts for a cluster (oracle init, SAS credential/schema, demo pool, attested enclave rotation, devnet E2E; tested on surfpool and run on devnet, `docs/DEPLOY.md`); the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
 hold only READMEs. Update the status as each one starts working.
 
 | Step | Command | Status |
@@ -131,11 +131,11 @@ hold only READMEs. Update the status as each one starts working.
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
 | Lint/typecheck (TS) | `pnpm --filter <@tio/encoding, @tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
-| Oracle init (admin) | `pnpm --filter @tio/ops oracle:init --cluster <localnet\|devnet>` — the admin wallet must be the oracle's upgrade authority; env in `ops/README.md` | works on surfpool; not yet run on devnet |
-| SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet; not yet run on devnet |
-| Demo pool (admin) | `pnpm --filter @tio/ops pool:setup --cluster <c>` — mint (no freeze authority) + pool 0 + funded vault in one transaction; re-run is a no-op | works on surfpool; not yet run on devnet |
-| Enclave rotate (admin) | `pnpm --filter @tio/ops enclave:rotate --cluster <c> --enclave-ip <ipv4>` — needs `oyster-cvm` on PATH; archives the attestation in `deployments/<c>/` | works on surfpool (fake Oyster ports); not yet run against Oyster |
-| E2E (devnet) | `pnpm --filter @tio/ops e2e:devnet --cluster devnet --gateway <url>` — 4 personas + tier A borrow/repay against the deployed gateway | local only; not yet run |
+| Oracle init (admin) | `pnpm --filter @tio/ops oracle:init --cluster <localnet\|devnet>` — the admin wallet must be the oracle's upgrade authority; env in `ops/README.md` | works on surfpool and devnet (2026-10-08) |
+| SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet and devnet (2026-10-08) |
+| Demo pool (admin) | `pnpm --filter @tio/ops pool:setup --cluster <c>` — mint (no freeze authority) + pool 0 + funded vault in one transaction; re-run is a no-op | works on surfpool and devnet (2026-10-08) |
+| Enclave rotate (admin) | `pnpm --filter @tio/ops enclave:rotate --cluster <c> --enclave-ip <ipv4>` — needs `oyster-cvm` on PATH; archives the attestation in `deployments/<c>/` | works on surfpool (fake Oyster ports) and against Oyster on devnet (2026-10-08) |
+| E2E (devnet) | `pnpm --filter @tio/ops e2e:devnet --cluster devnet --gateway <url>` — 4 personas + tier A borrow/repay against the deployed gateway | local only; passes on devnet (2026-10-08, before and after an enclave restart) |
 | Test (ops, programs) | `pnpm --filter @tio/ops test:programs` after `anchor build` — `oracle:init`, `pool:setup`, `enclave:rotate` against the real programs | works (also in CI, `programs` job) |
 | Run (sandbox bank, local) | `pnpm --filter @tio/sandbox-bank start:local` (demo keys from `sandbox-bank/.secrets/`, RPC defaults to `127.0.0.1:8899`; env in `sandbox-bank/README.md`) | works |
 | Build (sandbox bank image) | `docker build -f sandbox-bank/Dockerfile -t tio-sandbox-bank:dev .` (context = repo root; `sandbox-bank/Dockerfile.dockerignore`) | works (local only; not in CI) |
@@ -185,6 +185,15 @@ Add a line whenever an agent makes the same mistake twice.
   default `id.json`.
 - `enclave/` runs on Marlin Oyster (Docker + docker-compose). There is no
   `nitro-cli` / `.eif` step — that was the parked self-hosted Nitro path.
+- Oyster: `oyster-cvm update` with an unchanged compose file doesn't restart
+  the enclave (change the metadata, e.g. `--debug true` then `false`), and
+  never register a `--debug` enclave (zeroed PCRs: verify says `image id
+  mismatch`). `docs/DEPLOY.md` §3, §6.
+- Azure Container Apps here is an **express** environment: no
+  `--allow-insecure`, an "internal" app still answers on its public URL (so
+  the bank needs `BANK_TOKEN`), `az containerapp update --set-env-vars`
+  doesn't replace the running replica (recreate the app), and `az
+  containerapp logs show` fails. `docs/DEPLOY.md` §4, §6.
 - Crypto function names quoted in comments, `Cargo.toml` or FORMATS go
   stale when the code changes (`try_sign_with_rng` vs `sign_with_rng`).
   Grep each cited name against the code before a PR.
@@ -276,7 +285,7 @@ Add a line whenever an agent makes the same mistake twice.
   function names, versions, commands, "planned"/"not yet" lines), and update:
   `README.md` (Status, diagrams), this file (Commands table, Toolchain,
   Gotchas), `CONTRIBUTING.md`, `docs/CODING-GUIDELINES.md`,
-  `docs/FORMATS.md`, `docs/ARCHITECTURE.md`, the package READMEs, and
+  `docs/FORMATS.md`, `docs/ARCHITECTURE.md`, `docs/DEPLOY.md`, the package READMEs, and
   `.github/pull_request_template.md`. Say in the PR which docs you checked.
 - Explain crypto reasoning in comments where it isn't obvious (why a check
   exists, what it prevents), not what the code does line by line.

@@ -243,3 +243,84 @@ describe('loadConfig: RELAYER_KEYPAIR is validated and never echoed', () => {
     expect(JSON.stringify(e.cause ?? null)).not.toContain('garbage-secret-xyz');
   });
 });
+
+describe('loadConfig: BANK_TOKEN', () => {
+  it('is optional: absent means bankToken is undefined', () => {
+    expect(loadConfig(env(), REPO_ROOT).bankToken).toBeUndefined();
+  });
+
+  it('maps a token of exactly 32 characters to bankToken', () => {
+    const t = 'k'.repeat(32);
+    expect(loadConfig(env({ BANK_TOKEN: t }), REPO_ROOT).bankToken).toBe(t);
+  });
+
+  it('rejects 31 characters, names BANK_TOKEN, repeats nothing of the value', () => {
+    const short = 'garbage-token-xyz-0123456789abc'.slice(0, 31);
+    expect(short).toHaveLength(31);
+    const e = configError({ BANK_TOKEN: short });
+    expect(e.message).toContain('BANK_TOKEN');
+    expect(e.message).not.toContain(short);
+    expect(JSON.stringify(e.cause ?? null)).not.toContain(short);
+  });
+
+  it.each([
+    ['empty (a blank secret is a deploy mistake)', ''],
+    ['a trailing newline', `${'k'.repeat(32)}\n`],
+    ['inner whitespace', `${'k'.repeat(16)} ${'k'.repeat(16)}`],
+    ['a non-ASCII character', `${'k'.repeat(32)}é`],
+  ])('rejects a token that is %s', (_, bad) => {
+    const message = configError({ BANK_TOKEN: bad }).message;
+    expect(message).toContain('BANK_TOKEN');
+    if (bad !== '') expect(message).not.toContain(bad);
+  });
+
+  it('accepts base64-style padding at the end of the token', () => {
+    const t = `${'a'.repeat(30)}==`;
+    expect(loadConfig(env({ BANK_TOKEN: t }), REPO_ROOT).bankToken).toBe(t);
+  });
+
+  it.each([
+    ['an inner "="', `${'a'.repeat(16)}=${'a'.repeat(16)}`],
+    ['only padding characters', '='.repeat(32)],
+  ])('rejects a token with %s (not a b64token)', (_, bad) => {
+    const message = configError({ BANK_TOKEN: bad }).message;
+    expect(message).toContain('BANK_TOKEN');
+    expect(message).not.toContain(bad);
+  });
+});
+
+describe('loadConfig: BANK_URL transport when BANK_TOKEN is set', () => {
+  const BANK_TOKEN = 'k'.repeat(32);
+
+  it.each([
+    'https://bank.example.com',
+    'http://127.0.0.1:8081',
+    'http://localhost:8081',
+    'http://[::1]:8081',
+    'http://10.0.0.5:8081',
+    'http://192.168.1.2',
+    'http://172.20.0.3',
+    'http://bank',
+    'http://bank.internal:8081',
+  ])('accepts %s', (url) => {
+    expect(loadConfig(env({ BANK_TOKEN, BANK_URL: url }), REPO_ROOT).bankToken).toBe(BANK_TOKEN);
+  });
+
+  it.each([
+    'http://bank.example.com',
+    'http://8.8.8.8:8081',
+    'http://172.32.0.1',
+    'http://[2001:db8::1]:8081',
+    'http://[::ffff:8.8.8.8]',
+    'http://10.0.0.5e0',
+    'http://127.0.0.1.nip.io',
+  ])('rejects %s, names BANK_URL, never prints the token', (url) => {
+    const message = configError({ BANK_TOKEN, BANK_URL: url }).message;
+    expect(message).toContain('BANK_URL');
+    expect(message).not.toContain(BANK_TOKEN);
+  });
+
+  it('keeps accepting a public http BANK_URL when no token is set', () => {
+    expect(() => loadConfig(env({ BANK_URL: 'http://bank.example.com' }), REPO_ROOT)).not.toThrow();
+  });
+});

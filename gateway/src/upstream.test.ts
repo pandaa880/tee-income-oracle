@@ -9,7 +9,7 @@ import {
   requestObject,
 } from './testing/fake-fetch.ts';
 import { expectRejected } from './testing/expect-rejected.ts';
-import { createBankClient, createEnclaveClient } from './upstream.ts';
+import { type BankClient, createBankClient, createEnclaveClient } from './upstream.ts';
 
 const ENCLAVE = 'http://enclave.internal:8080';
 const BANK = 'http://bank.internal:8081';
@@ -348,5 +348,75 @@ describe('bank client: errors', () => {
     const f = fakeFetch(() => jsonResponse(400, rebitError('SignatureDoesNotMatch')));
     const e = await expectRejected(call(f), { code: 'SignatureDoesNotMatch', stage: 'bank' });
     expect(e.message).not.toContain('upstream text that must never be shown');
+  });
+});
+
+describe('bank client: bearer token', () => {
+  const TOKEN = 'bank-token-0123456789-abcdefghijklmnop'; // 38 chars
+
+  const registerReply = { kid: 'fiu-1', attester: '0x' + 'bb'.repeat(20) };
+  const consentReply = {
+    ver: '1.1.3',
+    timestamp: '2026-10-07T10:00:00.000Z',
+    consentId: 'c-1',
+    signedConsent: 'a.b.c',
+  };
+  const ackReply = {
+    ver: '1.1.3',
+    timestamp: 't',
+    txnid: 'txn-1',
+    consentId: 'c-1',
+    sessionId: 's-1',
+  };
+
+  type Call = [string, (c: BankClient) => Promise<unknown>, () => Response];
+  const calls: Call[] = [
+    [
+      'registerFiuKey',
+      (c) => c.registerFiuKey({ fiu_public_jwk: { kid: 'fiu-1' }, fiu_key_signature_hex: '00' }),
+      () => jsonResponse(200, registerReply),
+    ],
+    ['consent', (c) => c.consent('salaried_steady'), () => jsonResponse(200, consentReply)],
+    [
+      'fiRequest',
+      (c) => c.fiRequest(new Uint8Array([123, 125]), 'h..sig'),
+      () => jsonResponse(200, ackReply),
+    ],
+    [
+      'fiFetch',
+      (c) => c.fiFetch({ txnid: 't', sessionId: 's' }),
+      () =>
+        bytesResponse(200, new TextEncoder().encode('{"a":1}'), { 'x-jws-signature': 'h..sig' }),
+    ],
+  ];
+
+  it.each(calls)('%s sends exactly "authorization: Bearer <token>"', async (_n, run, reply) => {
+    const f = fakeFetch(reply);
+    await run(createBankClient(BANK, f.fetch, TOKEN));
+    expect(f.requests[0]?.headers.get('authorization')).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it.each(calls)('%s sends no authorization header without a token', async (_n, run, reply) => {
+    const f = fakeFetch(reply);
+    await run(createBankClient(BANK, f.fetch));
+    expect(f.requests[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('fiRequest with a token still sends x-jws-signature and the exact bytes', async () => {
+    const f = fakeFetch(() => jsonResponse(200, ackReply));
+    const bytes = new TextEncoder().encode('{"ver":"1.1.3",  "x":[ ]}');
+    await createBankClient(BANK, f.fetch, TOKEN).fiRequest(bytes, 'h..sig');
+    expect(f.requests[0]?.headers.get('x-jws-signature')).toBe('h..sig');
+    expect(f.requests[0]?.headers.get('authorization')).toBe(`Bearer ${TOKEN}`);
+    expect(f.requests[0]?.body).toEqual(bytes);
+  });
+
+  it('a bank 401 Unauthorized maps to code Unauthorized, stage bank, status 401', async () => {
+    const f = fakeFetch(() => jsonResponse(401, rebitError('Unauthorized')));
+    await expectRejected(createBankClient(BANK, f.fetch, TOKEN).consent('salaried_steady'), {
+      code: 'Unauthorized',
+      stage: 'bank',
+      status: 401,
+    });
   });
 });

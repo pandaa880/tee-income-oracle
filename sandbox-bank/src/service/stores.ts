@@ -45,13 +45,14 @@ export interface FiuKey {
 
 export interface ConsentStore {
   /**
-   * When full, the oldest unused consent makes room: `/Consent` needs no
-   * authentication, so refusing would let anyone lock new borrowers out.
-   * Deployment invariant: the bank is reachable only from the gateway
-   * (internal ingress), which rate-limits; a flood can then at worst evict
-   * an unused consent, which the borrower re-requests.
-   * False only when every stored consent is already used (each use is an
-   * FI request signed by a registered enclave).
+   * Never refuses: when full, the oldest used consent makes room, else the
+   * oldest unused one. Refusing would let anyone lock new borrowers out for
+   * the consent lifetime (a day) by completing sessions, each of which
+   * leaves a used consent behind. A used consent only exists to refuse a
+   * replay, and an evicted one is refused too (`InvalidConsentId`).
+   * Deployment invariant: only the gateway reaches the bank (FORMATS §15),
+   * and it rate-limits; a flood can then at worst evict an unused consent,
+   * which the borrower re-requests. (`false` is reachable only with cap 0.)
    */
   add(record: ConsentRecord): boolean;
   /** Also returns an expired, not yet swept consent, so the caller can name the error. */
@@ -60,6 +61,7 @@ export interface ConsentStore {
 }
 
 export interface SessionStore {
+  /** When full, the oldest fetched session makes room; false if none is fetched. */
   add(session: FiSession): boolean;
   /** Undefined once `now > expiresAt`. */
   get(sessionId: string): FiSession | undefined;
@@ -77,11 +79,10 @@ export function createConsentStore(a: {
   readonly now: Clock;
   readonly cap?: number;
 }): ConsentStore {
-  const store = cappedMap<ConsentRecord>(
-    a.cap ?? 1024,
-    (r) => r.expiresAt <= a.now(),
+  const store = cappedMap<ConsentRecord>(a.cap ?? 1024, (r) => r.expiresAt <= a.now(), [
+    (r) => r.used,
     (r) => !r.used,
-  );
+  ]);
   return {
     add: (r) => store.add(r.consentId, r),
     get: (id) => store.map.get(id),
@@ -94,7 +95,9 @@ export function createSessionStore(a: {
   readonly cap?: number;
 }): SessionStore {
   const expired = (s: FiSession): boolean => a.now() > s.expiresAt;
-  const store = cappedMap<FiSession>(a.cap ?? 256, expired);
+  // A fetched session only exists to answer `DataGone`; evicted, it is refused
+  // as `InvalidSessionId`, so completed sessions can't fill the store.
+  const store = cappedMap<FiSession>(a.cap ?? 256, expired, [(s) => s.fetched]);
   return {
     add: (s) => store.add(s.sessionId, s),
     get: (id) => {
@@ -126,12 +129,13 @@ export function createFiuKeyStore(a: { readonly cap?: number }): FiuKeyStore {
 
 /**
  * A map of at most `cap` records. `add` sweeps expired records first; if it
- * is still full, it drops the oldest `evictable` record, else refuses.
+ * is still full, it drops the oldest record matching the first predicate in
+ * `evictionOrder` that matches any, else refuses.
  */
 function cappedMap<T>(
   cap: number,
   isExpired: (record: T) => boolean,
-  evictable: (record: T) => boolean = () => false,
+  evictionOrder: readonly ((record: T) => boolean)[] = [],
 ) {
   const map = new Map<string, T>();
   return {
@@ -143,11 +147,11 @@ function cappedMap<T>(
         }
       }
       if (map.size >= cap) {
-        const oldest = [...map].find(([, value]) => evictable(value));
+        const oldest = oldestMatch(map, evictionOrder);
         if (oldest === undefined) {
           return false;
         }
-        map.delete(oldest[0]);
+        map.delete(oldest);
       }
       map.set(id, record);
       return true;
@@ -159,4 +163,19 @@ function cappedMap<T>(
       }
     },
   };
+}
+
+/** Key of the oldest record matching the first predicate that matches any. */
+function oldestMatch<T>(
+  map: ReadonlyMap<string, T>,
+  order: readonly ((record: T) => boolean)[],
+): string | undefined {
+  for (const matches of order) {
+    for (const [key, value] of map) {
+      if (matches(value)) {
+        return key;
+      }
+    }
+  }
+  return undefined;
 }

@@ -9,7 +9,13 @@
  *   POST /FI/request  FIU-signed FI request (§5.1) → ack with a sessionId
  *   POST /FI/fetch    the AA-signed fetch response (§5.2), once per session
  *   GET  /health
+ *
+ * With `options.token` set, every route but `/health` needs
+ * `authorization: Bearer <token>` (FORMATS §15: only the gateway calls the
+ * bank); the check runs before any body is read.
  */
+
+import { createHash, timingSafeEqual } from 'node:crypto';
 
 import { Hono, type Context } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
@@ -25,7 +31,19 @@ async function raw(c: Context): Promise<Uint8Array> {
   return new Uint8Array(await c.req.arrayBuffer());
 }
 
-export function createApp(deps: BankDeps): Hono {
+export interface AppOptions {
+  /** Shared bearer token; unset = no caller check (local only). */
+  readonly token?: string;
+}
+
+const sha256 = (text: string): Buffer => createHash('sha256').update(text).digest();
+
+/** Constant-time over digests, so neither length nor content leaks. */
+function bearerMatches(header: string | undefined, expected: Buffer): boolean {
+  return timingSafeEqual(sha256(header ?? ''), expected);
+}
+
+export function createApp(deps: BankDeps, options: AppOptions = {}): Hono {
   const bank = createBank(deps);
   const app = new Hono();
 
@@ -50,6 +68,14 @@ export function createApp(deps: BankDeps): Hono {
   });
   app.notFound((c) => fail(c, 'InvalidRequest', '', 404));
   app.get('/health', (c) => c.json({ status: 'ok' }));
+  if (options.token !== undefined) {
+    const expected = sha256(`Bearer ${options.token}`);
+    app.use('*', async (c, next) => {
+      if (bearerMatches(c.req.header('authorization'), expected)) return next();
+      const e = errorReply('Unauthorized', '', deps.now());
+      return c.json(e.body, e.status);
+    });
+  }
   app.use(
     '*',
     bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => fail(c, 'InvalidRequest', '', 413) }),

@@ -23,8 +23,13 @@ measurement) or a re-onboarding flow with that AA (`docs/ARCHITECTURE.md` §6).
     enclave's session key (Curve25519 `wei25519`/X25519 → HKDF → AES-256-GCM).
     Replies with a session id.
   - `POST /FI/fetch`: the AA-signed fetch response, once per session.
-- **Internal only:** the bank must be reachable only from the gateway, which
-  rate-limits (FORMATS §15). `/fiu-keys` and `/Consent` need no
+- **Gateway only:** the bank must be reachable only from the gateway, which
+  rate-limits (FORMATS §15). `BANK_TOKEN` is required, set on both (every
+  route but `/health` needs `authorization: Bearer <token>`, checked before
+  the body is read); only a local or private-network bank may run without
+  it, and only with `BANK_ALLOW_NO_TOKEN=1` (`start:local` sets it). The devnet deployment uses the
+  token, because its Azure environment has no private networking
+  (`docs/DEPLOY.md` §4). `/fiu-keys` and `/Consent` need no other
   authentication.
 - **Keys:** the running service uses **demo keys that are never committed**.
   `pnpm --filter @tio/sandbox-bank gen:demo-keys` makes them once (it refuses
@@ -148,7 +153,7 @@ keeps `.secrets/` and tests out):
 docker build -f sandbox-bank/Dockerfile -t tio-sandbox-bank:dev .
 docker run --rm -p 8081:8081 -e SANDBOX_AA_PRIVATE_JWK="$(cat sandbox-bank/.secrets/aa.demo-private.jwk.json)" \
   -e SANDBOX_FIP_PRIVATE_JWK="$(cat sandbox-bank/.secrets/fip.demo-private.jwk.json)" \
-  -e SOLANA_RPC_URL=https://api.devnet.solana.com tio-sandbox-bank:dev
+  -e SOLANA_RPC_URL=https://api.devnet.solana.com -e BANK_ALLOW_NO_TOKEN=1 tio-sandbox-bank:dev
 ```
 
 Runs on Node 24 with native TypeScript type stripping (no build step), so

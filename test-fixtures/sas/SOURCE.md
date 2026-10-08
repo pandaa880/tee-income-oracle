@@ -14,6 +14,7 @@ source and chain differ.
 | Program last deployed in slot | 385530432 (pre-2.0.0 build) |
 | ProgramData address | `HqaxR5hg8yYyuM5QPiWMhSAvXGWwfDBbvthvYpqMQ73v` |
 | sha256 | `afacc7215d6ab6759bcf5edb958a1ad1d9de7559d53ac807c6aa4775a1a5a357` |
+| Re-checked | 2026-10-08, before the devnet deployment: a fresh dump has the same sha256 |
 | License | MIT, SAS's own; full text in `LICENSE` next to this file |
 
 Reproduce and compare:
