@@ -4,7 +4,7 @@
  * each one merges its keys into the file instead of replacing it.
  */
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { type FileHandle, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { type Address, address } from '@solana/kit';
 import { OpsError } from './errors.ts';
@@ -52,9 +52,53 @@ export async function writeDeployment(path: string, value: DeploymentFile): Prom
   }
 }
 
-/** Read, merge `update` in, write back. */
-export async function updateDeployment(path: string, update: DeploymentFile): Promise<void> {
-  await writeDeployment(path, mergeDeployment(await readDeployment(path), update));
+/** A deployment write takes milliseconds; a lock older than this is a crashed writer's. */
+const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
+const LOCK_RETRY_MS = 25;
+
+/**
+ * Read, merge `update` in, write back, holding `<path>.lock` for the whole
+ * read-merge-write. Several scripts write the same file (`sas:setup`,
+ * `pool:setup`, `enclave:rotate`); without the lock two of them can merge
+ * into the same old snapshot, and the later write silently drops the other's
+ * keys. A second writer waits for the lock.
+ *
+ * @throws OpsError `deployment_locked` if the lock stays held past `timeoutMs`.
+ */
+export async function updateDeployment(
+  path: string,
+  update: DeploymentFile,
+  options: { timeoutMs?: number } = {},
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const lock = `${path}.lock`;
+  const handle = await acquireFileLock(lock, options.timeoutMs ?? DEFAULT_LOCK_TIMEOUT_MS);
+  try {
+    await writeDeployment(path, mergeDeployment(await readDeployment(path), update));
+  } finally {
+    await handle.close();
+    await rm(lock, { force: true });
+  }
+}
+
+/** Creates `lock` exclusively, retrying while another writer holds it. */
+async function acquireFileLock(lock: string, timeoutMs: number): Promise<FileHandle> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return await open(lock, 'wx');
+    } catch (error) {
+      const held = error instanceof Error && 'code' in error && error.code === 'EEXIST';
+      if (!held) throw error;
+      if (Date.now() >= deadline) {
+        throw new OpsError(
+          'deployment_locked',
+          `${lock} held for over ${timeoutMs} ms: if no ops script is running, a writer crashed: delete the file`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_MS));
+    }
+  }
 }
 
 /** An address stored under `key`, or undefined if absent. @throws if it isn't a valid address. */

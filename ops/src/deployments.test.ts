@@ -2,7 +2,12 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mergeDeployment, readDeployment, writeDeployment } from './deployments.ts';
+import {
+  mergeDeployment,
+  readDeployment,
+  updateDeployment,
+  writeDeployment,
+} from './deployments.ts';
 
 // The nine keys `sas:setup` writes (see `Deployment` in sas-setup.ts).
 const SAS_KEYS = {
@@ -104,5 +109,52 @@ describe('readDeployment / writeDeployment', () => {
     const path = join(dir, 'bad.json');
     await writeFile(path, 'not json');
     await expect(readDeployment(path)).rejects.toThrow(SyntaxError);
+  });
+});
+
+describe('updateDeployment', () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'deployments-lock-'));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('keeps_every_key_when_many_updates_run_at_once', async () => {
+    // pool:setup and enclave:rotate write the same file; each merge must see the others.
+    const path = join(dir, 'devnet.json');
+    await writeDeployment(path, { cluster: 'devnet' });
+    const keys = Array.from({ length: 20 }, (_, i) => `key_${i}`);
+    await Promise.all(keys.map((key) => updateDeployment(path, { [key]: key })));
+    const file = await readDeployment(path);
+    for (const key of keys) expect(file?.[key]).toBe(key);
+    expect(file?.['cluster']).toBe('devnet');
+  });
+
+  it('removes_its_lock_when_done', async () => {
+    const path = join(dir, 'devnet.json');
+    await updateDeployment(path, { a: 1 });
+    expect(await readdir(dir)).toEqual(['devnet.json']);
+  });
+
+  it('fails_with_deployment_locked_after_waiting_on_a_held_lock_and_leaves_the_file', async () => {
+    const path = join(dir, 'devnet.json');
+    await writeDeployment(path, { a: 1 });
+    await writeFile(`${path}.lock`, 'held by a test');
+    await expect(updateDeployment(path, { b: 2 }, { timeoutMs: 200 })).rejects.toMatchObject({
+      code: 'deployment_locked',
+    });
+    expect(await readDeployment(path)).toEqual({ a: 1 });
+    expect(await readFile(`${path}.lock`, 'utf8')).toBe('held by a test');
+  });
+
+  it('releases_the_lock_when_the_write_fails', async () => {
+    const path = join(dir, 'devnet.json');
+    await writeDeployment(path, { a: 1 });
+    // BigInt can't be serialized: the write throws inside the locked section.
+    await expect(updateDeployment(path, { b: 1n })).rejects.toThrow(TypeError);
+    expect(await readdir(dir)).toEqual(['devnet.json']);
   });
 });

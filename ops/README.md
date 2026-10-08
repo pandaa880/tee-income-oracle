@@ -20,7 +20,10 @@ confirmation never arrives. A re-run sends nothing when the chain already
 matches; a mismatch fails and changes nothing (fixing it is a human decision).
 
 They write `deployments/<cluster>.json` by merging their own keys into it
-(`docs/FORMATS.md` §7 → Deployment file).
+(`docs/FORMATS.md` §7 → Deployment file). Each write holds
+`deployments/<cluster>.json.lock` for the read-merge-write, so two scripts
+running at once can't drop each other's keys; a writer waits up to 5 s, then
+fails with `deployment_locked` (a lock left by a crash: delete the file).
 
 ## Environment
 

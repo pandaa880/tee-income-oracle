@@ -20,4 +20,5 @@ gateway/src/testing/
 deployments/**/.rotate.lock
 deployments/**/attestation-pending*.hex
 deployments/**/*.tmp
+deployments/**/*.lock
 clients/ts/oracle/src/**/*.test.ts
