@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.3.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.2.0...v0.3.0) (2026-10-08)
+
+
+### Features
+
+* **demo-pool:** add attestation-gated lending pool ([#24](https://github.com/pandaa880/tee-income-oracle/issues/24)) ([5628f23](https://github.com/pandaa880/tee-income-oracle/commit/5628f2357f1df791ac307b38bb90bab9356bb319))
+* deploy to devnet with the enclave on Oyster and a gateway-only bank token ([#32](https://github.com/pandaa880/tee-income-oracle/issues/32)) ([19001b2](https://github.com/pandaa880/tee-income-oracle/commit/19001b24806272ded7af2fac4e83ba49a0f0f2ac))
+* **enclave:** add enclave HTTP server around tio-core ([#25](https://github.com/pandaa880/tee-income-oracle/issues/25)) ([2407c88](https://github.com/pandaa880/tee-income-oracle/commit/2407c887d375a9a3d64fc7c74bb1fb3e13b106af))
+* **gateway:** add session orchestrator and attestation relayer ([#28](https://github.com/pandaa880/tee-income-oracle/issues/28)) ([ac37998](https://github.com/pandaa880/tee-income-oracle/commit/ac37998eb2c2d129e9437e4b8cda0ea66e5d6038))
+* **ops:** add oracle init, demo pool, enclave rotation and devnet e2e scripts ([#30](https://github.com/pandaa880/tee-income-oracle/issues/30)) ([5fe2324](https://github.com/pandaa880/tee-income-oracle/commit/5fe2324a6016b2ea0dd34455a860d30bf1819dd7))
+* **ops:** add SAS credential and schema setup script ([#20](https://github.com/pandaa880/tee-income-oracle/issues/20)) ([c57de0f](https://github.com/pandaa880/tee-income-oracle/commit/c57de0f54e231ed2ecfa11fdfa421e43f515f910))
+* **oracle:** add enclave registry ([#22](https://github.com/pandaa880/tee-income-oracle/issues/22)) ([d69d478](https://github.com/pandaa880/tee-income-oracle/commit/d69d47850447ea2661c8d53916857b0e81b2b4eb))
+* **oracle:** add submit_attestation with secp256k1 precompile check and SAS write ([#23](https://github.com/pandaa880/tee-income-oracle/issues/23)) ([2f98baf](https://github.com/pandaa880/tee-income-oracle/commit/2f98baf6f5525df48fea8748239aa8ca5fec57b8))
+* **sandbox-bank:** add live mock FIP + AA HTTP service ([#27](https://github.com/pandaa880/tee-income-oracle/issues/27)) ([8364adc](https://github.com/pandaa880/tee-income-oracle/commit/8364adc00d9fbe539a5de2e3b51a128da8199901))
+
+
+### Bug Fixes
+
+* **gateway:** re-check the registry entry per submit, enforce erasable syntax ([#29](https://github.com/pandaa880/tee-income-oracle/issues/29)) ([7db501f](https://github.com/pandaa880/tee-income-oracle/commit/7db501f766cb7c27450312ffa592482e99071ae7))
+
 ## [0.2.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.1.0...v0.2.0) (2026-10-04)
 
 
