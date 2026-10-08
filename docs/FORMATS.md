@@ -1336,9 +1336,10 @@ FIU's key. Bodies are JSON (`ver` = §5's version string), at most 64 KiB
 (413), read once as exact bytes. Every success reply carries
 `x-jws-signature` = the AA's detached JWS (§4) over its exact bytes.
 
-**Deployment invariant.** The bank is reachable only from the gateway
-(private network / internal ingress); the gateway is its only client and
-owns rate limiting. Two routes need no authentication (`/fiu-keys`,
+**Deployment invariant.** Only the gateway can call the bank: over a private
+network, or, where the host has none (Azure Container Apps express: an
+"internal" app still answers on its public URL), with a shared bearer token
+(`BANK_TOKEN` below). The gateway is its only client and owns rate limiting. Two routes need no authentication (`/fiu-keys`,
 `/Consent`), and their caps below are sized for that: they bound memory and
 RPC cost, not request rate. Exposing the bank publicly breaks this.
 
@@ -1394,7 +1395,7 @@ RPC cost, not request rate. Exposing the bank publicly breaks this.
 | `InvalidRequest`, `SignatureDoesNotMatch`, `InvalidKey`, `InvalidDateRange`, `InvalidConsentId`, `InvalidConsentStatus`, `InvalidConsentDetail`, `InvalidConsentUse`, `InvalidSessionId` | 400 |
 | `InvalidRequest` (unknown route) | 404 |
 | `InvalidRequest` (body over 64 KiB) | 413 |
-| `Unauthorized` | 401 |
+| `Unauthorized` (also: `BANK_TOKEN` set and the request lacks `authorization: Bearer <token>`; checked before the body is read, every route but `/health`) | 401 |
 | `DataGone` | 410 |
 | `InternalError` | 500 |
 | `ServiceUnavailable` (registry unreadable, store full) | 503 |
@@ -1402,7 +1403,9 @@ RPC cost, not request rate. Exposing the bank publicly breaks this.
 **Keys and config** (environment): `SANDBOX_AA_PRIVATE_JWK`,
 `SANDBOX_FIP_PRIVATE_JWK` (the §2 demo keys, JSON text), `SOLANA_RPC_URL`,
 `ORACLE_PROGRAM_ID` (default the §13 id), `PORT` (8081), `PINNED_DIR`
-(default `enclave/pinned/`). The bank refuses to start if a key is flagged
+(default `enclave/pinned/`), `BANK_TOKEN` (optional: when set, every route
+but `/health` needs `authorization: Bearer <token>`; RFC 6750 token68, at
+least 32 characters, compared in constant time). The bank refuses to start if a key is flagged
 `private_key_test_only`, is under 2048 bits, or its public half (`e, kid,
 kty, n`) differs from the pinned file the enclave compiles in.
 
@@ -1520,7 +1523,9 @@ read bank data or forge a tier.
   trailing newline, so `policy_hash` = sha256 of its bytes = the §6 hash the
   enclave puts in the payload), `RELAYER_KEYPAIR` (Solana CLI keypair JSON),
   `ALLOWED_ORIGIN` (one exact web origin for CORS, never `*`),
-  `TRUST_PROXY` (`1` or unset), `PORT` (8082).
+  `TRUST_PROXY` (`1` or unset), `PORT` (8082), `BANK_TOKEN` (optional; the
+  bank's token, sent as `authorization: Bearer <token>` on every bank call;
+  same rule as §15).
 - **Deployment invariant.** The gateway is the bank's only client (§15) and
   the only caller that should drive the enclave; it is the public endpoint
   and owns rate limiting.

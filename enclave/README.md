@@ -65,9 +65,10 @@ curl localhost:8080/v1/info
   is the enclave's only workload.
 - **Image id:** Oyster's image id hashes `docker-compose.yml` only, not the
   Docker image, so the compose file must pin the image by digest. The
-  committed file is a template with a placeholder digest until the image is
-  pushed; then `oyster-cvm compute-image-id --docker-compose
-  enclave/docker-compose.yml --arch arm64`. Every change makes a new image id,
+  committed file pins the pushed image (built reproducibly from commit
+  `5fe2324`); recompute its id with `oyster-cvm compute-image-id
+  --docker-compose enclave/docker-compose.yml --arch arm64` and compare it
+  with the registry entries in `deployments/devnet.json`. Every change makes a new image id,
   which must be registered on chain.
 - **Keys:** FIP/AA *public* keys are compiled in (`pinned/`). Demo keys only,
   never test-vector keys; the enclave refuses to start otherwise
