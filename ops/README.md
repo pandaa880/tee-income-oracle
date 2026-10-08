@@ -147,9 +147,12 @@ already registered and approved sends nothing.
 Local only, never in CI. One fresh wallet per sandbox persona
 (`salaried_steady` → A, `trader_lumpy` → B, `declining` → C, `stressed` →
 REJECT) goes through `POST /v1/sessions`, signs the intent, reads the
-`complete` SSE stream, and for lent tiers checks the SAS attestation holds the
-returned payload. The tier A wallet then borrows one token from the first pool
-and repays it (the admin pays fees and the token account). Prints a PASS/FAIL
+`complete` SSE stream, and checks the chain: a lent tier's SAS attestation must
+hold exactly the returned payload *and* that payload's tier byte must be the
+expected tier; a REJECT wallet must have no attestation. The tier A wallet then
+borrows 2 001 tokens from the first pool (above tier B's 2 000 limit, so only an
+on-chain tier A attestation passes the pool's check) and repays it (the admin
+pays fees and the token account). Prints a PASS/FAIL
 row per step; exit 1 if any fails.
 
 ```sh

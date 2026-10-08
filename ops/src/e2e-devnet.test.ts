@@ -2,7 +2,15 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { type Rpc, type SolanaRpcApi, address, generateKeyPairSigner } from '@solana/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EXPECTED_TIERS, outcomeOf, runE2e } from './e2e-devnet.ts';
+import {
+  BORROW_AMOUNT,
+  EXPECTED_TIERS,
+  checkStoredAttestation,
+  outcomeOf,
+  runE2e,
+  tierOfPayload,
+} from './e2e-devnet.ts';
+import { POOL_DEFAULTS } from './pool-setup.ts';
 
 const MANIFEST_PATH = fileURLToPath(new URL('../../test-vectors/manifest.json', import.meta.url));
 
@@ -132,5 +140,61 @@ describe('runE2e', () => {
     });
     await expect(run).rejects.toMatchObject({ code: 'cluster_mismatch' });
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+/** An 83-byte §7 payload with `tier` in byte 0 and filler elsewhere. */
+function payloadWithTier(tier: number): Uint8Array {
+  const payload = new Uint8Array(83).fill(7);
+  payload[0] = tier;
+  return payload;
+}
+const hexOf = (bytes: Uint8Array) => Buffer.from(bytes).toString('hex');
+
+describe('tierOfPayload', () => {
+  it.each([
+    [1, 'A'],
+    [2, 'B'],
+    [3, 'C'],
+  ])('reads_tier_byte_%i_as_%s', (byte, tier) => {
+    expect(tierOfPayload(payloadWithTier(byte))).toBe(tier);
+  });
+
+  it.each([0, 4, 255])('returns_undefined_for_tier_byte_%i', (byte) => {
+    expect(tierOfPayload(payloadWithTier(byte))).toBeUndefined();
+  });
+});
+
+describe('checkStoredAttestation', () => {
+  it('passes_when_the_stored_payload_is_the_reported_one_and_encodes_the_expected_tier', () => {
+    const stored = payloadWithTier(1);
+    expect(checkStoredAttestation('A', stored, hexOf(stored))).toBe(true);
+  });
+
+  it('fails_when_the_stored_tier_differs_from_the_expected_one_even_if_the_bytes_match', () => {
+    // The reproduction from review: gateway reports A, the chain holds a tier C payload.
+    const stored = payloadWithTier(3);
+    expect(checkStoredAttestation('A', stored, hexOf(stored))).toBe(false);
+  });
+
+  it('fails_when_the_stored_bytes_differ_from_the_reported_payload', () => {
+    expect(checkStoredAttestation('A', payloadWithTier(1), hexOf(payloadWithTier(2)))).toBe(false);
+  });
+
+  it('fails_when_a_lent_tier_has_no_attestation_on_chain', () => {
+    expect(checkStoredAttestation('B', undefined, hexOf(payloadWithTier(2)))).toBe(false);
+  });
+
+  it('passes_a_reject_only_when_nothing_is_stored', () => {
+    expect(checkStoredAttestation('REJECT', undefined, undefined)).toBe(true);
+    expect(checkStoredAttestation('REJECT', payloadWithTier(3), undefined)).toBe(false);
+  });
+});
+
+describe('BORROW_AMOUNT', () => {
+  it('only_a_tier_a_attestation_can_borrow_it_from_the_demo_pool', () => {
+    const [limitA, limitB] = POOL_DEFAULTS.tierLimits;
+    expect(BORROW_AMOUNT > limitB).toBe(true);
+    expect(BORROW_AMOUNT <= limitA).toBe(true);
   });
 });

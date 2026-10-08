@@ -44,12 +44,39 @@ export const EXPECTED_TIERS: Record<Persona, Tier> = {
 const PERSONAS: readonly Persona[] = ['salaried_steady', 'trader_lumpy', 'declining', 'stressed'];
 
 /** One base unit is 10⁻⁶ token; the borrow is one whole token. */
-const BORROW_AMOUNT = 1_000_000n;
+/**
+ * 2 001 tokens (6 decimals): above the demo pool's tier B limit (2 000) and within
+ * tier A's (5 000), so the pool's own check proves the wallet holds a tier A
+ * attestation on chain, not just that the gateway said "A".
+ */
+export const BORROW_AMOUNT = 2_001n * 10n ** 6n;
 /** The complete stream covers bank, enclave and a confirmed transaction; create is one hop. */
 const CREATE_TIMEOUT_MS = 30_000;
 const COMPLETE_TIMEOUT_MS = 180_000;
-/** Payload byte holding `measurement_id` (FORMATS §7). */
+/** Payload bytes (FORMATS §7): `tier` (1 = A, 2 = B, 3 = C) and `measurement_id`. */
+const PAYLOAD_TIER = 0;
 const PAYLOAD_MEASUREMENT_ID = 2;
+const TIER_BY_BYTE: Partial<Record<number, Tier>> = { 1: 'A', 2: 'B', 3: 'C' };
+
+/** The tier a stored §7 payload encodes, or undefined for any other byte. */
+export function tierOfPayload(payload: Uint8Array): Tier | undefined {
+  return TIER_BY_BYTE[payload[PAYLOAD_TIER] ?? 0];
+}
+
+/**
+ * Whether the chain holds what the persona should have: nothing for REJECT;
+ * otherwise exactly the payload the gateway reported, encoding the expected
+ * tier. Comparing bytes alone isn't enough: a wrong tier reported and stored
+ * consistently would still match.
+ */
+export function checkStoredAttestation(
+  expected: Tier,
+  stored: Uint8Array | undefined,
+  payloadHex: string | undefined,
+): boolean {
+  if (expected === 'REJECT') return stored === undefined;
+  return stored !== undefined && toHex(stored) === payloadHex && tierOfPayload(stored) === expected;
+}
 
 export type Outcome =
   | { ok: true; tier: string; tx: string | null; attestation?: string; payloadHex?: string }
@@ -107,7 +134,7 @@ export async function runE2e(input: E2eInput): Promise<boolean> {
     const passed =
       outcome.ok &&
       outcome.tier === expected &&
-      (await onChainMatches(input, wallet, outcome).catch(() => false));
+      (await onChainMatches(input, wallet, expected, outcome).catch(() => false));
     allPassed &&= passed;
     if (passed && expected === 'A') tierA = wallet;
     input.log(
@@ -194,15 +221,16 @@ async function postJson(url: string, body: unknown): Promise<{ ok: boolean; body
   return { ok: response.ok, body: await jsonBody(response) };
 }
 
-/** REJECT writes nothing; a lent tier must have stored exactly `payload_hex` for the wallet. */
+/** What the chain holds for this wallet matches the persona (see `checkStoredAttestation`). */
 async function onChainMatches(
   input: E2eInput,
   wallet: KeyPairSigner,
+  expected: Tier,
   outcome: Outcome,
 ): Promise<boolean> {
-  if (!outcome.ok || outcome.tier === 'REJECT') return outcome.ok;
+  if (!outcome.ok) return false;
   const stored = await readAttestation(input, wallet.address);
-  return stored !== undefined && toHex(stored) === outcome.payloadHex;
+  return checkStoredAttestation(expected, stored, outcome.payloadHex);
 }
 
 async function readAttestation(input: E2eInput, wallet: Address): Promise<Uint8Array | undefined> {
