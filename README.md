@@ -58,6 +58,17 @@ sandbox bank also signs the statement with a FIP key. That is an extension of
 this repo, kept so the enclave can check a bank signature wherever a provider
 supplies one. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6.
 
+**What else you trust, and what the tier is not.** Besides AWS Nitro, the
+enclave code and the AA, the demo trusts Marlin's base image and one
+operator wallet that holds the program upgrade authority and every admin
+role (a multisig with a timelock beyond the demo). The tier is a
+policy-based affordability screen over one bank account, chosen by the
+borrower, as a snapshot: every non-bounce credit counts as income, and one
+person can use several wallets. A live AA also needs a stable FIU key or a
+re-onboarding flow, since the enclave's FIU key is new on every boot.
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §3, §5 and §6 list each of
+these.
+
 ### How the code is tested
 
 `tio-core` is the code the enclave runs. It is checked against two

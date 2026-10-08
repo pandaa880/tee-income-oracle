@@ -96,6 +96,7 @@ is a property of the code: the enclave has no HTTP-client dependency.
 | FIP / AA signing keys | RSA-2048 | Bank / AA (sandbox: demo keys, never committed) | Signing FI data, fetch responses, consent | Forge bank data. Public halves pinned in the image |
 | Oracle SAS signer | PDA `["sas_signer"]` | Derived; no private key | Only authorized signer on the SAS credential | Can't be stolen; only program logic uses it |
 | Admin | wallet for the demo; a multisig (e.g. Squads) beyond it. Replaceable by `propose_admin` + `accept_admin` | Operator | Register/revoke enclave builds | Register a fake enclave (G5). If lost: no revokes until a program upgrade |
+| Program upgrade authority | wallet for the demo (the same wallet as the admin, the SAS credential authority and the pool admin, `ops/README.md`); a multisig with a timelock beyond it | Operator | Deploying program upgrades; `initialize` | Everything on chain: an upgrade can replace the oracle's checks and write any attestation as the `sas_signer` PDA. No timelock in the MVP |
 | Relayer | wallet | gateway | Paying fees | Spend its SOL; can't forge |
 | AWS Nitro root | ECDSA P-384 cert | AWS; pinned in the verifier | Root of the attestation chain | Everything: "trust AWS and the code" |
 
@@ -171,6 +172,7 @@ What a hostile gateway or host can do at each hop:
 | Bug in enclave code | small code, public source, zeroize, single-use sessions that share no state | attestation proves *which* code ran, not that it's correct |
 | Admin reusing a revoked registry id | ids are append-only | the id space is 255 for the life of a deployment (FORMATS §13 "Id budget") |
 | Admin key | public registry events; anyone can re-run the verifier; a compromised key is replaceable (`propose_admin` + `accept_admin`) | the MVP weak link (G5); a multisig beyond the demo, then ZK-verified attestation |
+| Program upgrade authority | the programs stay upgradeable so a lost admin can be recovered (`programs/oracle/README.md`); upgrades are public on chain | can replace any check, bypassing the registry. In the demo one wallet holds it plus every admin role; beyond the demo: separate keys, a multisig and a timelock, then an immutable program |
 | AWS | none | accepted: "trust AWS and the code" |
 | Anyone on the internet exhausting the enclave (its port is public) | caps on open sessions (256), create/bind requests in flight (32), evaluate requests in flight (4), evaluations running (2), body size and read time, and base58 length before decoding; slots taken before a body is read and held until the work ends (FORMATS §10) | accepted liveness risk: a caller who can get consents can keep the session cap full and lock others out. The sandbox bank issues consents to anyone who reaches it, but only the gateway can (internal ingress, FORMATS §15), and the gateway rate-limits session creation per client IP and globally (FORMATS §16); a consent flood at the bank itself can at worst evict unused consents. The host and gateway can already deny service, so availability is never guaranteed |
 
@@ -212,7 +214,25 @@ What a hostile gateway or host can do at each hop:
 - **High availability.** One enclave instance processes sessions one at a
   time. Its attester key changes on restart, so a restart needs
   re-registration. Several replicas of one build aren't supported by the
-  one-attester-per-entry registry.
+  one-attester-per-entry registry. `enclave:rotate` also revokes the old
+  entry, so after a restart every outstanding tier stops working for new
+  borrows and each borrower attests again (open loans are unaffected).
+- **A live AA connection as-is.** The FIU request key is new on every boot.
+  The sandbox bank trusts it through the on-chain registry, but a real AA
+  onboards an FIU's public key out of band. Going live needs a stable FIU
+  key (e.g. sealed by a KMS to the enclave's measurement) or a re-onboarding
+  flow with the AA, plus a regulated FIU of record.
+- **Whole-household or whole-borrower income.** One session scores one
+  account (FORMATS §5.2), chosen by the borrower, so obligations paid from
+  another account are not seen. Every non-bounce credit counts as income,
+  including self-transfers and loan proceeds (FORMATS §6.1). Obligations are
+  found from narration tokens and recurrence, so EMIs paid without those
+  tokens are missed. The thresholds are policy, pinned by `policy_hash`; the
+  classification rules are code, pinned by the image id. Thresholds are not
+  calibrated on repayment data.
+- **Rent reclaim for expired attestations.** No instruction closes an
+  expired SAS attestation; its rent (≈ 0.00195 SOL) stays locked until the
+  same wallet refreshes (FORMATS §7).
 - **A replacement for underwriting.** The tier covers ability to pay, from
   bank cash flow. It does not cover intent to pay or identity.
 
