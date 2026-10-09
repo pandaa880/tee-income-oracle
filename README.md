@@ -105,7 +105,7 @@ clients/ts/demo-pool/  TypeScript client for the demo pool, generated the same w
 tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
 enclave/             Rust HTTP wrapper around tio-core. Runs in the Oyster CVM.
 gateway/             Node/TS, untrusted. Orchestrates sessions, relays signed bytes,
-                     pays Solana fees.
+                     pays Solana fees, sponsors the demo pool's borrow/repay (shape-checked).
 sandbox-bank/        Node/TS mock FIP + AA speaking ReBIT with test keys. Also the
                      test-vector generator.
 verifier/            TS. Checks the Nitro attestation to AWS's root, the image id,
@@ -165,7 +165,8 @@ its attester is active in the on-chain registry; it runs locally, in
 Docker, and on Azure Container Apps, where every route but `/health`
 needs the gateway's bearer token. The `gateway` drives a whole session for the web (consent, enclave
 session, wallet-signed intent, FI request and fetch, evaluate), streams each
-stage over SSE and relays the signed result to the oracle; a local end-to-end
+stage over SSE and relays the signed result to the oracle, and co-signs the demo pool's
+borrow/repay transactions after an 11-rule shape check so the borrower pays no fees; a local end-to-end
 test runs the real enclave container, bank and programs through it. The
 `ops` scripts set a cluster up (oracle config, SAS, demo pool) and register
 the running Oyster enclave from its verified attestation; they are tested on

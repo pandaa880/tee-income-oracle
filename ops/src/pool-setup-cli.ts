@@ -1,4 +1,5 @@
-// Usage: pnpm --filter @tio/ops pool:setup -- --cluster localnet|devnet
+// Usage: pnpm --filter @tio/ops pool:setup -- --cluster localnet|devnet [--pool-id 0..255] [--tier-limits a,b,c]
+// --tier-limits in whole tokens (default 5000,2000,500); a second pool reuses the recorded mint.
 // Run after oracle:init and sas:setup (reads credential + schema from
 // deployments/<cluster>.json). The new pool approves the registry entries active now;
 // enclave:rotate keeps it current afterwards.
@@ -7,6 +8,7 @@ import { fromHex } from '@tio/encoding';
 import { chainClients, cliOptions, deploymentPath, readKeypair, repoPath, runCli } from './cli.ts';
 import { assertCluster, parseCluster } from './cluster.ts';
 import { loadConfig } from './config.ts';
+import { parsePoolId, parseTierLimits } from './pool-args.ts';
 import { runPoolSetup } from './pool-setup.ts';
 import { activeIds, readRegistry } from './registry.ts';
 
@@ -20,7 +22,10 @@ async function defaultPolicyHash(): Promise<Uint8Array> {
 }
 
 async function main(): Promise<void> {
-  const cluster = parseCluster(cliOptions(['cluster']).cluster);
+  const options = cliOptions(['cluster', 'pool-id', 'tier-limits']);
+  const cluster = parseCluster(options.cluster);
+  const poolId = parsePoolId(options['pool-id']);
+  const tierLimits = parseTierLimits(options['tier-limits']);
   const config = loadConfig(process.env);
   const clients = chainClients(config);
   // Before the registry read below: never read a cluster other than the one named.
@@ -32,9 +37,11 @@ async function main(): Promise<void> {
     deploymentPath: deploymentPath(cluster),
     policyHash: await defaultPolicyHash(),
     approvedIds: activeIds(await readRegistry(clients)),
+    poolId,
+    tierLimits,
   });
   process.stdout.write(
-    `${result.created ? 'created' : 'ok, exists:'} pool ${result.pool}\nmint ${result.mint}\nvault ${result.vault}\n`,
+    `${result.created ? 'created' : 'ok, exists:'} pool ${result.pool} (pool_id ${poolId})\nmint ${result.mint}\nvault ${result.vault}\n`,
   );
 }
 

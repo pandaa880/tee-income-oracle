@@ -16,7 +16,9 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.3",
+    "@solana-program/token": "0.15.0",
     "@solana/kit": "7.1.1",
+    "@tio/demo-pool-client": "workspace:*",
     "@tio/encoding": "workspace:*",
     "@tio/oracle-client": "workspace:*",
     "@tio/sandbox-bank": "workspace:*",
@@ -28,7 +30,6 @@
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
     "@solana/surfpool": "1.6.0",
-    "@tio/demo-pool-client": "workspace:*",
     "@tio/ops": "workspace:*",
     "@tio/oracle-tests": "workspace:*",
     "@types/node": "24.19.0",

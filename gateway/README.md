@@ -15,6 +15,17 @@ error codes, limits, config) is `docs/FORMATS.md` §16.
   precompile, oracle.submit_attestation]` paid by the relayer keypair. The
   program checks the enclave signature, not the payer. Idempotent: the oracle
   needs a strictly newer `issued_at` per wallet, so a resend can't land twice.
+- **Sponsors loans**: `POST /v1/loans/relay` takes a borrower-signed v0
+  transaction with the relayer as fee payer and co-signs it only if it is
+  exactly a demo-pool `borrow` (with the borrower's ATA creation) or `repay`
+  against a listed pool, with every account pinned to the borrower's own PDAs
+  and the relayer only where it pays (11 rules, FORMATS §16 → Relay). It then
+  simulates with signature verification, sends and confirms. A failed
+  simulation costs nothing; the borrower pays no fees. The one cost a borrower
+  could repeat, the rent of their token account, is funded only for an address
+  with no transaction history (a closed account keeps its history, so once per
+  wallet across restarts) and within 20 wallets per hour
+  (`sponsorship_exhausted`).
 - Holds no bank data and no borrower database (open sessions live in memory
   for 600 s). Logs the session id, stage and error code only.
 - Later (live Finvu path): the AA client plus the public FIU notification
@@ -56,12 +67,14 @@ arm64 by default, so build the deployed one with
 | `src/flow.ts` | the session flow over injected clients |
 | `src/upstream.ts` | enclave (§10) and bank (§15) HTTP clients |
 | `src/fiu-key.ts` | keeps the bank's copy of the enclave FIU key current |
-| `src/relayer.ts`, `src/chain.ts` | the attestation transaction and its retry rules; the chain port + kit adapter |
+| `src/relayer.ts`, `src/chain.ts` | the attestation transaction and its retry rules; the chain ports (`Chain`, `RelayChain`) + kit adapter |
+| `src/loan-relay.ts`, `src/loan-relay-flow.ts`, `src/sponsorship.ts` | the sponsored-loan shape check (pure, rules 1–11), the co-sign → simulate → send → confirm flow with the per-wallet in-flight lock and the chain-history check on the borrower's token account, and the hourly rent budget |
 | `src/registry.ts` | reads this enclave's registry entry |
 | `src/sessions.ts`, `src/rate-limit.ts`, `src/errors.ts`, `src/timeouts.ts` | session store, token buckets, error bodies, time budgets |
 
 Oracle instructions, PDAs and the registry account come from the generated
-Codama client (`@tio/oracle-client`); the §8 message, the secp256k1
+Codama client (`@tio/oracle-client`), the demo-pool ones from
+`@tio/demo-pool-client` and the ATA helpers from `@solana-program/token`; the §8 message, the secp256k1
 precompile and the SAS reader from the hand-written
 `@tio/oracle-client/attest`. The generated client doesn't load under plain
 Node, so the gateway runs with `node --import tsx` (`pnpm start`, and the
@@ -69,8 +82,11 @@ image's `CMD` from `/app/gateway`; see AGENTS.md Gotchas).
 
 ## Tests
 
-`pnpm --filter @tio/gateway test`: unit tests with fakes, plus relayer and
-registry suites on an embedded surfpool (run `anchor build` first). The local
+`pnpm --filter @tio/gateway test`: unit tests with fakes (one negative per
+relay shape rule), plus relayer, registry and loan-relay suites on an
+embedded surfpool (run `anchor build` first; the loan-relay suite sponsors a
+real borrow and repay for a 0-SOL wallet and shows a `policy_hash` switch
+ending in `simulation_failed` 6008). The local
 end-to-end test (`src/e2e.local.test.ts`) runs only with `TIO_E2E=1`: the
 real enclave container (`tio-enclave:dev`, or `TIO_ENCLAVE_IMAGE`), the bank
 process with the demo keys, surfnet with the oracle, SAS and demo-pool, and

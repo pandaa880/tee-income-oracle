@@ -1,9 +1,10 @@
 /**
- * `pool:setup`: the demo lending pool for one cluster (FORMATS §14). A new
- * classic SPL mint with **no freeze authority** (so nobody can freeze the
- * vault or a borrower's account and block `repay`), pool 0 with the demo
- * parameters, and a funded vault, all in one transaction so a failure leaves
- * nothing half-built.
+ * `pool:setup`: a demo lending pool for one cluster (FORMATS §14). The first
+ * run creates a classic SPL mint with **no freeze authority** (so nobody can
+ * freeze the vault or a borrower's account and block `repay`); every pool of
+ * the deployment shares that mint, so a second pool (`--pool-id 1`) reuses the
+ * recorded one. Pool, vault and funding go in one transaction so a failure
+ * leaves nothing half-built.
  *
  * The approved-measurement bitmap is set once here and afterwards owned by
  * `enclave:rotate`, so a re-run ignores it.
@@ -15,7 +16,12 @@ import {
   getMintSize,
   getMintToInstruction,
 } from '@solana-program/token';
-import { type Address, type KeyPairSigner, generateKeyPairSigner } from '@solana/kit';
+import {
+  type Address,
+  type Instruction,
+  type KeyPairSigner,
+  generateKeyPairSigner,
+} from '@solana/kit';
 import {
   DEMO_POOL_PROGRAM_ADDRESS,
   type PoolParams,
@@ -37,14 +43,18 @@ import {
 import { OpsError } from './errors.ts';
 import { type ChainClients, sendInstructions } from './send.ts';
 
-const ONE_TOKEN = 10n ** 6n;
+export const ONE_TOKEN = 10n ** 6n;
 const DAY_SECS = 86_400;
 
 /** Demo values (4d decision Q6). Token amounts in base units of a 6-decimal mint. */
 export const POOL_DEFAULTS = {
   poolId: 0,
   decimals: 6,
-  tierLimits: [5_000n * ONE_TOKEN, 2_000n * ONE_TOKEN, 500n * ONE_TOKEN],
+  tierLimits: [5_000n * ONE_TOKEN, 2_000n * ONE_TOKEN, 500n * ONE_TOKEN] as readonly [
+    bigint,
+    bigint,
+    bigint,
+  ],
   maxAgeSecs: 30 * DAY_SECS,
   maxWindowAgeSecs: 45 * DAY_SECS,
   minWindowSecs: 180 * DAY_SECS,
@@ -105,13 +115,18 @@ export type PoolSetupInput = ChainClients & {
   policyHash: Uint8Array;
   /** Registry ids the new pool approves (active entries at setup time). */
   approvedIds: number[];
+  /** The `u8` PDA seed; pool 0 is the default demo pool. */
+  poolId: number;
+  /** Base units (6 decimals); `A > 0`, `A >= B >= C`, 0 = tier not accepted. */
+  tierLimits: readonly [bigint, bigint, bigint];
 };
 
 export type PoolSetupResult = { created: boolean; pool: Address; mint: Address; vault: Address };
 
 /**
- * Creates (or checks) the demo pool and records `mint`, `demo_pool_program`
- * and `pools` in the deployment file.
+ * Creates (or checks) pool `input.poolId` and records `mint`, `demo_pool_program`
+ * and `pools` in the deployment file. The mint is generated only when neither the
+ * deployment file nor the chain knows one; otherwise every pool shares it.
  *
  * @throws OpsError `cluster_mismatch`, `missing_deployment`, `pool_mismatch`.
  */
@@ -120,28 +135,25 @@ export async function runPoolSetup(input: PoolSetupInput): Promise<PoolSetupResu
   const deployment = await readDeployment(input.deploymentPath);
   const credential = requiredAddress(deployment, 'credential', 'sas:setup');
   const schema = requiredAddress(deployment, 'schema', 'sas:setup');
-  const [pool] = await findPoolPda({ admin: input.admin.address, poolId: POOL_DEFAULTS.poolId });
+  const [pool] = await findPoolPda({ admin: input.admin.address, poolId: input.poolId });
   const [vault] = await findVaultPda({ pool });
   const found = await fetchMaybePool(input.rpc, pool);
 
-  const mintSigner = found.exists ? undefined : await generateKeyPairSigner();
-  const mint =
-    mintSigner?.address ??
-    optionalAddress(deployment, 'mint') ??
-    (found.exists ? found.data.mint : undefined);
+  const recordedMint = optionalAddress(deployment, 'mint');
+  const mintSigner =
+    found.exists || recordedMint !== undefined ? undefined : await generateKeyPairSigner();
+  const mint = mintSigner?.address ?? recordedMint ?? (found.exists ? found.data.mint : undefined);
   if (mint === undefined) throw new OpsError('missing_deployment', 'no mint');
   const expected: PoolState = { mint, credential, schema, params: poolParams(input) };
   const plan = planPoolSetup({ pool: found.exists ? found.data : null }, expected);
   if (!plan.ok) throw new OpsError(plan.code, plan.message);
 
-  if (plan.create && mintSigner !== undefined) {
-    await createPoolWithMint(input, mintSigner, expected, vault);
-  }
+  if (plan.create) await createPool(input, expected, vault, mintSigner);
   await updateDeployment(input.deploymentPath, {
     mint,
     demo_pool_program: DEMO_POOL_PROGRAM_ADDRESS,
     // Merge: other pools listed here must stay, or `enclave:rotate` stops approving them.
-    pools: withPool(deployment, { address: pool, pool_id: POOL_DEFAULTS.poolId }),
+    pools: withPool(deployment, { address: pool, pool_id: input.poolId }),
   });
   return { created: plan.create, pool, mint, vault };
 }
@@ -159,7 +171,7 @@ function withPool(deployment: DeploymentFile | null, record: PoolRecord): unknow
 function poolParams(input: PoolSetupInput): PoolParams {
   return {
     policyHash: input.policyHash,
-    tierLimits: [...POOL_DEFAULTS.tierLimits],
+    tierLimits: [...input.tierLimits],
     maxAgeSecs: POOL_DEFAULTS.maxAgeSecs,
     maxWindowAgeSecs: POOL_DEFAULTS.maxWindowAgeSecs,
     minWindowSecs: POOL_DEFAULTS.minWindowSecs,
@@ -170,19 +182,16 @@ function poolParams(input: PoolSetupInput): PoolParams {
   };
 }
 
-/** One transaction: create + init the mint, create the pool and vault, fund the vault. */
-async function createPoolWithMint(
+/** Create + init a fresh mint (the admin is its authority, nobody can freeze). */
+async function newMintInstructions(
   input: PoolSetupInput,
   mint: KeyPairSigner,
-  expected: PoolState,
-  vault: Address,
-): Promise<void> {
-  const { admin } = input;
+): Promise<Instruction[]> {
   const space = BigInt(getMintSize());
   const lamports = await input.rpc.getMinimumBalanceForRentExemption(space).send();
-  await sendInstructions(input, admin, [
+  return [
     getCreateAccountInstruction({
-      payer: admin,
+      payer: input.admin,
       newAccount: mint,
       lamports,
       space,
@@ -191,19 +200,35 @@ async function createPoolWithMint(
     getInitializeMint2Instruction({
       mint: mint.address,
       decimals: POOL_DEFAULTS.decimals,
-      mintAuthority: admin.address,
+      mintAuthority: input.admin.address,
       freezeAuthority: null,
     }),
+  ];
+}
+
+/**
+ * One transaction: (the mint, when `newMint` is given,) the pool and its vault,
+ * and the vault funding. The admin is the mint authority either way.
+ */
+async function createPool(
+  input: PoolSetupInput,
+  expected: PoolState,
+  vault: Address,
+  newMint: KeyPairSigner | undefined,
+): Promise<void> {
+  const { admin } = input;
+  await sendInstructions(input, admin, [
+    ...(newMint === undefined ? [] : await newMintInstructions(input, newMint)),
     await getCreatePoolInstructionAsync({
       admin,
-      mint: mint.address,
-      poolId: POOL_DEFAULTS.poolId,
+      mint: expected.mint,
+      poolId: input.poolId,
       credential: expected.credential,
       schema: expected.schema,
       params: expected.params,
     }),
     getMintToInstruction({
-      mint: mint.address,
+      mint: expected.mint,
       token: vault,
       mintAuthority: admin,
       amount: POOL_DEFAULTS.vaultFunding,

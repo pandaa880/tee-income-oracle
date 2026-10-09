@@ -46,6 +46,7 @@ solana program deploy target/deploy/demo_pool.so --program-id target/deploy/demo
 pnpm --filter @tio/ops oracle:init -- --cluster devnet
 pnpm --filter @tio/ops sas:setup   -- --cluster devnet   # writes deployments/devnet.json
 pnpm --filter @tio/ops pool:setup  -- --cluster devnet
+pnpm --filter @tio/ops pool:setup  -- --cluster devnet --pool-id 1 --tier-limits 3000,1000,0  # second pool, same mint
 ```
 
 Rent: about 1.32 SOL (oracle) + 1.23 SOL (demo_pool). A later upgrade needs a

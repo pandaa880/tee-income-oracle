@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
 import { isAddress } from '@solana/kit';
+import { DEMO_POOL_PROGRAM_ADDRESS } from '@tio/demo-pool-client';
 import { type JsonValue, canonicalize } from '@tio/sandbox-bank/jcs';
 import { z } from 'zod';
 
@@ -35,6 +36,10 @@ export type Deployment = {
   credential: string;
   schema: string;
   sasProgram: string;
+  /** The demo pools' token; absent until `pool:setup` ran on the cluster. */
+  mint?: string;
+  /** Demo pool addresses in file order; the loan relay serves only these. */
+  pools: readonly string[];
 };
 
 export type Config = {
@@ -164,6 +169,11 @@ const deploymentSchema = z.object({
   credential: base58Address,
   schema: base58Address,
   sas_program: base58Address,
+  mint: base58Address.optional(),
+  demo_pool_program: base58Address.optional(),
+  pools: z
+    .array(z.object({ address: base58Address, pool_id: z.int().min(0).max(255) }))
+    .default([]),
 });
 
 function loadDeployment(cluster: string, repoRoot: string): Deployment {
@@ -175,11 +185,23 @@ function loadDeployment(cluster: string, repoRoot: string): Deployment {
   } catch {
     throw new ConfigError('CLUSTER has no valid deployments/<cluster>.json');
   }
+  // The relay checks instructions against the compiled-in client: another program id would
+  // mean the deployment file and this build disagree about what a borrow is.
+  if (
+    parsed.demo_pool_program !== undefined &&
+    parsed.demo_pool_program !== DEMO_POOL_PROGRAM_ADDRESS
+  ) {
+    throw new ConfigError(
+      "deployments/<cluster>.json demo_pool_program is not this build's demo-pool program",
+    );
+  }
   return {
     oracleProgram: parsed.oracle_program,
     credential: parsed.credential,
     schema: parsed.schema,
     sasProgram: parsed.sas_program,
+    ...(parsed.mint === undefined ? {} : { mint: parsed.mint }),
+    pools: parsed.pools.map((p) => p.address),
   };
 }
 

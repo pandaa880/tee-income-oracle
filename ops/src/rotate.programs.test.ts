@@ -16,7 +16,7 @@ import {
   findEnclaveEntryPda,
 } from '@tio/oracle-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { runPoolSetup } from './pool-setup.ts';
+import { POOL_DEFAULTS, runPoolSetup } from './pool-setup.ts';
 import { OpsError } from './errors.ts';
 import { type RotatePorts, runRotate } from './rotate.ts';
 import { runSasSetup } from './sas-setup.ts';
@@ -221,6 +221,8 @@ describe('runRotate on surfpool', () => {
       deploymentPath,
       policyHash: new Uint8Array(32).fill(0x81),
       approvedIds: [],
+      poolId: POOL_DEFAULTS.poolId,
+      tierLimits: POOL_DEFAULTS.tierLimits,
     });
     pool = created.pool;
   });
