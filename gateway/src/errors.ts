@@ -31,6 +31,8 @@ const MESSAGES: ReadonlyMap<string, string> = new Map(
     bad_transaction: 'The transaction is not an accepted loan transaction.',
     relay_in_flight: 'A relay for this wallet is already in progress; try again shortly.',
     simulation_failed: 'The transaction would fail on chain; see detail.',
+    sponsorship_exhausted:
+      'The relayer will not fund another token account for this wallet right now; create it yourself or try later.',
   }),
 );
 

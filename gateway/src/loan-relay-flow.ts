@@ -13,6 +13,7 @@ import {
   getSignatureFromTransaction,
   partiallySignTransaction,
 } from '@solana/kit';
+import { TOKEN_PROGRAM_ADDRESS, findAssociatedTokenPda } from '@solana-program/token';
 import { b64Decode } from '@tio/encoding';
 
 import type { RelayChain } from './chain.ts';
@@ -24,6 +25,7 @@ import {
   simulationDetail,
   verifyBorrowerSignature,
 } from './loan-relay.ts';
+import { type SponsorshipBudget, createSponsorshipBudget } from './sponsorship.ts';
 import { CONFIRM_TIMEOUT_MS } from './timeouts.ts';
 
 export type LoanRelayDeps = {
@@ -33,6 +35,8 @@ export type LoanRelayDeps = {
   deployment: LoanDeployment;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
+  /** Token-account rent budget; default `createSponsorshipBudget` (once per wallet, 20 per hour). */
+  sponsorship?: SponsorshipBudget;
 };
 
 export type LoanRelay = { relay: (input: { tx_b64: string }) => Promise<{ signature: Signature }> };
@@ -114,14 +118,37 @@ export function createLoanRelay(deps: LoanRelayDeps): LoanRelay {
   const relayer = deps.payer.address;
   const now = deps.now ?? (() => Date.now());
   const sleep = deps.sleep ?? defaultSleep;
+  const sponsorship = deps.sponsorship ?? createSponsorshipBudget({ now });
   const inFlight = new Set<Address>();
 
+  /**
+   * A borrow creates the borrower's token account when it is missing, at the relayer's
+   * expense (FORMATS §16 → Relay). That rent is the one cost a borrower can make the
+   * relayer pay again (close the account after repay, borrow again), so it is budgeted.
+   */
+  async function needsSponsoredAta(shape: LoanTxShape): Promise<boolean> {
+    if (shape.kind !== 'borrow') return false;
+    const [ata] = await findAssociatedTokenPda({
+      owner: shape.borrower,
+      mint: deps.deployment.mint,
+      tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    });
+    return (await chainStep(() => deps.chain.account(ata))) === null;
+  }
+
   async function coSignAndSend(shape: LoanTxShape): Promise<Signature> {
+    const fundsAta = await needsSponsoredAta(shape);
+    if (fundsAta && !sponsorship.available(shape.borrower)) {
+      throw gatewayError('sponsorship_exhausted', 'gateway', 429);
+    }
     const signed = await partiallySignTransaction([deps.payer.keyPair], shape.tx);
     const wire = getBase64EncodedWireTransaction(signed);
     const { err } = await chainStep(() => deps.chain.simulate(wire));
     if (err !== null) throw gatewayError('simulation_failed', 'chain', 409, simulationDetail(err));
     const sent = await deps.chain.send(wire).catch(() => undefined);
+    // Spent once the transaction left (a lost reply may still have landed): a failed
+    // simulation costs nothing and must not use up the wallet's one sponsorship.
+    if (fundsAta) sponsorship.spend(shape.borrower);
     // Lost reply: the transaction may be in flight under the signature we can derive.
     const signature = sent ?? getSignatureFromTransaction(signed);
     const deadline = sent === undefined ? SEND_ERROR_GRACE_MS : CONFIRM_TIMEOUT_MS;

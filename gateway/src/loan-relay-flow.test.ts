@@ -21,6 +21,7 @@ import {
   SEND_ERROR_GRACE_MS,
   createLoanRelay,
 } from './loan-relay-flow.ts';
+import { ATA_SPONSOR_BURST } from './sponsorship.ts';
 import { CONFIRM_TIMEOUT_MS } from './timeouts.ts';
 import { expectRejected } from './testing/expect-rejected.ts';
 import {
@@ -386,6 +387,84 @@ function gated() {
   });
   return { gate, open };
 }
+
+/** `account` answer for a token account the relayer would have to pay for. */
+const missing = (): null => null;
+
+describe('relay: the token-account rent is budgeted', () => {
+  it("funds a wallet's token account once: borrowing again with it missing is sponsorship_exhausted 429", async () => {
+    const s = setup({ account: missing });
+    await expect(s.relay.relay({ tx_b64: await borrowTxB64() })).resolves.toEqual({
+      signature: SENT_SIGNATURE,
+    });
+    await expectRejected(s.relay.relay({ tx_b64: await borrowTxB64() }), {
+      code: 'sponsorship_exhausted',
+      stage: 'gateway',
+      status: 429,
+    });
+    // Refused before any signing or simulation.
+    expect(s.chain.calls.simulate).toHaveLength(1);
+    expect(s.chain.calls.send).toHaveLength(1);
+  });
+
+  it('leaves the budget alone when the token account already exists', async () => {
+    const s = setup();
+    for (let i = 0; i < 3; i += 1) {
+      await expect(s.relay.relay({ tx_b64: await borrowTxB64() })).resolves.toEqual({
+        signature: SENT_SIGNATURE,
+      });
+    }
+    expect(s.chain.calls.accounts).toHaveLength(3);
+  });
+
+  it('never consults the budget for a repay', async () => {
+    const s = setup({ account: missing });
+    const repay = b64((await buildRepayTx(opts)).wire);
+    await expect(s.relay.relay({ tx_b64: repay })).resolves.toEqual({ signature: SENT_SIGNATURE });
+    expect(s.chain.calls.accounts).toEqual([]);
+  });
+
+  it("does not spend the wallet's sponsorship on a failed simulation", async () => {
+    const script: RelayScript = {
+      account: missing,
+      simulateErr: { InstructionError: [1, { Custom: 6008 }] },
+    };
+    const s = setup(script);
+    await expectRejected(s.relay.relay({ tx_b64: await borrowTxB64() }), {
+      code: 'simulation_failed',
+      stage: 'chain',
+      status: 409,
+    });
+    delete script.simulateErr;
+    await expect(s.relay.relay({ tx_b64: await borrowTxB64() })).resolves.toEqual({
+      signature: SENT_SIGNATURE,
+    });
+  });
+
+  it('caps sponsored accounts at ATA_SPONSOR_BURST across wallets, then refills one per three minutes', async () => {
+    expect(ATA_SPONSOR_BURST).toBe(20);
+    const s = setup({ account: missing });
+    const wallets = await Promise.all(
+      Array.from({ length: ATA_SPONSOR_BURST + 1 }, () => generateKeyPairSigner()),
+    );
+    for (const w of wallets.slice(0, ATA_SPONSOR_BURST)) {
+      await expect(s.relay.relay({ tx_b64: await borrowTxB64(w) })).resolves.toEqual({
+        signature: SENT_SIGNATURE,
+      });
+    }
+    const extra = wallets[ATA_SPONSOR_BURST];
+    if (extra === undefined) throw new Error('unreachable');
+    await expectRejected(s.relay.relay({ tx_b64: await borrowTxB64(extra) }), {
+      code: 'sponsorship_exhausted',
+      stage: 'gateway',
+      status: 429,
+    });
+    s.clock.t += 3 * 60_000; // 20 per hour = one token every 3 minutes
+    await expect(s.relay.relay({ tx_b64: await borrowTxB64(extra) })).resolves.toEqual({
+      signature: SENT_SIGNATURE,
+    });
+  });
+});
 
 describe('relay: one in flight per borrower', () => {
   it('refuses a second relay for the same borrower while the first is in flight, then frees the borrower', async () => {

@@ -21,7 +21,9 @@ error codes, limits, config) is `docs/FORMATS.md` §16.
   against a listed pool, with every account pinned to the borrower's own PDAs
   and the relayer only where it pays (11 rules, FORMATS §16 → Relay). It then
   simulates with signature verification, sends and confirms. A failed
-  simulation costs nothing; the borrower pays no fees.
+  simulation costs nothing; the borrower pays no fees. The one cost a borrower
+  could repeat, the rent of their token account, is budgeted: once per wallet
+  per process, 20 wallets per hour (`sponsorship_exhausted`).
 - Holds no bank data and no borrower database (open sessions live in memory
   for 600 s). Logs the session id, stage and error code only.
 - Later (live Finvu path): the AA client plus the public FIU notification
@@ -64,7 +66,7 @@ arm64 by default, so build the deployed one with
 | `src/upstream.ts` | enclave (§10) and bank (§15) HTTP clients |
 | `src/fiu-key.ts` | keeps the bank's copy of the enclave FIU key current |
 | `src/relayer.ts`, `src/chain.ts` | the attestation transaction and its retry rules; the chain ports (`Chain`, `RelayChain`) + kit adapter |
-| `src/loan-relay.ts`, `src/loan-relay-flow.ts` | the sponsored-loan shape check (pure, rules 1–11) and the co-sign → simulate → send → confirm flow with the per-wallet in-flight lock |
+| `src/loan-relay.ts`, `src/loan-relay-flow.ts`, `src/sponsorship.ts` | the sponsored-loan shape check (pure, rules 1–11), the co-sign → simulate → send → confirm flow with the per-wallet in-flight lock, and the token-account rent budget |
 | `src/registry.ts` | reads this enclave's registry entry |
 | `src/sessions.ts`, `src/rate-limit.ts`, `src/errors.ts`, `src/timeouts.ts` | session store, token buckets, error bodies, time budgets |
 

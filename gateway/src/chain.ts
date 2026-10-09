@@ -43,6 +43,8 @@ export type RelayChain = {
   simulate: (wire: Base64EncodedWireTransaction) => Promise<{ err: unknown }>;
   send: (wire: Base64EncodedWireTransaction) => Promise<Signature>;
   signatureStatuses: Chain['signatureStatuses'];
+  /** Whether the borrower's token account exists (null = the relayer would pay its rent). */
+  account: Chain['account'];
 };
 
 export function kitChain(

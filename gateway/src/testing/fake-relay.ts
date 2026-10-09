@@ -1,7 +1,9 @@
 // Test code only. A scripted RelayChain and a fake LoanRelay.
 import { type Base64EncodedWireTransaction, type Signature, signature } from '@solana/kit';
 
-import type { RelayChain } from '../chain.ts';
+import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
+
+import type { RawAccount, RelayChain } from '../chain.ts';
 import type { LoanRelay } from '../loan-relay-flow.ts';
 
 type Status = { err: unknown; confirmationStatus: string | null } | null;
@@ -20,16 +22,29 @@ export type RelayScript = {
   statuses?: readonly (Status | Error)[];
   /** `simulate` waits for this before answering (to hold a relay in flight). */
   gate?: Promise<void>;
+  /** `account` answers: default an existing token account (no rent to sponsor); `null` = missing. */
+  account?: (address: string) => RawAccount | null;
+};
+
+/** A token account that exists (165 bytes, owned by the Token program): the relayer pays no rent. */
+export const EXISTING_TOKEN_ACCOUNT: RawAccount = {
+  owner: TOKEN_PROGRAM_ADDRESS,
+  data: new Uint8Array(165),
 };
 
 export type FakeRelayChain = RelayChain & {
-  calls: { simulate: string[]; send: string[]; statuses: number };
+  calls: { simulate: string[]; send: string[]; statuses: number; accounts: string[] };
   /** Resolves once `simulate` has been called `n` times. */
   simulations: (n: number) => Promise<void>;
 };
 
 export function fakeRelayChain(script: RelayScript = {}): FakeRelayChain {
-  const calls = { simulate: [] as string[], send: [] as string[], statuses: 0 };
+  const calls = {
+    simulate: [] as string[],
+    send: [] as string[],
+    statuses: 0,
+    accounts: [] as string[],
+  };
   const waiters: { n: number; resolve: () => void }[] = [];
   const statuses = script.statuses ?? [CONFIRMED];
   return {
@@ -56,6 +71,10 @@ export function fakeRelayChain(script: RelayScript = {}): FakeRelayChain {
       const entry = statuses[at] ?? null;
       if (entry instanceof Error) throw entry;
       return sigs.map(() => entry);
+    },
+    account: async (address) => {
+      calls.accounts.push(address);
+      return script.account === undefined ? EXISTING_TOKEN_ACCOUNT : script.account(address);
     },
   };
 }
