@@ -129,7 +129,7 @@ hold only READMEs. Update the status as each one starts working.
 | Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives); `cargo test -p oracle`: precompile/message layouts, attestation readers and clock rules; `cargo test -p demo-pool`: the pool's lending rules (all three also in CI) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests --filter @tio/demo-pool-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; `demo-pool` against the real oracle, SAS and SPL Token; also in CI) |
-| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ui` (components on happy-dom, token contrast and package-rule tests), `web` (page tests), `ops` unit tests incl. an offline surfpool suite with the dumped SAS binary (`pnpm --filter @tio/ops test:programs` runs the suites that need the built programs), `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`: §8 message, precompile, SAS reader) and `gateway` (unit + surfpool relayer/registry/loan-relay suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ui` (components on happy-dom, token contrast and package-rule tests), `web` (domain, adapters with chunk-split SSE and 429 backoff, hooks on fake ports, the gateway's own relay shape check on built loan transactions, the import-rule test), `ops` unit tests incl. an offline surfpool suite with the dumped SAS binary (`pnpm --filter @tio/ops test:programs` runs the suites that need the built programs), `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`: §8 message, precompile, SAS reader) and `gateway` (unit + surfpool relayer/registry/loan-relay suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
 | Lint/typecheck (TS) | `pnpm --filter <@tio/encoding, @tio/ui, @tio/web, @tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
@@ -252,6 +252,13 @@ Add a line whenever an agent makes the same mistake twice.
   (locks, pending, temp) get a `.gitignore` entry in the same change.
 - Behind one trusted proxy, the client IP is the **last** `X-Forwarded-For`
   hop (the one the proxy appended); earlier hops are client-written.
+- `@tio/encoding` uses Node's `Buffer`: fine for gateway/ops/sandbox-bank,
+  broken in the browser. `web/` uses kit's codecs.
+- The TS lint config has both `switch-exhaustiveness-check` and
+  `consistent-return`, so any `switch` fails one of them: use `Record`
+  lookups or narrowing `if` chains.
+- Node's `AbortSignal.timeout` ignores vitest fake timers: test a deadline
+  with real, short timeouts.
 - Web CSS order: `@tio/ui/fonts.css` (a remote `@import url()`) must come
   before `@import "tailwindcss"`; anywhere later, browsers ignore it and the
   fonts silently don't load. `web/src/styles.css` has the order.

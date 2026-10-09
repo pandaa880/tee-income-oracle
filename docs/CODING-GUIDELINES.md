@@ -239,19 +239,20 @@ pages / routes  →  app (hooks, queries)  →  domain (pure)
 
 | Layer | Folder | Contains | May import |
 |---|---|---|---|
-| domain | `web/src/domain/` | pure functions and types: credential status, tier → tone, amount parsing, error-code map, the borrow-flow reducer, feature flags type | `@tio/oracle-client` types, `@tio/encoding`, zod. **Never** React, `@solana/*` runtime, adapters, DOM |
-| adapters | `web/src/adapters/` | one module per external system: `gateway.ts`, `relay.ts`, `rpc.ts`, `wallet-demo.ts`, `wallet-standard.ts`, `confirm.ts`, `storage.ts`. Each implements a **port** (a `type` in `domain/ports.ts`) | domain, kit, `@solana/react`, browser APIs |
+| domain | `web/src/domain/` | pure functions and types: credential status, tier → tone, amount parsing, error-code map, the borrow-flow reducer, the §9 intent check, loan-transaction builders | the generated clients, kit's **pure** helpers (addresses, codecs, PDAs, message builders), zod. **Never** React, TanStack, adapters, network, DOM, storage |
+| adapters | `web/src/adapters/` | one module per external system: `gateway.ts`, `relay.ts`, `rpc.ts`, `wallet-demo.ts`, `confirm.ts`, `storage.ts` (`wallet-standard.ts` later). Each implements a **port** (a `type` in `domain/ports.ts`) | domain, kit, browser APIs |
 | app | `web/src/app/` | one hook per use case (`use-borrow-flow.ts`, `use-credential.ts`, `use-loan.ts`, `use-status.ts`), TanStack Query keys, the `config.ts` env parse, router search-param schemas | domain, adapters (through ports), React, TanStack |
 | pages | `web/src/pages/` + `routes/` | composition only: call hooks, map domain values to `@tio/ui` props, render | app, `@tio/ui`, domain types |
 | ui | `packages/ui` | primitives + patterns, props in / events out (package rules below) | React, Radix, Tailwind. **Nothing** from `web/`, Solana or `@tio/*` clients |
 
-- **Dependency rule is a test.** A vitest grep test in `web/` fails the build if
-  `domain/` imports `react`, `@solana/`, or `../adapters`, or if `pages/` imports
-  `../adapters` directly. Same pattern as the "no colour literal" test in `@tio/ui`.
-- **Ports are plain types**, no DI container, no classes:
-  `type GatewayPort = { createSession(...): Promise<...>; completeSession(...): AsyncIterable<FlowEvent> }`.
-  The hook takes the port as a parameter with the real adapter as default
-  (`useBorrowFlow(deps = realDeps)`), so tests pass a fake. That is the whole injection story.
+- **Dependency rule is a test.** `web/src/architecture.test.ts` fails the build if
+  `domain/` imports React, TanStack, adapters or app, if `pages/` imports adapters,
+  or if anything reads `process.`. Same pattern as the "no colour literal" test in `@tio/ui`.
+- **Ports are plain types with property signatures**, no DI container, no classes:
+  `type GatewayPort = { createSession: (...) => Promise<...>; completeSession: (...) => AsyncIterable<FlowEvent> }`
+  (property syntax, so tests can reference a mocked method without `unbound-method`).
+  The hook takes the deps as a parameter with the real ones as default
+  (`useBorrowFlow(deps = realDeps())`), so tests pass fakes. That is the whole injection story.
 - Domain modules are the only place a business rule lives. "Tier B is tone
   `warn`", "stale = older than `max_age_secs`", "amount has 6 decimals" each
   exist once. Pages never recompute them.
@@ -275,7 +276,7 @@ pages / routes  →  app (hooks, queries)  →  domain (pure)
 | Kind | Where |
 |---|---|
 | Server / chain state (attestation, pool, loan, `/v1/info`) | TanStack Query, keyed by `[resource, cluster, address]`; `staleTime` set per query; poll with `refetchInterval`, no websockets |
-| Flow state (wallet → persona → consent → processing → result → loan) | `useReducer` over a discriminated union in `domain/flow.ts`; exhaustive `switch` with a `never` check; `reset` on wallet change |
+| Flow state (wallet → persona → consent → processing → result → loan) | `useReducer` over a discriminated union in `domain/flow.ts`; narrowing `if` chain with a compile-time guard for the last case; `reset` on wallet change |
 | UI-local (open dialog, hovered row) | `useState` in the component |
 | Shareable (selected pool, `?wallet=`) | router search params, zod-validated |
 | Demo keypair | `sessionStorage`, wrapped in try/catch, through `adapters/storage.ts` only |
@@ -289,12 +290,27 @@ pages, it is server state or URL state.
   `protocol_error`, never a thrown `SyntaxError` reaching a component.
 - On-chain integers are `bigint` end to end; format for display with
   `domain/amount.ts`, never `Number()` or `toFixed`.
-- Addresses are kit `Address`, bytes `Uint8Array`, encodings via `@tio/encoding`.
+- Addresses are kit `Address`, bytes `Uint8Array`, encodings via kit's codecs
+  (`getBase58Decoder`, `getBase64Encoder`, `getBase16Codec`): `@tio/encoding` uses Node's
+  `Buffer` and doesn't run in the browser.
+- No `switch` statements: the lint config has both `switch-exhaustiveness-check` and
+  `consistent-return`, and a switch trips one or the other. Use a `Record` lookup (a missing
+  key is a compile error) or a narrowing `if` chain.
 - Expected failures return `{ ok: true, value } | { ok: false, error: AppError }`
   from adapters and domain; hooks surface them as state; one `domain/errors.ts`
   maps every §16 code and Anchor error to a message, exhaustive, generic fallback.
-- Every fetch / RPC / `sendAndConfirm` takes an `AbortSignal`; unmount cancels
-  via the Query signal.
+- Every fetch / RPC / `sendAndConfirm` takes an `AbortSignal` that something actually aborts:
+  the Query signal, or `useCancelScope` (unmount, `cancel()` and a timeout). A bare
+  `new AbortController().signal` is not cancellation.
+- **The gateway is untrusted.** Anything it sends that the browser signs, shows or acts on is
+  rebuilt locally or checked against chain first: the §9 intent is rebuilt byte for byte (and
+  its policy must be a listed pool's); a result must name the wallet's attestation PDA and a
+  payload whose tier byte matches; a relayed loan counts only once the Loan account says so.
+- Untrusted strings that end up in signed text or URLs get strict schemas (UUIDs, hex,
+  base58 signatures); on-chain integers get zod bounds matching the Rust type (u8 0..255,
+  u64 ≤ 2^64−1).
+- A chain read right after `confirmed` can reach a node a slot behind (load-balanced RPC):
+  retry it briefly (or pin `minContextSlot`) before calling it a failure.
 
 #### `@tio/ui` package rules
 - Standalone, so it can be extracted as a design system later: no imports from `web/`,
