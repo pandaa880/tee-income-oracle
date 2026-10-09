@@ -24,6 +24,8 @@ export type RelayScript = {
   gate?: Promise<void>;
   /** `account` answers: default an existing token account (no rent to sponsor); `null` = missing. */
   account?: (address: string) => RawAccount | null;
+  /** `hasHistory` answers; default false (a fresh address). */
+  history?: (address: string) => boolean;
 };
 
 /** A token account that exists (165 bytes, owned by the Token program): the relayer pays no rent. */
@@ -33,7 +35,13 @@ export const EXISTING_TOKEN_ACCOUNT: RawAccount = {
 };
 
 export type FakeRelayChain = RelayChain & {
-  calls: { simulate: string[]; send: string[]; statuses: number; accounts: string[] };
+  calls: {
+    simulate: string[];
+    send: string[];
+    statuses: number;
+    accounts: string[];
+    history: string[];
+  };
   /** Resolves once `simulate` has been called `n` times. */
   simulations: (n: number) => Promise<void>;
 };
@@ -44,6 +52,7 @@ export function fakeRelayChain(script: RelayScript = {}): FakeRelayChain {
     send: [] as string[],
     statuses: 0,
     accounts: [] as string[],
+    history: [] as string[],
   };
   const waiters: { n: number; resolve: () => void }[] = [];
   const statuses = script.statuses ?? [CONFIRMED];
@@ -75,6 +84,10 @@ export function fakeRelayChain(script: RelayScript = {}): FakeRelayChain {
     account: async (address) => {
       calls.accounts.push(address);
       return script.account === undefined ? EXISTING_TOKEN_ACCOUNT : script.account(address);
+    },
+    hasHistory: async (address) => {
+      calls.history.push(address);
+      return script.history?.(address) ?? false;
     },
   };
 }

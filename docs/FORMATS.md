@@ -1529,11 +1529,13 @@ a tier, and it signs nothing but those two loan shapes.
   in all (`relay_in_flight`). What a borrower can cost the relayer: the fees
   of their own borrow and repay, and once the rent of their token account
   (the Loan rent returns on repay). That rent is the one cost a borrower could
-  repeat (close the account after repay, borrow again), so when the account is
-  missing the gateway funds it **at most once per wallet per process and at
-  most 20 wallets per hour in all**; beyond that a borrow answers
+  repeat (close the account after repay, borrow again), so a missing account is
+  funded only when **its address has no transaction history** (a closed account
+  keeps its history, so a wallet is funded once, across gateway restarts) and
+  **within 20 wallets per hour** per process; otherwise the borrow answers
   `sponsorship_exhausted` before anything is signed (the wallet can create its
-  own account, or wait). Fees stay bounded by the rate limiter.
+  own account, or wait for the hourly budget). Fees stay bounded by the rate
+  limiter.
 - **Errors**: `{ error: { code, message, stage, detail? } }`, `stage` ∈ `gateway`,
   `bank`, `enclave`, `chain`. `detail` appears only on `bad_transaction`
   (`{ rule }`) and `simulation_failed` (above) and carries numbers and
@@ -1554,7 +1556,7 @@ a tier, and it signs nothing but those two loan shapes.
 | `rate_limited` | 429 | gateway |
 | `bad_transaction` (a relay shape rule failed; `detail: { rule }`) | 400 | gateway |
 | `relay_in_flight` (this wallet already has a relay in progress, or 64 are) | 429 | gateway |
-| `sponsorship_exhausted` (the borrow would make the relayer fund this wallet's token account again, or the hourly budget of 20 is spent) | 429 | gateway |
+| `sponsorship_exhausted` (the borrower's token account is missing but its address has history, i.e. it was funded and closed before; or the hourly budget of 20 sponsored accounts is spent) | 429 | gateway |
 | `internal_error` (any unexpected exception, no detail) | 500 | gateway |
 | `too_many_sessions` | 503 | gateway |
 | `upstream_unavailable` (network error, 30 s timeout, redirect, reply not JSON / wrong shape / over 64 KiB, fetch reply over 6 MiB, missing `x-jws-signature`) | 502 | bank or enclave |
@@ -1568,8 +1570,8 @@ a tier, and it signs nothing but those two loan shapes.
   `intent_expires`), single use. Create and relay are rate-limited, sharing
   one token bucket per client IP (burst 5, 10 per minute) and one global
   bucket (burst 20, 60 per minute); a request needs a token from both. One
-  relay in flight per wallet, 64 in all. Sponsored token accounts: once per
-  wallet per process, 20 per hour in all. The client IP is the socket
+  relay in flight per wallet, 64 in all. Sponsored token accounts: only for an
+  address with no history (once per wallet, across restarts), 20 per hour. The client IP is the socket
   address, or with `TRUST_PROXY=1` the **last** `X-Forwarded-For` hop: the one
   our single trusted proxy (the Azure ingress) appended. Earlier hops are
   client-written. Another proxy in front (a CDN) would need a different rule.

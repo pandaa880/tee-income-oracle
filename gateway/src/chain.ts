@@ -45,6 +45,8 @@ export type RelayChain = {
   signatureStatuses: Chain['signatureStatuses'];
   /** Whether the borrower's token account exists (null = the relayer would pay its rent). */
   account: Chain['account'];
+  /** Whether any transaction ever touched `address` (a closed account keeps its history). */
+  hasHistory: (address: Address) => Promise<boolean>;
 };
 
 export function kitChain(
@@ -80,5 +82,11 @@ export function kitChain(
       rpc
         .sendTransaction(wire, { encoding: 'base64', preflightCommitment: 'confirmed' })
         .send({ abortSignal: rpcSignal() }),
+    hasHistory: async (at) =>
+      (
+        await rpc
+          .getSignaturesForAddress(at, { limit: 1, commitment: 'confirmed' })
+          .send({ abortSignal: rpcSignal() })
+      ).length > 0,
   };
 }

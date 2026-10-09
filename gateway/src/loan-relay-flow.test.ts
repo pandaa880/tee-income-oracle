@@ -407,6 +407,24 @@ describe('relay: the token-account rent is budgeted', () => {
     expect(s.chain.calls.send).toHaveLength(1);
   });
 
+  it('never funds a token account that existed before: a missing account with history is sponsorship_exhausted on a fresh process', async () => {
+    // A new relay instance stands for a restarted gateway: no in-memory record of this wallet.
+    const s = setup({ account: missing, history: () => true });
+    await expectRejected(s.relay.relay({ tx_b64: await borrowTxB64() }), {
+      code: 'sponsorship_exhausted',
+      stage: 'gateway',
+      status: 429,
+    });
+    expect(s.chain.calls.history).toHaveLength(1);
+    expect(s.chain.calls.simulate).toEqual([]);
+  });
+
+  it('does not look up history when the token account exists', async () => {
+    const s = setup();
+    await s.relay.relay({ tx_b64: await borrowTxB64() });
+    expect(s.chain.calls.history).toEqual([]);
+  });
+
   it('leaves the budget alone when the token account already exists', async () => {
     const s = setup();
     for (let i = 0; i < 3; i += 1) {

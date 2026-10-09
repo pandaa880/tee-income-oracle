@@ -124,7 +124,10 @@ export function createLoanRelay(deps: LoanRelayDeps): LoanRelay {
   /**
    * A borrow creates the borrower's token account when it is missing, at the relayer's
    * expense (FORMATS §16 → Relay). That rent is the one cost a borrower can make the
-   * relayer pay again (close the account after repay, borrow again), so it is budgeted.
+   * relayer pay again (close the account after repay, borrow again). Two guards: a
+   * missing account whose address already has transaction history was created and
+   * closed before, so it is never funded again (chain state, survives a restart); and
+   * first-time accounts draw on the hourly budget.
    */
   async function needsSponsoredAta(shape: LoanTxShape): Promise<boolean> {
     if (shape.kind !== 'borrow') return false;
@@ -133,7 +136,11 @@ export function createLoanRelay(deps: LoanRelayDeps): LoanRelay {
       mint: deps.deployment.mint,
       tokenProgram: TOKEN_PROGRAM_ADDRESS,
     });
-    return (await chainStep(() => deps.chain.account(ata))) === null;
+    if ((await chainStep(() => deps.chain.account(ata))) !== null) return false;
+    if (await chainStep(() => deps.chain.hasHistory(ata))) {
+      throw gatewayError('sponsorship_exhausted', 'gateway', 429);
+    }
+    return true;
   }
 
   async function coSignAndSend(shape: LoanTxShape): Promise<Signature> {

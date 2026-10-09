@@ -9,7 +9,11 @@ import {
   type KeyPairSigner,
   generateKeyPairSigner,
 } from '@solana/kit';
-import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
+import {
+  findAssociatedTokenPda,
+  getCloseAccountInstruction,
+  TOKEN_PROGRAM_ADDRESS,
+} from '@solana-program/token';
 import { findLoanPda } from '@tio/demo-pool-client';
 import { b64Encode } from '@tio/encoding';
 import { send } from '@tio/oracle-tests/harness';
@@ -138,6 +142,25 @@ describe('loan relay (surfpool)', { timeout: 120_000 }, () => {
     expect(await lamportsOf(f, wallet.address)).toBe(borrowerStart);
     const [loan] = await findLoanPda({ pool: pool.address, borrower: wallet.address });
     expect((await f.h.rpc.getAccountInfo(loan, { encoding: 'base64' }).send()).value).toBeNull();
+
+    // The attack CodeRabbit described: close the token account (rent to the borrower), then
+    // borrow again so the relayer would pay the rent once more. A fresh relay instance stands
+    // for a restarted gateway with no memory of this wallet; chain history still refuses it.
+    const closer = await fundedSigner(f, 1); // pays the close fee; the 0-SOL wallet only signs
+    await send(f.h, closer, [
+      getCloseAccountInstruction({ account: ata, destination: wallet.address, owner: wallet }),
+    ]);
+    expect((await f.h.rpc.getAccountInfo(ata, { encoding: 'base64' }).send()).value).toBeNull();
+    const restarted = relayFor(pool);
+    const sendsBefore = sends.length;
+    const again = await buildBorrowTx(await loanOpts(pool, wallet));
+    await expectRejected(restarted.relay({ tx_b64: b64Encode(again.wire) }), {
+      code: 'sponsorship_exhausted',
+      stage: 'gateway',
+      status: 429,
+    });
+    expect(sends.length).toBe(sendsBefore);
+    expect(await lamportsOf(f, relayer.address)).toBe(relayerEnd);
   });
 
   it('refuses a borrow after the lender changed its policy: simulation_failed with custom 6008, nothing sent', async () => {
