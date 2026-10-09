@@ -69,6 +69,12 @@ jobs:
       - run: pnpm --filter @tio/ui lint
       - run: pnpm --filter @tio/ui format:check
       - run: pnpm --filter @tio/ui test
+      # Web app (Vite SPA on @tio/ui): gates plus a production build.
+      - run: pnpm --filter @tio/web typecheck
+      - run: pnpm --filter @tio/web lint
+      - run: pnpm --filter @tio/web format:check
+      - run: pnpm --filter @tio/web test
+      - run: pnpm --filter @tio/web build
       - run: pnpm --filter @tio/ops typecheck
       - run: pnpm --filter @tio/ops lint
       - run: pnpm --filter @tio/ops format:check

@@ -285,7 +285,7 @@ pages, it is server state or URL state.
 
 #### Boundaries and data
 - Parse at the edge, once: gateway SSE events, RPC account bytes, env
-  (`VITE_*`), `sessionStorage`, URL params. Malformed input →
+  (`VITE_*` via `import.meta.env`; browser code never reads `process.*`), `sessionStorage`, URL params. Malformed input →
   `protocol_error`, never a thrown `SyntaxError` reaching a component.
 - On-chain integers are `bigint` end to end; format for display with
   `domain/amount.ts`, never `Number()` or `toFixed`.
@@ -354,6 +354,8 @@ yet; the rules below describe the target.
 - Hooks: `renderHook` with fake ports; no network in hook tests.
 - Components: `@testing-library/react` + `happy-dom`; query by role / label
   text, never `data-testid`; assert what the user sees.
+- Page tests assert the page's own composition (the props, labels and hrefs it
+  passes), not behaviour `@tio/ui` already tests.
 - Flag gating: a test per flag asserts hidden CTAs and the `Next` tag render
   when the flag is off.
 - No snapshot tests.
