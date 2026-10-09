@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { Input } from '../input/input.tsx';
 import { describe, expect, it } from 'vitest';
 import {
   Dialog,
@@ -76,5 +77,29 @@ describe('Dialog', () => {
     expect(screen.getByText('D')).toHaveClass('d-x');
     expect(screen.getByText('F')).toHaveClass('f-x');
     expect(screen.getByText('T').closest('[data-slot="dialog-header"]')).toHaveClass('h-x');
+  });
+
+  it('keeps forceMount content and its form state across close and reopen', () => {
+    render(
+      <Dialog>
+        <DialogTrigger>Open it</DialogTrigger>
+        <DialogContent forceMount>
+          <DialogTitle>Form</DialogTitle>
+          <DialogDescription>Keep my draft</DialogDescription>
+          <Input aria-label="Amount" />
+          <DialogClose>Dismiss</DialogClose>
+        </DialogContent>
+      </Dialog>,
+    );
+    // forceMount mounts the modal content up front, and Radix then aria-hides the page behind it.
+    fireEvent.click(screen.getByRole('button', { name: 'Open it', hidden: true }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Amount' }), { target: { value: '42' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(document.querySelector('[data-slot="dialog-content"]')).toHaveAttribute(
+      'data-state',
+      'closed',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open it', hidden: true }));
+    expect(screen.getByRole('textbox', { name: 'Amount' })).toHaveValue('42');
   });
 });

@@ -14,16 +14,26 @@ export function DialogClose(props: ComponentProps<typeof DialogPrimitive.Close>)
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />;
 }
 
-/** Modal sheet over a dimmed overlay, rendered in a portal. */
+/**
+ * Modal sheet over a dimmed overlay, rendered in a portal. `forceMount` also goes to the portal
+ * and overlay: on `Content` alone the closed portal still unmounts it (losing form state).
+ */
 export function DialogContent({
   className,
   children,
+  forceMount,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Content>) {
+  const mount = forceMount ? { forceMount } : {};
   return (
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay data-slot="dialog-overlay" className="fixed inset-0 z-50 bg-scrim" />
+    <DialogPrimitive.Portal {...mount}>
+      <DialogPrimitive.Overlay
+        {...mount}
+        data-slot="dialog-overlay"
+        className="fixed inset-0 z-50 bg-scrim"
+      />
       <DialogPrimitive.Content
+        {...mount}
         data-slot="dialog-content"
         className={cn(
           'fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-lg -translate-1/2 gap-4 rounded-lg border border-border bg-card p-6 text-card-foreground',
