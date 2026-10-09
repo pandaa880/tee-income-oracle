@@ -129,9 +129,9 @@ hold only READMEs. Update the status as each one starts working.
 | Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives); `cargo test -p oracle`: precompile/message layouts, attestation readers and clock rules; `cargo test -p demo-pool`: the pool's lending rules (all three also in CI) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests --filter @tio/demo-pool-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; `demo-pool` against the real oracle, SAS and SPL Token; also in CI) |
-| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ui` (components on happy-dom, token contrast and package-rule tests), `ops` unit tests incl. an offline surfpool suite with the dumped SAS binary (`pnpm --filter @tio/ops test:programs` runs the suites that need the built programs), `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`: §8 message, precompile, SAS reader) and `gateway` (unit + surfpool relayer/registry/loan-relay suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ui` (components on happy-dom, token contrast and package-rule tests), `web` (page tests), `ops` unit tests incl. an offline surfpool suite with the dumped SAS binary (`pnpm --filter @tio/ops test:programs` runs the suites that need the built programs), `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`: §8 message, precompile, SAS reader) and `gateway` (unit + surfpool relayer/registry/loan-relay suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm --filter <@tio/encoding, @tio/ui, @tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Lint/typecheck (TS) | `pnpm --filter <@tio/encoding, @tio/ui, @tio/web, @tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
 | Oracle init (admin) | `pnpm --filter @tio/ops oracle:init --cluster <localnet\|devnet>` — the admin wallet must be the oracle's upgrade authority; env in `ops/README.md` | works on surfpool and devnet (2026-10-08) |
 | SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet and devnet (2026-10-08) |
@@ -141,6 +141,8 @@ hold only READMEs. Update the status as each one starts working.
 | Test (ops, programs) | `pnpm --filter @tio/ops test:programs` after `anchor build` — `oracle:init`, `pool:setup`, `enclave:rotate` against the real programs | works (also in CI, `programs` job) |
 | Run (sandbox bank, local) | `pnpm --filter @tio/sandbox-bank start:local` (demo keys from `sandbox-bank/.secrets/`, RPC defaults to `127.0.0.1:8899`; env in `sandbox-bank/README.md`) | works |
 | Build (sandbox bank image) | `docker build -f sandbox-bank/Dockerfile -t tio-sandbox-bank:dev .` (context = repo root; `sandbox-bank/Dockerfile.dockerignore`) | works (local only; not in CI) |
+| Run (web, local) | `pnpm --filter @tio/web dev` (http://localhost:5173) | works (placeholder home on `@tio/ui`) |
+| Build (web) | `pnpm --filter @tio/web build` (→ `web/dist`; deployed by Vercel, `web/README.md`) | works (also in CI) |
 | Run (gateway, local) | `pnpm --filter @tio/gateway start` with the env in `gateway/README.md` (needs a running enclave, the bank and an RPC; boot checks the enclave's registry entry) | works |
 | Build (gateway image) | `docker build -f gateway/Dockerfile -t tio-gateway:dev .` (context = repo root; `gateway/Dockerfile.dockerignore`) | works (local only; not in CI) |
 | E2E (local) | `TIO_E2E=1 [TIO_ENCLAVE_IMAGE=tio-enclave:dev] pnpm --filter @tio/gateway test src/e2e.local.test.ts` — real enclave container + bank process + surfnet (oracle, SAS, demo-pool) + gateway; needs the demo keys and the ops admin wallet | works (local only; never in CI: the demo keys aren't committed) |
@@ -250,6 +252,13 @@ Add a line whenever an agent makes the same mistake twice.
   (locks, pending, temp) get a `.gitignore` entry in the same change.
 - Behind one trusted proxy, the client IP is the **last** `X-Forwarded-For`
   hop (the one the proxy appended); earlier hops are client-written.
+- Web CSS order: `@tio/ui/fonts.css` (a remote `@import url()`) must come
+  before `@import "tailwindcss"`; anywhere later, browsers ignore it and the
+  fonts silently don't load. `web/src/styles.css` has the order.
+- `VITE_*` values are compiled into the public web bundle. Never put a
+  secret or a keyed RPC URL (Helius) in one; browser code reads config only
+  through `import.meta.env` (no `process.*`: `web/tsconfig.json` has no node
+  types).
 - In `@tio/ui` tests (happy-dom), a `vi.spyOn` on `localStorage` or
   `Storage.prototype` leaks into later tests even after `restoreAllMocks`: a
   test passed alone and failed in the suite. Stub the whole object with
