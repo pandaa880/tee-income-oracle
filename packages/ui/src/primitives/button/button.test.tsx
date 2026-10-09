@@ -62,4 +62,36 @@ describe('Button', () => {
     fireEvent.click(screen.getByRole('button'));
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  it('defaults to type="button" so it does not submit a form', () => {
+    const onSubmit = vi.fn<() => void>();
+    render(
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit();
+        }}
+      >
+        <Button>Go</Button>
+      </form>,
+    );
+    const button = screen.getByRole('button');
+    expect(button).toHaveAttribute('type', 'button');
+    fireEvent.click(button);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('keeps an explicit type', () => {
+    render(<Button type="submit">Send</Button>);
+    expect(screen.getByRole('button')).toHaveAttribute('type', 'submit');
+  });
+
+  it('adds no type to a slotted child', () => {
+    render(
+      <Button asChild>
+        <a href="/x">X</a>
+      </Button>,
+    );
+    expect(screen.getByRole('link')).not.toHaveAttribute('type');
+  });
 });

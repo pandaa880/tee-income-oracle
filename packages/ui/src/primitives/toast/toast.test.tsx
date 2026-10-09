@@ -45,4 +45,21 @@ describe('Toaster', () => {
     expect(await screen.findByText('Slot 42')).toHaveClass('text-muted-foreground!');
     expect(screen.getByText('Sent')).toHaveClass('title-x');
   });
+
+  it.each([
+    ['success', 'positive'],
+    ['info', 'info'],
+    ['warning', 'caution'],
+    ['error', 'negative'],
+  ])('maps the richColors %s palette to tokens (tone %s on card)', async (kind, tone) => {
+    render(<Toaster richColors />);
+    act(() => {
+      toast('y');
+    });
+    await screen.findByText('y');
+    const style = document.querySelector<HTMLElement>('[data-sonner-toaster]')?.style;
+    expect(style?.getPropertyValue(`--${kind}-bg`)).toBe('var(--card)');
+    expect(style?.getPropertyValue(`--${kind}-text`)).toBe(`var(--tone-${tone})`);
+    expect(style?.getPropertyValue(`--${kind}-border`)).toBe(`var(--tone-${tone})`);
+  });
 });

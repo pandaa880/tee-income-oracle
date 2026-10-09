@@ -48,4 +48,24 @@ describe('Accordion', () => {
     expect(screen.getByRole('button', { name: 'Q' })).toHaveClass('t-x');
     expect(screen.getByText('A')).toHaveClass('c-x');
   });
+
+  it('slots a custom trigger element with asChild, marker inside it', () => {
+    render(
+      <Accordion type="single" collapsible>
+        <AccordionItem value="a">
+          <AccordionTrigger asChild>
+            <button type="button" className="own-x">
+              Question
+            </button>
+          </AccordionTrigger>
+          <AccordionContent>Answer</AccordionContent>
+        </AccordionItem>
+      </Accordion>,
+    );
+    const trigger = screen.getByRole('button', { name: 'Question' });
+    expect(trigger).toHaveClass('own-x');
+    expect(trigger).toHaveTextContent('+');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  });
 });

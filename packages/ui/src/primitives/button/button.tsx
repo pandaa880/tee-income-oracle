@@ -26,12 +26,16 @@ const buttonVariants = cva(
 export type ButtonProps = ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & { asChild?: boolean };
 
-/** Action button; `asChild` styles a child element (e.g. a router link) instead. */
-export function Button({ className, variant, size, asChild = false, ...props }: ButtonProps) {
+/**
+ * Action button; `asChild` styles a child element (e.g. a router link) instead. Defaults to
+ * `type="button"` so it never submits a form by accident; a slotted child keeps its own type.
+ */
+export function Button({ className, variant, size, asChild = false, type, ...props }: ButtonProps) {
   const Comp = asChild ? Slot.Root : 'button';
   return (
     <Comp
       data-slot="button"
+      {...(asChild ? {} : { type: type ?? 'button' })}
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     />

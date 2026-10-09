@@ -1,4 +1,4 @@
-import { Accordion as AccordionPrimitive } from 'radix-ui';
+import { Accordion as AccordionPrimitive, Slot } from 'radix-ui';
 import type { ComponentProps } from 'react';
 import { cn } from '../../lib/cn.ts';
 
@@ -19,6 +19,10 @@ export function AccordionItem({
   );
 }
 
+/**
+ * Question row with a "+" marker. `Slottable` keeps `asChild` working: the marker is placed
+ * inside the slotted child instead of next to it (Slot accepts exactly one child).
+ */
 export function AccordionTrigger({
   className,
   children,
@@ -34,7 +38,7 @@ export function AccordionTrigger({
         )}
         {...props}
       >
-        {children}
+        <Slot.Slottable>{children}</Slot.Slottable>
         <span
           aria-hidden="true"
           className="font-mono text-muted-foreground group-data-[state=open]:rotate-45 motion-safe:transition-transform"
