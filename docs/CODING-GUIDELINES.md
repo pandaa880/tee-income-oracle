@@ -227,15 +227,148 @@ scope. See `AGENTS.md` for the full wording.
 - An allow-list rule ("X appears only in slots S") covers every instruction in
   the message, including optional prefix instructions (ComputeBudget).
 
-### Web (Next.js)
-- The browser is untrusted. No keys, no privileged logic.
-- Read chain state via RPC; don't trust gateway claims for anything shown as
-  verified — the verify page checks on its own.
+### Web (Vite SPA) and `@tio/ui`
+
+#### Architecture: four layers, dependencies point inward
+
+```text
+pages / routes  →  app (hooks, queries)  →  domain (pure)
+       ↓                    ↓
+    @tio/ui            adapters (gateway, rpc, wallet, relay, storage)
+```
+
+| Layer | Folder | Contains | May import |
+|---|---|---|---|
+| domain | `web/src/domain/` | pure functions and types: credential status, tier → tone, amount parsing, error-code map, the borrow-flow reducer, feature flags type | `@tio/oracle-client` types, `@tio/encoding`, zod. **Never** React, `@solana/*` runtime, adapters, DOM |
+| adapters | `web/src/adapters/` | one module per external system: `gateway.ts`, `relay.ts`, `rpc.ts`, `wallet-demo.ts`, `wallet-standard.ts`, `confirm.ts`, `storage.ts`. Each implements a **port** (a `type` in `domain/ports.ts`) | domain, kit, `@solana/react`, browser APIs |
+| app | `web/src/app/` | one hook per use case (`use-borrow-flow.ts`, `use-credential.ts`, `use-loan.ts`, `use-status.ts`), TanStack Query keys, the `config.ts` env parse, router search-param schemas | domain, adapters (through ports), React, TanStack |
+| pages | `web/src/pages/` + `routes/` | composition only: call hooks, map domain values to `@tio/ui` props, render | app, `@tio/ui`, domain types |
+| ui | `packages/ui` | primitives + patterns, props in / events out (package rules below) | React, Radix, Tailwind. **Nothing** from `web/`, Solana or `@tio/*` clients |
+
+- **Dependency rule is a test.** A vitest grep test in `web/` fails the build if
+  `domain/` imports `react`, `@solana/`, or `../adapters`, or if `pages/` imports
+  `../adapters` directly. Same pattern as the "no colour literal" test in `@tio/ui`.
+- **Ports are plain types**, no DI container, no classes:
+  `type GatewayPort = { createSession(...): Promise<...>; completeSession(...): AsyncIterable<FlowEvent> }`.
+  The hook takes the port as a parameter with the real adapter as default
+  (`useBorrowFlow(deps = realDeps)`), so tests pass a fake. That is the whole injection story.
+- Domain modules are the only place a business rule lives. "Tier B is tone
+  `warn`", "stale = older than `max_age_secs`", "amount has 6 decimals" each
+  exist once. Pages never recompute them.
+
+#### Components
+- Function components only, named exports, one component per file,
+  `kebab-case.tsx`, test beside it. Component ≤ ~150 lines; split by extracting
+  a child or a hook, not by adding props.
+- Props are a `type XProps`, annotated on the signature. No `React.FC`.
+  Optional props only when the default is obvious; otherwise two components.
+- No business logic in JSX. A component maps already-decided values to markup.
+  If an `if` needs a domain fact, the hook or a domain function decides it first.
+- Derive, don't sync: no `useEffect` that copies props into state. `useEffect`
+  only for external systems (timers, subscriptions, focus). Data fetching goes
+  through TanStack Query, never a hand-written effect.
+- Prop drilling past two levels → compose with `children` or split the page.
+  No context for app data; context only for theme and the signer.
+- Keys are stable ids, never array indexes.
+
+#### State
+| Kind | Where |
+|---|---|
+| Server / chain state (attestation, pool, loan, `/v1/info`) | TanStack Query, keyed by `[resource, cluster, address]`; `staleTime` set per query; poll with `refetchInterval`, no websockets |
+| Flow state (wallet → persona → consent → processing → result → loan) | `useReducer` over a discriminated union in `domain/flow.ts`; exhaustive `switch` with a `never` check; `reset` on wallet change |
+| UI-local (open dialog, hovered row) | `useState` in the component |
+| Shareable (selected pool, `?wallet=`) | router search params, zod-validated |
+| Demo keypair | `sessionStorage`, wrapped in try/catch, through `adapters/storage.ts` only |
+
+No global store (no Redux / Zustand / Jotai). If a value is needed in two
+pages, it is server state or URL state.
+
+#### Boundaries and data
+- Parse at the edge, once: gateway SSE events, RPC account bytes, env
+  (`VITE_*`), `sessionStorage`, URL params. Malformed input →
+  `protocol_error`, never a thrown `SyntaxError` reaching a component.
+- On-chain integers are `bigint` end to end; format for display with
+  `domain/amount.ts`, never `Number()` or `toFixed`.
+- Addresses are kit `Address`, bytes `Uint8Array`, encodings via `@tio/encoding`.
+- Expected failures return `{ ok: true, value } | { ok: false, error: AppError }`
+  from adapters and domain; hooks surface them as state; one `domain/errors.ts`
+  maps every §16 code and Anchor error to a message, exhaustive, generic fallback.
+- Every fetch / RPC / `sendAndConfirm` takes an `AbortSignal`; unmount cancels
+  via the Query signal.
+
+#### `@tio/ui` package rules
+- Standalone, so it can be extracted as a design system later: no imports from `web/`,
+  `@solana/*` or `@tio/*` clients; props in, events out, no data fetching.
+- Generic props only: components take a `tone` (`positive | info | caution | negative |
+  accent | neutral`), never a tier or status; `web/` maps domain values to tones.
+- Theme only through the CSS variables in `src/tokens/`; `theme.css` resets Tailwind's
+  default palette, so a colour literal or `bg-white` doesn't compile.
+- One folder per component and one `exports` entry each; no barrel (`index.ts`). A rules
+  test enforces imports, colour literals, exports and barrels.
+- Source package (no build step); the consumer imports `fonts.css` before `tailwindcss`.
+
+#### Styling and accessibility
+
+**Current gate:** semantic elements, labels, contrast tokens and reduced motion. axe
+assertions, keyboard-navigation tests and the `jsx-a11y` lint plugin are not in place
+yet; the rules below describe the target.
+
+- Dim text with a token (`text-muted-foreground`), never with `opacity-*`: the contrast
+  test checks token pairs and can't see opacity.
+- A library that injects its own unlayered CSS (Sonner) is themed through its CSS
+  variables, pointed at our tokens; then override any colour it hardcodes with an
+  important utility (`text-muted-foreground!`). Its `className` props alone lose.
+- Tailwind utilities + `@tio/ui` tokens only. No colour literals, no inline
+  `style` colours, no CSS-in-JS. `cn()` for conditional classes.
+- Light and dark via CSS variables; components never branch on the theme.
+- Semantic elements first (`button`, `nav`, `table`, `dl`), labels on every
+  input, visible focus ring, `aria-live` on the status strip and processing
+  stages, `prefers-reduced-motion` respected (schematic, stepper).
+- Text pairs ≥ 4.5:1 (tokens already ≥ 5.2:1). Hit targets ≥ 40 px.
+- Phone width works: 16 px gutters, no horizontal scroll, tables collapse to
+  ledger rows.
+
+#### Security (browser is untrusted)
+- No secrets in the bundle; every `VITE_*` value is public by definition.
+- The demo keypair is for devnet only, created in the tab, labelled as such
+  in the UI, never persisted beyond `sessionStorage`.
+- Anything shown as *verified* (tier, attestation, build) is read from RPC
+  and checked client-side; the gateway's word is never displayed as proof.
+- The relay endpoint receives a fully built, borrower-signed transaction; the
+  browser never asks the relayer to build or choose instructions.
+- External links to explorers use `rel="noopener noreferrer"`.
+- `vercel.json` sets `Content-Security-Policy` (self + gateway + RPC origins
+  + fonts), `X-Content-Type-Options`, `Referrer-Policy`.
+
+#### Routing and loading
+- TanStack Router, code-based routes, one `lazyRouteComponent` per page.
+- Each route owns its search-param schema (zod) and its loader queries.
+- Loading and error states are explicit components (`skeleton`, error row)
+  with the same tokens; no blank screens and no spinners without text.
+
+#### Testing
+- Domain: plain vitest, exhaustive tables (every credential status, every
+  error code, amount edge cases). Property tests with `fast-check` for parsers.
+- Adapters: tested against fixtures (chunk-split SSE, golden `payload_hex`,
+  malformed bodies). Mock only `fetch` and RPC transport, nothing inside.
+- Hooks: `renderHook` with fake ports; no network in hook tests.
+- Components: `@testing-library/react` + `happy-dom`; query by role / label
+  text, never `data-testid`; assert what the user sees.
+- Flag gating: a test per flag asserts hidden CTAs and the `Next` tag render
+  when the flag is off.
+- No snapshot tests.
+- Every review fix lands with a test that fails if the fix is reverted.
+
+#### Tooling
+- Same root `.oxlintrc.json` / `.oxfmtrc.json` (named exports only, no barrel
+  files, `*.test.tsx` in the test override), `tsc --noEmit` with `DOM` lib and
+  `jsx: react-jsx`, `vitest run`, `vite build`. All four are CI gates per package.
+- `pnpm` workspace; `@tio/ui` is a source package consumed by Vite.
 
 ### Tooling
 - `pnpm` (workspace). oxlint (`--type-aware`) + oxfmt, configured in the root
   `.oxlintrc.json` / `.oxfmtrc.json`; `tsc --noEmit` in CI.
-- Tests with `vitest`.
+- Tests with `vitest`; the oxlint test override covers `*.test.ts` and `*.test.tsx`.
 
 ## 4. Python (tooling and test scripts)
 

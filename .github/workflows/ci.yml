@@ -64,6 +64,11 @@ jobs:
       - run: pnpm --filter @tio/encoding lint
       - run: pnpm --filter @tio/encoding format:check
       - run: pnpm --filter @tio/encoding test
+      # Standalone UI package (tokens, primitives, patterns) for web.
+      - run: pnpm --filter @tio/ui typecheck
+      - run: pnpm --filter @tio/ui lint
+      - run: pnpm --filter @tio/ui format:check
+      - run: pnpm --filter @tio/ui test
       - run: pnpm --filter @tio/ops typecheck
       - run: pnpm --filter @tio/ops lint
       - run: pnpm --filter @tio/ops format:check

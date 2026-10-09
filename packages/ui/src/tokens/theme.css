@@ -1,0 +1,70 @@
+/*
+ * Tailwind v4 theme map for @tio/ui. `inline` keeps each utility pointing at the CSS
+ * variable, so the dark overrides in tokens.css cascade without a rebuild.
+ * Consumer, in this order: @import "@tio/ui/fonts.css"; @import "tailwindcss";
+ * @import "@tio/ui/tokens.css"; @import "@tio/ui/theme.css"; @source "<path to packages/ui/src>";
+ */
+
+/* `dark:` matches only an explicit data-theme (set by ThemeToggle); tokens.css also follows
+ * prefers-color-scheme, so prefer tokens over `dark:` utilities. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme inline {
+  /* Drop Tailwind's default palette: only token colours compile (transparent/current are built in). */
+  --color-*: initial;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-rule-strong: var(--rule-strong);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-scrim: var(--scrim);
+
+  --color-tone-positive: var(--tone-positive);
+  --color-tone-info: var(--tone-info);
+  --color-tone-caution: var(--tone-caution);
+  --color-tone-negative: var(--tone-negative);
+  --color-tone-accent: var(--tone-accent);
+  --color-tone-neutral: var(--tone-neutral);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  --text-xs: var(--text-xs);
+  --text-sm: var(--text-sm);
+  --text-md: var(--text-md);
+  --text-lg: var(--text-lg);
+  --text-xl: var(--text-xl);
+  --text-2xl: var(--text-2xl);
+  --text-3xl: var(--text-3xl);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  --ease-out: var(--ease-out);
+
+  /* The seal press: scale 1.25 → 1, settle at the stamp angle, fade in. */
+  --animate-seal-press: seal-press var(--dur-stamp) var(--ease-out);
+  @keyframes seal-press {
+    /* Individual properties, not `transform`: the seal's resting tilt is the `rotate` property. */
+    from {
+      opacity: 0;
+      scale: 1.25;
+      rotate: 0deg;
+    }
+    to {
+      opacity: 1;
+      scale: 1;
+      rotate: var(--stamp-rotate);
+    }
+  }
+}

@@ -1,0 +1,154 @@
+/*
+ * TEE Income Oracle — design tokens, direction A "Audit ledger" (2026-10-09, draft).
+ * Concept: the product is a verification oracle for credit vehicles, so the UI reads like
+ * an audited credit file: paper ground, ink type, hairline ledger rules, one seal accent.
+ * Memorable moment: the attestation lands as a pressed seal on a ledger line.
+ * Maps 1:1 onto shadcn's variable names (background, foreground, primary, …) so
+ * components/ui themes from this file; tier/status tokens are ours.
+ */
+
+/* Fonts: import `@tio/ui/fonts.css` first (before tailwindcss); a remote @import must lead the CSS. */
+
+:root {
+  /* Type: editorial serif display, institutional sans body, ledger mono for hashes/amounts */
+  --font-display: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --font-body: 'IBM Plex Sans', 'Helvetica Neue', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --text-xs: 0.75rem; /* 12 — captions, codes */
+  --text-sm: 0.875rem; /* 14 — table cells, helper text */
+  --text-md: 1rem; /* 16 — body */
+  --text-lg: 1.125rem; /* 18 — lead */
+  --text-xl: 1.5rem; /* 24 — section titles (display) */
+  --text-2xl: 2.25rem; /* 36 — page titles (display) */
+  --text-3xl: 3.5rem; /* 56 — hero (display) */
+  --leading-tight: 1.08;
+  --leading-body: 1.55;
+  --tracking-caps: 0.08em; /* small-caps labels: "ENCLAVE BUILD", "POLICY" */
+
+  /* Colour — light "paper" (default) */
+  --background: #f4f1ea; /* paper */
+  --card: #fbf9f4; /* clean sheet on paper */
+  --muted: #ebe6da; /* ruled band */
+  --foreground: #16140f; /* ink */
+  --muted-foreground: #4a463d; /* secondary ink, 8.3:1 on paper */
+  --border: #cfc7b5; /* hairline rule */
+  --rule-strong: #16140f; /* double rule under totals / headers */
+  --primary: #1f5e46; /* ledger green = verified / primary action */
+  --primary-foreground: #f4f1ea;
+  --ring: #1f5e46;
+  --destructive: #a8322a; /* stamp red = REJECT / revoked */
+  --scrim: rgba(22, 20, 15, 0.45); /* dialog overlay, stays dark in both themes */
+
+  --tier-a: #1f5e46; /* green */
+  --tier-b: #2c4f8f; /* blue */
+  --tier-c: #8a5a00; /* ochre */
+  --tier-reject: #a8322a; /* red; tiers always carry their letter, never colour alone */
+  --status-fresh: #1f5e46;
+  --status-stale: #8a5a00;
+  --status-revoked: #a8322a;
+  --status-old-policy: #5b3f8c;
+  --status-live: #1f5e46;
+
+  /* Generic tones: components name a tone, never a tier or status (web maps those). */
+  --tone-positive: var(--status-fresh);
+  --tone-info: var(--tier-b);
+  --tone-caution: var(--status-stale);
+  --tone-negative: var(--status-revoked);
+  --tone-accent: var(--status-old-policy);
+  --tone-neutral: var(--muted-foreground);
+
+  /* Shape + space: paper is square-ish; depth comes from rules, not shadows */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --hairline: 1px solid var(--border);
+  --double-rule: 3px double var(--rule-strong);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --content-max: 1120px;
+  --touch-min: 44px;
+
+  /* Texture: faint paper grain + ledger lines (CSS only, no image) */
+  --paper-grain: repeating-linear-gradient(
+    0deg,
+    rgba(22, 20, 15, 0.018) 0 1px,
+    transparent 1px 3px
+  );
+  --ledger-lines: repeating-linear-gradient(180deg, transparent 0 31px, var(--border) 31px 32px);
+
+  /* Motion: one orchestrated moment per screen */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-line: 260ms; /* a ledger line writes in */
+  --stagger: 80ms; /* between ledger lines */
+  --dur-stamp: 220ms; /* seal press: scale 1.25→1, rotate 0→-4deg, opacity 0→1 */
+  --stamp-rotate: -4deg;
+}
+
+/* Dark "carbon copy": same ledger, inverted ink. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --background: #121110;
+    --card: #1b1a17;
+    --muted: #24221e;
+    --foreground: #ece7dc;
+    --muted-foreground: #a9a296;
+    --border: #34312b;
+    --rule-strong: #ece7dc;
+    --primary: #6fc3a0;
+    --primary-foreground: #121110;
+    --ring: #6fc3a0;
+    --destructive: #e07a6e;
+    --scrim: rgba(0, 0, 0, 0.6);
+    --tier-a: #6fc3a0;
+    --tier-b: #8ca9e6;
+    --tier-c: #d9a441;
+    --tier-reject: #e07a6e;
+    --status-fresh: #6fc3a0;
+    --status-stale: #d9a441;
+    --status-revoked: #e07a6e;
+    --status-old-policy: #b9a2ea;
+    --status-live: #6fc3a0;
+    --paper-grain: none;
+  }
+}
+:root[data-theme='dark'] {
+  --background: #121110;
+  --card: #1b1a17;
+  --muted: #24221e;
+  --foreground: #ece7dc;
+  --muted-foreground: #a9a296;
+  --border: #34312b;
+  --rule-strong: #ece7dc;
+  --primary: #6fc3a0;
+  --primary-foreground: #121110;
+  --ring: #6fc3a0;
+  --destructive: #e07a6e;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --tier-a: #6fc3a0;
+  --tier-b: #8ca9e6;
+  --tier-c: #d9a441;
+  --tier-reject: #e07a6e;
+  --status-fresh: #6fc3a0;
+  --status-stale: #d9a441;
+  --status-revoked: #e07a6e;
+  --status-old-policy: #b9a2ea;
+  --status-live: #6fc3a0;
+  --paper-grain: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-line: 0ms;
+    --stagger: 0ms;
+    --dur-stamp: 0ms;
+  }
+}
