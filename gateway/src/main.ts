@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { serve } from '@hono/node-server';
 import {
+  address,
   createKeyPairSignerFromBytes,
   createSolanaRpc,
   createSolanaRpcSubscriptions,
@@ -18,6 +19,7 @@ import { kitChain } from './chain.ts';
 import { type Config, ConfigError, loadConfig } from './config.ts';
 import { GatewayError } from './errors.ts';
 import { createFiuKeyManager } from './fiu-key.ts';
+import { createLoanRelay } from './loan-relay-flow.ts';
 import { createRateLimiter } from './rate-limit.ts';
 import { checkEnclaveEntry } from './registry.ts';
 import { createRelayer } from './relayer.ts';
@@ -27,6 +29,8 @@ import { createBankClient, createEnclaveClient } from './upstream.ts';
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const LOW_BALANCE_LAMPORTS = 50_000_000n; // 0.05 SOL
+/** Stands in for the mint on a cluster with no demo pool yet; with no pools listed, nothing is relayable. */
+const NO_MINT = address('11111111111111111111111111111111');
 
 const nowSecs = (): number => Math.floor(Date.now() / 1000);
 
@@ -54,14 +58,21 @@ async function main(): Promise<void> {
     process.stderr.write(`gateway: warning: relayer ${payer.address} has ${balance} lamports\n`);
   }
 
+  const chain = kitChain(rpc, createSolanaRpcSubscriptions(config.wsUrl));
+  const { deployment } = config;
   const app = createApp({
     enclave,
     bank,
-    relayer: createRelayer({
-      chain: kitChain(rpc, createSolanaRpcSubscriptions(config.wsUrl)),
+    relayer: createRelayer({ chain, payer, deployment, measurementId: config.measurementId }),
+    loanRelay: createLoanRelay({
+      chain,
       payer,
-      deployment: config.deployment,
-      measurementId: config.measurementId,
+      deployment: {
+        mint: deployment.mint === undefined ? NO_MINT : address(deployment.mint),
+        pools: deployment.mint === undefined ? [] : deployment.pools.map(address),
+        credential: address(deployment.credential),
+        schema: address(deployment.schema),
+      },
     }),
     sessions: createSessionStore({ now: nowSecs }),
     fiuKey,
@@ -80,6 +91,7 @@ async function main(): Promise<void> {
         measurement_id: config.measurementId,
         policy_hash: config.policyHash,
         attester_address: info.attester_address,
+        relayer: payer.address,
       },
     },
   });

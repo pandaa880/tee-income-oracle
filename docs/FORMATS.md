@@ -1425,14 +1425,17 @@ kty, n`) differs from the pinned file the enclave compiles in.
 The gateway (`gateway/`, `node src/main.ts`) is the web's only server. It is
 **untrusted** (ARCHITECTURE §2): it carries the enclave's signed FI request
 and the AA-signed fetch response as exact bytes, relays the enclave's signed
-result on chain and pays the fees. It can delay or drop a session; it can't
-read bank data or forge a tier.
+result on chain and pays the fees, and co-signs the demo pool's borrow and
+repay transactions so the borrower pays no fees (**Relay** below, additive
+2026-10-09). It can delay or drop a session; it can't read bank data or forge
+a tier, and it signs nothing but those two loan shapes.
 
 | Route | Request | Reply |
 |---|---|---|
 | `POST /v1/sessions` | `{ wallet, persona_id }` | `{ session_id, intent, intent_expires }` |
 | `POST /v1/sessions/{id}/complete` | `{ signature_b58 }` | `text/event-stream` (below) |
-| `GET /v1/info` | — | `{ cluster, oracle_program, credential, schema, measurement_id, policy_hash, attester_address }` |
+| `POST /v1/loans/relay` | `{ tx_b64 }` | `{ signature }` (the relayed transaction's signature, `confirmed`) |
+| `GET /v1/info` | — | `{ cluster, oracle_program, credential, schema, measurement_id, policy_hash, attester_address, relayer }` |
 | `GET /health` | — | `{ status: "ok" }` |
 
 - **Bodies** are JSON objects with exactly the members listed (unknown
@@ -1441,7 +1444,8 @@ read bank data or forge a tier.
   `persona_id`: `salaried_steady`, `trader_lumpy`, `declining` or
   `stressed` (the §15 personas). `signature_b58`: base58, at most 88
   characters, the wallet's Ed25519 `signMessage` over the exact `intent`
-  string (§9).
+  string (§9). `tx_b64`: standard base64 (no URL alphabet), 1–2048
+  characters, one v0 wire transaction (at most 1232 bytes).
 - **Create** checks the enclave's FIU key first (below), asks the bank for an
   AA-signed consent for the persona (§15 `/Consent`), and opens an enclave
   session with the configured policy, the wallet, that consent and the
@@ -1481,8 +1485,51 @@ read bank data or forge a tier.
   `enclave_revoked`;
   else an expired blockhash → one re-sign with a fresh blockhash; else
   `tx_failed`.
-- **Errors**: `{ error: { code, message, stage } }`, `stage` ∈ `gateway`,
-  `bank`, `enclave`, `chain`. Enclave codes (§10) and ReBIT `errorCode`s
+- **Relay (sponsored loans).** The browser builds a demo-pool `borrow` or
+  `repay` with the relayer (`/v1/info` `relayer`) as fee payer, signs it with
+  the borrower's key, leaves the relayer's signature slot empty and posts it.
+  The relayer signs whatever passes the shape check, so the check is the
+  spend boundary; a failed rule is `bad_transaction` with `detail: { rule }`,
+  in this order:
+  1. decodes as exactly one version-0 transaction, nothing trailing, every
+     instruction index in range;
+  2. no address-table lookups;
+  3. exactly two signers: the fee payer is the relayer, the second is the
+     borrower (not the relayer);
+  4. the relayer's signature slot is empty, the borrower's holds 64 bytes,
+     no other entries;
+  5. at most one ComputeBudget instruction, first, `SetComputeUnitLimit` of
+     at most 200 000 CU, naming no accounts (so no `SetComputeUnitPrice`);
+  6. the rest is exactly `[CreateAssociatedTokenIdempotent, demo_pool.borrow]`
+     or `[demo_pool.repay]` (program id, data length, discriminator);
+  7. the ATA instruction: payer = relayer, ATA = the borrower's for the
+     deployment mint, owner = borrower, classic Token program, data `[1]`;
+  8. `borrow`: 11 accounts; payer = relayer, borrower signs, pool listed in
+     the deployment, mint = the deployment mint, vault / loan / token account
+     / attestation = the derived PDAs, `amount > 0`; `enclave_entry` is any
+     account (the program checks it, §14);
+  9. `repay`: 8 accounts; the same pins, `rent_payer` = relayer (the Loan rent
+     comes back to it, §14);
+  10. the relayer appears nowhere else (fee payer, ATA payer, borrow payer,
+      repay `rent_payer` only);
+  11. the borrower's signature verifies over the message bytes.
+
+  Then: the relayer signs (free until sent) → `simulateTransaction` with
+  `sigVerify` (every signature, blockhash, program logic) → on `err`,
+  `simulation_failed` with `detail` = `{ index, custom }` for a program error
+  (`custom` = the Anchor code, e.g. 6008 `PolicyMismatch`), `{ index, kind }`
+  or `{ kind }` for a named error, `{ kind: "unknown" }` otherwise (names
+  must match `^[A-Za-z]{1,40}$`) → `sendTransaction` → poll
+  `getSignatureStatuses` every 1 s until `confirmed` / `finalized`, a status
+  error or 100 s (both `tx_failed`; a failed poll keeps polling). A failed
+  simulation spends nothing. One relay in flight per borrower wallet and 64
+  in all (`relay_in_flight`). What a borrower can cost the relayer: the fees
+  of their own borrow and repay and the ATA rent (the Loan rent returns on
+  repay); bounded by the rate limiter.
+- **Errors**: `{ error: { code, message, stage, detail? } }`, `stage` ∈ `gateway`,
+  `bank`, `enclave`, `chain`. `detail` appears only on `bad_transaction`
+  (`{ rule }`) and `simulation_failed` (above) and carries numbers and
+  checked identifiers, never text from the request or the node. Enclave codes (§10) and ReBIT `errorCode`s
   (§15) pass through unchanged with their stage; an upstream 4xx keeps its
   status, a 5xx answers 502. An upstream code must match
   `^[A-Za-z][A-Za-z0-9_]{0,63}$`, else the reply is `upstream_unavailable`
@@ -1497,18 +1544,22 @@ read bank data or forge a tier.
 | `session_expired` | 410 | gateway |
 | `body_too_large` | 413 | gateway |
 | `rate_limited` | 429 | gateway |
+| `bad_transaction` (a relay shape rule failed; `detail: { rule }`) | 400 | gateway |
+| `relay_in_flight` (this wallet already has a relay in progress, or 64 are) | 429 | gateway |
 | `internal_error` (any unexpected exception, no detail) | 500 | gateway |
 | `too_many_sessions` | 503 | gateway |
 | `upstream_unavailable` (network error, 30 s timeout, redirect, reply not JSON / wrong shape / over 64 KiB, fetch reply over 6 MiB, missing `x-jws-signature`) | 502 | bank or enclave |
 | `enclave_rotated` (the enclave's attester differs from the one at boot) | 503 | enclave |
 | `stale_attestation` | 409 | chain |
-| `tx_failed` (any other chain failure, incl. an RPC timeout) | 502 | chain |
+| `simulation_failed` (a relayed transaction would fail; `detail` names the instruction and program code) | 409 | chain |
+| `tx_failed` (any other chain failure, incl. an RPC timeout; for a relay also a status error or the 100 s confirm deadline) | 502 | chain |
 | `enclave_not_registered`, `enclave_revoked`, `attester_mismatch` (boot check; the first two also before every submit, which re-reads the registry entry; `enclave_revoked` also when the send fails with 6019) | 503 | chain |
 
 - **Limits.** At most 256 open sessions, TTL 600 s (= the enclave's
-  `intent_expires`), single use. Create only is rate-limited: a token bucket
-  per client IP (burst 5, 10 per minute) and a global one (burst 20, 60 per
-  minute); a request needs a token from both. The client IP is the socket
+  `intent_expires`), single use. Create and relay are rate-limited, sharing
+  one token bucket per client IP (burst 5, 10 per minute) and one global
+  bucket (burst 20, 60 per minute); a request needs a token from both. One
+  relay in flight per wallet, 64 in all. The client IP is the socket
   address, or with `TRUST_PROXY=1` the **last** `X-Forwarded-For` hop: the one
   our single trusted proxy (the Azure ingress) appended. Earlier hops are
   client-written. Another proxy in front (a CDN) would need a different rule.
@@ -1527,7 +1578,9 @@ read bank data or forge a tier.
   echoes a secret): `ENCLAVE_URL`, `BANK_URL`, `SOLANA_RPC_URL` (http(s)),
   `SOLANA_WS_URL` (ws(s); default the RPC URL as ws(s), port 8899 → 8900),
   `CLUSTER` (reads `deployments/<cluster>.json`; its program ids must equal
-  the compiled-in ones), `MEASUREMENT_ID` (0–254), `POLICY_PATH` (default
+  the compiled-in ones, `demo_pool_program` included when present; its
+  `mint` and `pools` `[{ address, pool_id }]` are the only pools the relay
+  serves, none when absent), `MEASUREMENT_ID` (0–254), `POLICY_PATH` (default
   `test-vectors/policy/default.json`; the file must be exact JCS with no
   trailing newline, so `policy_hash` = sha256 of its bytes = the §6 hash the
   enclave puts in the payload), `RELAYER_KEYPAIR` (Solana CLI keypair JSON),

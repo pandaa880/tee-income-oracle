@@ -221,6 +221,12 @@ scope. See `AGENTS.md` for the full wording.
   carry text. Lookup tables keyed by external strings are `Map`s (a plain object
   answers `constructor`).
 
+### Loan relay and other code that signs on a user's behalf
+- Every kit decode / decompile of untrusted bytes runs inside the same `try` as
+  the decoder: a malformed body is a numbered rule in the reply, never a 500.
+- An allow-list rule ("X appears only in slots S") covers every instruction in
+  the message, including optional prefix instructions (ComputeBudget).
+
 ### Web (Next.js)
 - The browser is untrusted. No keys, no privileged logic.
 - Read chain state via RPC; don't trust gateway claims for anything shown as
@@ -267,6 +273,10 @@ Stdlib only unless a dependency is agreed.
 - Programs: one test per `require!` — each check must be shown to reject.
 - Name tests by behaviour: `rejects_tampered_ciphertext`,
   `borrow_fails_when_enclave_revoked`.
+- **A negative row changes exactly one fact.** Every other check must still
+  accept the fixture, or the row passes for the wrong reason (a wrong-tag
+  compute-budget row whose bytes also exceed the CU cap never tests the tag).
+  When in doubt, delete the clause and confirm that row alone goes red.
 - **A negative test asserts the specific error**: the error code, variant or
   message (`assertRaisesRegex`, `matches!(err, E::Revoked)`). "It raised
   something" isn't enough, because a different check can fail for a

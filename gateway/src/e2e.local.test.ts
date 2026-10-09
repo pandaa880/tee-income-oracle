@@ -55,6 +55,7 @@ import { createFiuKeyManager } from './fiu-key.ts';
 import { createRateLimiter } from './rate-limit.ts';
 import { checkEnclaveEntry } from './registry.ts';
 import { createRelayer } from './relayer.ts';
+import { fakeLoanRelay } from './testing/fake-relay.ts';
 import { createSessionStore } from './sessions.ts';
 import { parseSse, stageNames } from './testing/sse.ts';
 import { createBankClient, createEnclaveClient } from './upstream.ts';
@@ -231,9 +232,12 @@ describe.skipIf(process.env['TIO_E2E'] !== '1')('gateway end to end (local)', ()
           credential,
           schema,
           sasProgram: SAS_PROGRAM_ID,
+          pools: [],
         },
         measurementId: MEASUREMENT_ID,
       }),
+      // Loan relay is covered by loan-relay.surfpool.test.ts; this E2E exercises the session flow.
+      loanRelay: fakeLoanRelay(),
       sessions: createSessionStore({ now: unixNow }),
       fiuKey,
       policy,
@@ -251,6 +255,7 @@ describe.skipIf(process.env['TIO_E2E'] !== '1')('gateway end to end (local)', ()
           measurement_id: MEASUREMENT_ID,
           policy_hash: policyHashHex,
           attester_address: info.attester_address,
+          relayer: h.attacker.address,
         },
       },
     });

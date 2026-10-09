@@ -9,7 +9,7 @@ Order for a fresh cluster (after `anchor deploy` of both programs):
 
 1. `oracle:init`: the oracle's registry config.
 2. `sas:setup`: the SAS credential and schema.
-3. `pool:setup`: the demo mint, pool and vault.
+3. `pool:setup`: the demo mint, pool 0 and vault (`--pool-id 1` for a second pool on the same mint).
 4. `enclave:rotate`: register the running enclave, approve it in the pools.
 5. `e2e:devnet`: drive the deployed gateway end to end.
 
@@ -77,16 +77,21 @@ solana-test-validator --reset \
   --bpf-program 22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG test-fixtures/sas/sas.20261004.so
 ```
 
-## `pool:setup`: demo mint, pool and vault
+## `pool:setup`: demo mint, pools and vaults
 
-One transaction: a new classic SPL mint (6 decimals, mint authority = admin,
-**no freeze authority**, so nobody can freeze the vault or a borrower's
-account and block `repay`), pool 0 (`docs/FORMATS.md` §14) and 1 000 000
-tokens minted into the vault. Parameters: the default policy hash
-(`test-vectors/policy/default.hash`), tier limits A 5 000 / B 2 000 / C 500
-tokens, `max_age` 30 days, `max_window_age` 45 days, `min_window` 180 days, and
-the registry entries active at setup time as approved enclaves. Writes `mint`,
-`demo_pool_program`, and adds pool 0 to `pools` (other pools listed there stay:
+One transaction per pool: on the first run a new classic SPL mint (6 decimals,
+mint authority = admin, **no freeze authority**, so nobody can freeze the
+vault or a borrower's account and block `repay`), then the pool
+(`docs/FORMATS.md` §14) and 1 000 000 tokens minted into its vault. Every
+pool of a deployment shares the recorded `mint`: a run for a pool that doesn't
+exist yet reuses it and mints only when the file has none. Parameters: the
+default policy hash (`test-vectors/policy/default.hash`),
+`--pool-id <0–255>` (default 0), `--tier-limits <a,b,c>` in whole tokens
+(default 5000,2000,500; `a > 0`, `a ≥ b ≥ c`, 0 = tier not accepted, as the
+program's `check_params`), `max_age` 30 days, `max_window_age` 45 days,
+`min_window` 180 days, and the registry entries active at setup time as
+approved enclaves. Writes `mint`, `demo_pool_program`, and adds the pool to
+`pools` (other pools listed there stay:
 `enclave:rotate` keeps approving every listed pool). Entries are matched by
 address; after a program or admin change, remove the old pool's entry by hand
 (`enclave:rotate` stops with `pool_missing` on a pool that no longer exists).
@@ -97,6 +102,7 @@ A re-run with an equal pool is a no-op; another policy, limit or window fails
 
 ```sh
 pnpm --filter @tio/ops pool:setup --cluster devnet
+pnpm --filter @tio/ops pool:setup --cluster devnet --pool-id 1 --tier-limits 3000,1000,0
 ```
 
 ## `enclave:rotate`: register the running enclave
