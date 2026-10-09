@@ -94,4 +94,33 @@ describe('Button', () => {
     );
     expect(screen.getByRole('link')).not.toHaveAttribute('type');
   });
+
+  it('defaults a slotted native button to type="button" so it does not submit', () => {
+    const onSubmit = vi.fn<() => void>();
+    render(
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit();
+        }}
+      >
+        <Button asChild>
+          <button>Slotted</button>
+        </Button>
+      </form>,
+    );
+    const button = screen.getByRole('button', { name: 'Slotted' });
+    expect(button).toHaveAttribute('type', 'button');
+    fireEvent.click(button);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps a slotted button's own type", () => {
+    render(
+      <Button asChild>
+        <button type="submit">Send</button>
+      </Button>,
+    );
+    expect(screen.getByRole('button', { name: 'Send' })).toHaveAttribute('type', 'submit');
+  });
 });

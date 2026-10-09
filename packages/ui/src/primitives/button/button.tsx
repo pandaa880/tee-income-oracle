@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { Slot } from 'radix-ui';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, isValidElement, type ReactNode } from 'react';
 import { cn } from '../../lib/cn.ts';
 
 const buttonVariants = cva(
@@ -27,15 +27,22 @@ export type ButtonProps = ComponentProps<'button'> &
   VariantProps<typeof buttonVariants> & { asChild?: boolean };
 
 /**
- * Action button; `asChild` styles a child element (e.g. a router link) instead. Defaults to
- * `type="button"` so it never submits a form by accident; a slotted child keeps its own type.
+ * A native `<button>` without a type submits its form. Whenever one gets rendered (ours, or a
+ * slotted `<button>` child), default it to "button"; Slot lets the child's own `type` win.
+ * Other slotted elements (links) get no type.
  */
+function defaultType(asChild: boolean, children: ReactNode, type: ButtonProps['type']) {
+  const rendersButton = !asChild || (isValidElement(children) && children.type === 'button');
+  return rendersButton ? { type: type ?? 'button' } : {};
+}
+
+/** Action button; `asChild` styles a child element (e.g. a router link) instead. */
 export function Button({ className, variant, size, asChild = false, type, ...props }: ButtonProps) {
   const Comp = asChild ? Slot.Root : 'button';
   return (
     <Comp
       data-slot="button"
-      {...(asChild ? {} : { type: type ?? 'button' })}
+      {...defaultType(asChild, props.children, type)}
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     />
