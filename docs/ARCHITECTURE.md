@@ -38,7 +38,7 @@ it.
 ```mermaid
 flowchart LR
   subgraph U["Untrusted"]
-    WEB["web (Next.js)"]
+    WEB["web (Vite SPA)"]
     GW["gateway (Node/TS)<br/>orchestrator + relayer"]
     HOST["Oyster host<br/>TCP/IP proxies"]
     VER["verifier (TS)"]

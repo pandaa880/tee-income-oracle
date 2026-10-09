@@ -100,6 +100,8 @@ programs/oracle/     Anchor. Enclave registry, verifies the enclave's secp256k1
                      signature (precompile), writes the SAS attestation.
 clients/ts/oracle/   TypeScript client for the oracle, generated from its IDL (Codama).
 packages/encoding/   Shared strict byte encodings (hex, base64, base64url) for the TS code.
+packages/ui/         Standalone React UI package for web: design tokens (light/dark),
+                     shadcn/Radix primitives, ledger patterns.
 programs/demo-pool/  Anchor. Reads and checks the SAS attestation, lends testnet tokens.
 clients/ts/demo-pool/  TypeScript client for the demo pool, generated the same way.
 tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
@@ -113,7 +115,7 @@ verifier/            TS. Checks the Nitro attestation to AWS's root, the image i
 ops/                 TS admin scripts: oracle init, SAS credential + schema, demo pool,
                      attested enclave rotation, devnet end-to-end run.
 deployments/         Public addresses per cluster, written by ops.
-web/                 Next.js. Borrower flow, lender dashboard, verify page.
+web/                 Vite + React SPA on packages/ui. Borrower flow, loan book, verify page.
 test-vectors/        Generated fixtures, including golden vectors from Sahamati's
                      reference implementation.
 test-fixtures/       Hand-calculated scoring cases; the SAS program binary dumped
