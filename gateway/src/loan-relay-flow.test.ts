@@ -7,6 +7,7 @@ import {
   type KeyPairSigner,
   generateKeyPairSigner,
   getPublicKeyFromAddress,
+  getSignatureFromTransaction,
   getTransactionDecoder,
   verifySignature,
 } from '@solana/kit';
@@ -14,7 +15,12 @@ import { b64Decode, b64Encode } from '@tio/encoding';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { GatewayError } from './errors.ts';
-import { CONFIRM_POLL_MS, MAX_IN_FLIGHT, createLoanRelay } from './loan-relay-flow.ts';
+import {
+  CONFIRM_POLL_MS,
+  MAX_IN_FLIGHT,
+  SEND_ERROR_GRACE_MS,
+  createLoanRelay,
+} from './loan-relay-flow.ts';
 import { CONFIRM_TIMEOUT_MS } from './timeouts.ts';
 import { expectRejected } from './testing/expect-rejected.ts';
 import {
@@ -276,15 +282,43 @@ describe('relay: send and confirm', () => {
     });
   });
 
-  it('answers tx_failed 502 when send is rejected, and never polls', async () => {
-    const s = setup({ sendError: new Error('node says no') });
+  it('answers tx_failed 502 when send is rejected and no status shows up within the grace period', async () => {
+    const s = setup({ sendError: new Error('node says no'), statuses: [null] });
+    const start = s.clock.t;
     const e = await expectRejected(s.relay.relay({ tx_b64: await borrowTxB64() }), {
       code: 'tx_failed',
       stage: 'chain',
       status: 502,
     });
     expect(e.message).not.toContain('node says no');
-    expect(s.chain.calls.statuses).toBe(0);
+    const waited = s.clock.t - start;
+    expect(waited).toBeGreaterThanOrEqual(SEND_ERROR_GRACE_MS);
+    expect(waited).toBeLessThan(CONFIRM_TIMEOUT_MS);
+    expect(s.chain.calls.statuses).toBeGreaterThan(1);
+  });
+
+  it('treats a lost send reply as sent: a confirmed status for the derived signature is success', async () => {
+    const s = setup({ sendError: new Error('socket hang up'), statuses: [CONFIRMED] });
+    const { signature } = await s.relay.relay({ tx_b64: await borrowTxB64() });
+    const sent = s.chain.calls.simulate[0] ?? '';
+    const derived = getSignatureFromTransaction(getTransactionDecoder().decode(b64Decode(sent)));
+    expect(signature).toBe(derived);
+    expect(signature).not.toBe(SENT_SIGNATURE);
+    expect(s.chain.calls.statuses).toBe(1);
+  });
+
+  it('answers tx_failed 502 when a lost send reply is followed by a status error', async () => {
+    const s = setup({
+      sendError: new Error('socket hang up'),
+      statuses: [
+        { err: { InstructionError: [1, { Custom: 6007 }] }, confirmationStatus: 'confirmed' },
+      ],
+    });
+    await expectRejected(s.relay.relay({ tx_b64: await borrowTxB64() }), {
+      code: 'tx_failed',
+      stage: 'chain',
+      status: 502,
+    });
   });
 
   it('answers tx_failed 502 when the signature is never confirmed within CONFIRM_TIMEOUT_MS', async () => {
@@ -411,7 +445,7 @@ describe('relay: one in flight per borrower', () => {
   });
 
   it('frees the borrower after a send failure', async () => {
-    const s = setup({ sendError: new Error('down') });
+    const s = setup({ sendError: new Error('down'), statuses: [null] });
     for (let attempt = 0; attempt < 2; attempt += 1) {
       await expectRejected(s.relay.relay({ tx_b64: await borrowTxB64() }), {
         code: 'tx_failed',

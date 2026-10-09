@@ -10,6 +10,7 @@ import {
   type KeyPairSigner,
   type Signature,
   getBase64EncodedWireTransaction,
+  getSignatureFromTransaction,
   partiallySignTransaction,
 } from '@solana/kit';
 import { b64Decode } from '@tio/encoding';
@@ -39,6 +40,12 @@ export type LoanRelay = { relay: (input: { tx_b64: string }) => Promise<{ signat
 /** Relays in progress across all borrowers; each one holds relayer SOL hostage until confirmed. */
 export const MAX_IN_FLIGHT = 64;
 export const CONFIRM_POLL_MS = 1_000;
+/**
+ * A `sendTransaction` whose reply is lost (timeout, reset) may still have reached the
+ * node, and the loan may land. The signature is ours to derive from the signed bytes,
+ * so the flow looks for it this long before calling the relay failed.
+ */
+export const SEND_ERROR_GRACE_MS = 15_000;
 
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => {
@@ -78,6 +85,7 @@ async function confirm(
   signature: Signature,
   now: () => number,
   sleep: (ms: number) => Promise<void>,
+  deadlineMs = CONFIRM_TIMEOUT_MS,
 ): Promise<void> {
   const start = now();
   for (;;) {
@@ -88,7 +96,7 @@ async function confirm(
         return;
       }
     }
-    if (now() - start >= CONFIRM_TIMEOUT_MS) throw txFailed();
+    if (now() - start >= deadlineMs) throw txFailed();
     await sleep(CONFIRM_POLL_MS);
   }
 }
@@ -113,8 +121,11 @@ export function createLoanRelay(deps: LoanRelayDeps): LoanRelay {
     const wire = getBase64EncodedWireTransaction(signed);
     const { err } = await chainStep(() => deps.chain.simulate(wire));
     if (err !== null) throw gatewayError('simulation_failed', 'chain', 409, simulationDetail(err));
-    const signature = await chainStep(() => deps.chain.send(wire));
-    await chainStep(() => confirm(deps.chain, signature, now, sleep));
+    const sent = await deps.chain.send(wire).catch(() => undefined);
+    // Lost reply: the transaction may be in flight under the signature we can derive.
+    const signature = sent ?? getSignatureFromTransaction(signed);
+    const deadline = sent === undefined ? SEND_ERROR_GRACE_MS : CONFIRM_TIMEOUT_MS;
+    await chainStep(() => confirm(deps.chain, signature, now, sleep, deadline));
     return signature;
   }
 

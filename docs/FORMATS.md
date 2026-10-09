@@ -1521,7 +1521,10 @@ a tier, and it signs nothing but those two loan shapes.
   or `{ kind }` for a named error, `{ kind: "unknown" }` otherwise (names
   must match `^[A-Za-z]{1,40}$`) → `sendTransaction` → poll
   `getSignatureStatuses` every 1 s until `confirmed` / `finalized`, a status
-  error or 100 s (both `tx_failed`; a failed poll keeps polling). A failed
+  error or 100 s (both `tx_failed`; a failed poll keeps polling). A send whose
+  reply is lost is not a failure yet: the signature is derived from the signed
+  bytes and polled for 15 s before `tx_failed`, so a loan that landed is
+  reported with its signature. A failed
   simulation spends nothing. One relay in flight per borrower wallet and 64
   in all (`relay_in_flight`). What a borrower can cost the relayer: the fees
   of their own borrow and repay and the ATA rent (the Loan rent returns on
