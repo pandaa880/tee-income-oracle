@@ -180,8 +180,10 @@ repo), and the gateway and sandbox bank on Azure Container Apps. The
 headless end-to-end run passes on devnet (tiers A, B, C attested on chain,
 REJECT leaves nothing, tier A borrows and repays), also after an enclave
 restart with a new key. How it is deployed: [`docs/DEPLOY.md`](docs/DEPLOY.md).
-The web app (`web/`) is scaffolded on `@tio/ui` and deploys to Vercel; the
-borrower flow and verify page are next.
+The web app (`web/`) runs on `@tio/ui` and deploys to Vercel. Its logic layer is
+in: the gateway's live stage stream, the sponsored-loan relay, chain checks of
+everything the gateway reports, and an in-browser demo wallet. The borrow pages
+and verify page are next.
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

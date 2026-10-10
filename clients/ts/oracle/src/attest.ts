@@ -81,6 +81,36 @@ export function payloadIssuedAt(payload: Uint8Array): bigint {
   return view(payload).getBigInt64(67, true);
 }
 
+/** Every field of the 83-byte FORMATS §7 payload. Hashes are copies, not views. */
+export type DecodedPayload = {
+  tier: number;
+  proofType: number;
+  measurementId: number;
+  policyHash: Uint8Array;
+  consentHash: Uint8Array;
+  issuedAt: bigint;
+  windowFrom: number;
+  windowTo: number;
+};
+
+/** Decodes a FORMATS §7 payload; any length other than 83 is a `RangeError`. */
+export function decodePayload(payload: Uint8Array): DecodedPayload {
+  if (payload.length !== PAYLOAD_LEN) {
+    throw new RangeError(`payload must be ${PAYLOAD_LEN} bytes, got ${payload.length}`);
+  }
+  const v = view(payload);
+  return {
+    tier: v.getUint8(0),
+    proofType: v.getUint8(1),
+    measurementId: v.getUint8(2),
+    policyHash: payload.slice(3, 35),
+    consentHash: payload.slice(35, 67),
+    issuedAt: v.getBigInt64(67, true),
+    windowFrom: v.getUint32(75, true),
+    windowTo: v.getUint32(79, true),
+  };
+}
+
 // --- secp256k1 precompile ------------------------------------------------
 
 export type PrecompileParts = {
