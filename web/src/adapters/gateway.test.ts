@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { getBase58Decoder } from '@solana/kit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createGateway } from './gateway.ts';
 import type { FlowEvent } from '../domain/types.ts';
@@ -17,9 +18,11 @@ const BASE = 'https://gateway.test';
 const SESSION = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
 const PAYLOAD_HEX =
   '01010081112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1cfa007acefc7ed7fe390e57095b786eb7d762054fb92e973f3699e6db573b942da097b76a0000000080d7d568000bb76a';
+/** A well-formed base58 64-byte transaction signature. */
+const TX = getBase58Decoder().decode(new Uint8Array(64).fill(9));
 const RESULT_DATA = {
   tier: 'A',
-  tx: 'sig-1',
+  tx: TX,
   attestation: POOL_0,
   expiry: 1_790_000_600,
   payload_hex: PAYLOAD_HEX,
@@ -77,6 +80,15 @@ describe('createSession', () => {
       ok: false,
       error: { code: 'upstream_error', upstreamCode: 'bad_consent_signature', stage: 'enclave' },
     });
+  });
+
+  it.each([
+    ['a code with spaces', { code: 'bad code', message: 'm', stage: 'enclave' }],
+    ['an unknown stage', { code: 'bad_consent_signature', message: 'm', stage: 'browser' }],
+  ])('is a protocol_error for an error body with %s', async (_, error) => {
+    stubFetch(async () => jsonResponse({ error }, 400));
+    const result = await createGateway(BASE).createSession(ADMIN, 'declining', signal());
+    expect(result).toMatchObject({ ok: false, error: { code: 'protocol_error' } });
   });
 
   it('is a network error when fetch rejects', async () => {
@@ -187,7 +199,7 @@ describe('completeSession', () => {
         kind: 'result',
         result: {
           tier: 'A',
-          tx: 'sig-1',
+          tx: TX,
           attestation: POOL_0,
           expiry: 1_790_000_600n,
           payloadHex: PAYLOAD_HEX,
@@ -287,6 +299,7 @@ describe('completeSession', () => {
     ['data that is not JSON', ['event: stage\ndata: {nope\n\n']],
     ['an unknown event type', [sseEvent('mystery', { a: 1 })]],
     ['a result with the wrong shape', [sseEvent('result', { tier: 'Z' })]],
+    ['a result whose tx is not a signature', [sseEvent('result', { ...RESULT_DATA, tx: 'sig-1' })]],
     [
       'a result with a negative-style payload',
       [sseEvent('result', { ...RESULT_DATA, expiry: 'soon' })],

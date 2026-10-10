@@ -21,6 +21,9 @@ export function buildIntent(f: {
 
 const POLICY_LINE = /^policy: ([0-9a-f]{64})$/m;
 
+/** The policy hash (lowercase hex) an intent names, if it names one. */
+export const intentPolicy = (intent: string): string | undefined => POLICY_LINE.exec(intent)?.[1];
+
 /** The enclave sets `expires` to now + 600 s (FORMATS §10); allow a little clock skew. */
 const MAX_LIFETIME_SECS = 600n;
 const SKEW_SECS = 60n;
@@ -36,7 +39,7 @@ export function checkIntent(
   poolPolicies: readonly string[],
   now: bigint,
 ): Result<Uint8Array> {
-  const policy = POLICY_LINE.exec(session.intent)?.[1];
+  const policy = intentPolicy(session.intent);
   const expected =
     policy === undefined
       ? undefined

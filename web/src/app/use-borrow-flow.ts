@@ -6,7 +6,7 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { type Deps, realDeps } from './deps.ts';
 import { useCancelScope } from './use-cancel-scope.ts';
 import { type FlowState, flowReducer, initialFlowState } from '../domain/flow.ts';
-import { checkIntent } from '../domain/intent.ts';
+import { checkIntent, intentPolicy } from '../domain/intent.ts';
 import type { AppError, FlowEvent, PersonaId, Result } from '../domain/types.ts';
 
 export type BorrowFlow = {
@@ -37,16 +37,25 @@ async function poolPolicies(deps: Deps, signal: AbortSignal): Promise<Result<str
 
 /**
  * A result names the wallet's own attestation PDA and a payload whose tier byte is the tier it
- * claims; otherwise the gateway's report is not believed. (The chain read on the result page is
+ * claims, scored under the policy the borrower signed; otherwise the gateway's report is not
+ * believed. (The chain read on the result page is
  * what shows it as verified.)
  */
-async function checkedEvent(event: FlowEvent, deps: Deps, wallet: Address): Promise<FlowEvent> {
+async function checkedEvent(
+  event: FlowEvent,
+  deps: Deps,
+  wallet: Address,
+  signedPolicy: string | undefined,
+): Promise<FlowEvent> {
   if (event.kind !== 'result' || event.result.tier === 'REJECT') return event;
   const { credential, schema } = deps.config.deployment;
   const { tier, attestation, payloadHex } = event.result;
   const expected = await attestationAddress(credential, schema, wallet);
   const payload = decodePayload(Uint8Array.from(hex.encode(payloadHex)));
-  const ok = attestation === expected && payload.tier === TIER_BYTE[tier];
+  const ok =
+    attestation === expected &&
+    payload.tier === TIER_BYTE[tier] &&
+    hex.decode(payload.policyHash) === signedPolicy;
   return ok ? event : failure({ code: 'protocol_error' });
 }
 
@@ -75,7 +84,9 @@ export function useBorrowFlow(deps: Deps = realDeps()): BorrowFlow {
       busy.current = true;
       const mine = generation.current;
       try {
-        const result = await deps.gateway.createSession(current.wallet, persona, nextSignal());
+        // Creating a session is one short request: it gets its own 30 s bound.
+        const signal = AbortSignal.any([nextSignal(), AbortSignal.timeout(30_000)]);
+        const result = await deps.gateway.createSession(current.wallet, persona, signal);
         if (mine !== generation.current) return;
         dispatch(
           result.ok
@@ -122,7 +133,7 @@ export function useBorrowFlow(deps: Deps = realDeps()): BorrowFlow {
       }
       const events = deps.gateway.completeSession(session.sessionId, signed.value, signal);
       for await (const event of events) {
-        const checked = await checkedEvent(event, deps, wallet);
+        const checked = await checkedEvent(event, deps, wallet, intentPolicy(session.intent));
         if (!live()) return;
         dispatch({ type: 'event', event: checked });
       }

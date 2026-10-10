@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { messageFor } from './errors.ts';
+import { messageFor, toAppError } from './errors.ts';
 import type { AppError } from './types.ts';
 
 // Every code of FORMATS §16 plus the client-side ones (plan: AppError union).
@@ -112,4 +112,26 @@ describe('messageFor', () => {
       expect(messageFor({ code }).retry).toBe(false);
     }
   });
+
+  it('never crashes on a value that is not really an AppError', () => {
+    const stray = { code: 'not_a_code' } as unknown as AppError;
+    expect(messageFor(stray)).toEqual(messageFor({ code: 'protocol_error' }));
+  });
+});
+
+describe('toAppError', () => {
+  it('keeps a real AppError', () => {
+    expect(toAppError({ code: 'loan_exists' })).toEqual({ code: 'loan_exists' });
+    expect(toAppError({ code: 'bad_transaction', rule: 3 })).toEqual({
+      code: 'bad_transaction',
+      rule: 3,
+    });
+  });
+
+  it.each([new RangeError('codec'), new Error('WebCrypto'), 'text', null, { code: 'nope' }])(
+    'maps a stray throw (%s) to protocol_error',
+    (thrown) => {
+      expect(toAppError(thrown)).toEqual({ code: 'protocol_error' });
+    },
+  );
 });

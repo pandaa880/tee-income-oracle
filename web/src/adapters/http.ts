@@ -22,11 +22,15 @@ const GATEWAY_CODES = new Set<string>([
   'attester_mismatch',
 ] satisfies GatewayCode[]);
 
+/** FORMATS §16: error codes and the stage that failed. Anything else is not a gateway error. */
+const CODE = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
+const STAGES = ['gateway', 'bank', 'enclave', 'chain'] as const;
+
 const errorBodySchema = z.object({
   error: z.object({
-    code: z.string(),
+    code: z.string().regex(CODE),
     message: z.string().optional(),
-    stage: z.string().optional(),
+    stage: z.enum(STAGES).optional(),
     detail: z.unknown().optional(),
   }),
 });
@@ -43,6 +47,9 @@ export const protocolError: AppError = { code: 'protocol_error' };
 const isGatewayCode = (code: string): code is GatewayCode => GATEWAY_CODES.has(code);
 
 type ErrorFields = z.infer<typeof errorBodySchema>['error'];
+
+/** The `error` event of the SSE stream has the same shape as the JSON error body. */
+export const errorFieldsSchema = errorBodySchema.shape.error;
 
 /** A §16 error object → AppError. Codes we don't know (enclave, bank) stay upstream errors. */
 export function errorFrom({ code, message, stage, detail }: ErrorFields): AppError {

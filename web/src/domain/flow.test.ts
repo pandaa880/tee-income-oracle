@@ -15,6 +15,14 @@ const stage = (name: 'bind' | 'fi_request' | 'fi_fetch' | 'evaluate' | 'submit')
 
 const run = (...actions: FlowAction[]): FlowState => actions.reduce(flowReducer, initialFlowState);
 
+/** The §16 stages a tier result follows, and the four a REJECT follows (no submit). */
+const TIER_STAGES = (['bind', 'fi_request', 'fi_fetch', 'evaluate', 'submit'] as const).map(stage);
+const REJECT_STAGES = TIER_STAGES.slice(0, 4);
+const REJECT_EVENT: FlowAction = {
+  type: 'event',
+  event: { kind: 'result', result: { tier: 'REJECT' } },
+};
+
 const connect: FlowAction = { type: 'connect', wallet: ADMIN };
 const session: FlowAction = {
   type: 'session_created',
@@ -51,7 +59,7 @@ describe('flowReducer happy path', () => {
   });
 
   it('a result event ends processing with tier, attestation and tx', () => {
-    const state = run(connect, session, consent, stage('bind'), {
+    const state = run(connect, session, consent, ...TIER_STAGES, {
       type: 'event',
       event: RESULT_EVENT,
     });
@@ -59,10 +67,7 @@ describe('flowReducer happy path', () => {
   });
 
   it('a REJECT result ends in rejected', () => {
-    const state = run(connect, session, consent, {
-      type: 'event',
-      event: { kind: 'result', result: { tier: 'REJECT' } },
-    });
+    const state = run(connect, session, consent, ...REJECT_STAGES, REJECT_EVENT);
     expect(state.step).toBe('rejected');
   });
 
@@ -82,7 +87,10 @@ describe('flowReducer happy path', () => {
   });
 
   it('after a result, loan_opened then loan_repaid walk the loan states', () => {
-    const result = run(connect, session, consent, { type: 'event', event: RESULT_EVENT });
+    const result = run(connect, session, consent, ...TIER_STAGES, {
+      type: 'event',
+      event: RESULT_EVENT,
+    });
     const open = flowReducer(result, { type: 'loan_opened' });
     expect(open).toMatchObject({ step: 'loan', loan: 'open' });
     expect(flowReducer(open, { type: 'loan_repaid' })).toMatchObject({
@@ -106,7 +114,13 @@ describe('flowReducer wallet change', () => {
     ['processing', [connect, session, consent, stage('bind')]],
     [
       'result',
-      [connect, session, consent, { type: 'event', event: RESULT_EVENT } satisfies FlowAction],
+      [
+        connect,
+        session,
+        consent,
+        ...TIER_STAGES,
+        { type: 'event', event: RESULT_EVENT } satisfies FlowAction,
+      ],
     ],
   ])(
     'a different wallet resets %s to persona for the new wallet, dropping the old data',
@@ -118,13 +132,10 @@ describe('flowReducer wallet change', () => {
   );
 
   it('a different wallet also resets rejected, failed and loan', () => {
-    const rejected = run(connect, session, consent, {
-      type: 'event',
-      event: { kind: 'result', result: { tier: 'REJECT' } },
-    });
+    const rejected = run(connect, session, consent, ...REJECT_STAGES, REJECT_EVENT);
     const failed = run(connect, { type: 'failed', error: { code: 'network' } });
     const loan = flowReducer(
-      run(connect, session, consent, { type: 'event', event: RESULT_EVENT }),
+      run(connect, session, consent, ...TIER_STAGES, { type: 'event', event: RESULT_EVENT }),
       { type: 'loan_opened' },
     );
     for (const state of [rejected, failed, loan]) {
@@ -148,13 +159,13 @@ describe('flowReducer ignores impossible transitions', () => {
     ['loan_opened before a result', run(connect, session, consent), { type: 'loan_opened' }],
     [
       'loan_repaid without an open loan',
-      run(connect, session, consent, { type: 'event', event: RESULT_EVENT }),
+      run(connect, session, consent, ...TIER_STAGES, { type: 'event', event: RESULT_EVENT }),
       { type: 'loan_repaid' },
     ],
     ['session_created while processing', run(connect, session, consent), session],
     [
       'a stage event after the result',
-      run(connect, session, consent, { type: 'event', event: RESULT_EVENT }),
+      run(connect, session, consent, ...TIER_STAGES, { type: 'event', event: RESULT_EVENT }),
       stage('submit'),
     ],
     [
@@ -166,5 +177,37 @@ describe('flowReducer ignores impossible transitions', () => {
 
   it.each(nothingElse)('%s returns the same state object', (_, state, action) => {
     expect(flowReducer(state, action)).toBe(state);
+  });
+});
+
+const processing = (...stages: FlowAction[]) => run(connect, session, consent, ...stages);
+
+describe('flowReducer enforces the FORMATS §16 stage order', () => {
+  const broken = { step: 'failed', error: { code: 'protocol_error' } };
+
+  it('fails on a skipped stage', () => {
+    expect(processing(stage('bind'), stage('fi_fetch'))).toMatchObject(broken);
+  });
+
+  it('fails on a duplicate stage', () => {
+    expect(processing(stage('bind'), stage('bind'))).toMatchObject(broken);
+  });
+
+  it('fails on a stage that does not start the stream', () => {
+    expect(processing(stage('fi_request'))).toMatchObject(broken);
+  });
+
+  it('fails on a tier result before submit', () => {
+    expect(processing(...REJECT_STAGES, { type: 'event', event: RESULT_EVENT })).toMatchObject(
+      broken,
+    );
+  });
+
+  it('fails on a REJECT after submit (a REJECT never submits)', () => {
+    expect(processing(...TIER_STAGES, REJECT_EVENT)).toMatchObject(broken);
+  });
+
+  it('fails on a stage after submit', () => {
+    expect(processing(...TIER_STAGES, stage('bind'))).toMatchObject(broken);
   });
 });

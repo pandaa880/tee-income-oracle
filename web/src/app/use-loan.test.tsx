@@ -304,6 +304,19 @@ describe('useLoan binds the confirmation to its own transaction', () => {
   });
 });
 
+describe('useLoan error typing', () => {
+  it('maps a stray throw (kit refusing relayer == borrower) to protocol_error', async () => {
+    const { deps } = await setup();
+    vi.mocked(deps.gateway.info).mockResolvedValue(ok({ ...INFO, relayer: key.address }));
+    const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
+    await act(async () => {
+      await expect(result.current.borrow.mutateAsync(1n)).rejects.toEqual({
+        code: 'protocol_error',
+      });
+    });
+  });
+});
+
 describe('useLoan repay', () => {
   it('relays a repay transaction the relayer accepts and resolves the signature', async () => {
     const { deps, relay, store, loanAddress } = await setup();

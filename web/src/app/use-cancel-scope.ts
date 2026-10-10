@@ -14,9 +14,9 @@ export type CancelScope = {
 export function useCancelScope(timeoutMs: number): CancelScope {
   const controller = useRef<AbortController | null>(null);
   useEffect(() => {
-    const current = new AbortController();
-    controller.current = current;
-    return () => current.abort();
+    controller.current = new AbortController();
+    // Abort the controller in use at unmount: cancel() may have swapped it since mount.
+    return () => controller.current?.abort();
   }, []);
   const next = useCallback(() => {
     controller.current ??= new AbortController();

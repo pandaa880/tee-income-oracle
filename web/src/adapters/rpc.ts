@@ -26,7 +26,13 @@ import type { AppError, ChainAccount, Result } from '../domain/types.ts';
 /** Waits before retry 2 and 3 of a rate-limited call; then the RPC is "busy". */
 const BACKOFF_MS = [250, 500];
 
-const envelopeSchema = z.object({ result: z.unknown() });
+const envelopeSchema = z.union([
+  z.object({ result: z.unknown() }),
+  z.object({ error: z.object({ code: z.number(), message: z.string().optional() }) }),
+]);
+
+/** JSON-RPC error codes nodes answer with when they want us to slow down. */
+const BUSY_CODES = new Set([-32005, -32429]);
 
 const accountSchema = z
   .object({ owner: z.string(), data: z.tuple([z.string(), z.literal('base64')]) })
@@ -103,9 +109,12 @@ async function rpcCall(url: string, call: Call, signal: AbortSignal): Promise<Re
     const body: unknown = await response.json().catch(() => undefined);
     if (signal.aborted) return { ok: false, error: { code: 'cancelled' } };
     const parsed = envelopeSchema.safeParse(body);
-    return parsed.success
-      ? { ok: true, value: parsed.data.result }
-      : { ok: false, error: protocolError };
+    if (!parsed.success) return { ok: false, error: protocolError };
+    if ('error' in parsed.data) {
+      const busy = BUSY_CODES.has(parsed.data.error.code);
+      return { ok: false, error: { code: busy ? 'rpc_busy' : 'network' } };
+    }
+    return { ok: true, value: parsed.data.result };
   }
 }
 

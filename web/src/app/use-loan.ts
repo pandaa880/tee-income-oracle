@@ -21,6 +21,7 @@ import {
   signForRelay,
   type LoanMessage,
 } from '../domain/loan-tx.ts';
+import { toAppError } from '../domain/errors.ts';
 import type { AppError } from '../domain/types.ts';
 
 const CONFIRM = { intervalMs: 1000, timeoutMs: 60_000 };
@@ -134,21 +135,29 @@ export function useLoan(pool: Address, deps: Deps = realDeps()) {
   const { next: nextSignal } = useCancelScope(LOAN_TIMEOUT_MS);
   const borrow = useMutation<string, AppError, bigint>({
     mutationFn: async (amount) => {
-      const signal = nextSignal();
-      const base = await common(deps, pool, signal);
-      const message = await buildBorrowMessage({
-        ...base,
-        measurementId: await measurementId(deps, signal),
-        amount,
-      });
-      return relayAndConfirm(deps, message, { pool, kind: 'borrow', amount }, signal);
+      try {
+        const signal = nextSignal();
+        const base = await common(deps, pool, signal);
+        const message = await buildBorrowMessage({
+          ...base,
+          measurementId: await measurementId(deps, signal),
+          amount,
+        });
+        return await relayAndConfirm(deps, message, { pool, kind: 'borrow', amount }, signal);
+      } catch (thrown) {
+        throw toAppError(thrown);
+      }
     },
   });
   const repay = useMutation<string, AppError>({
     mutationFn: async () => {
-      const signal = nextSignal();
-      const message = await buildRepayMessage(await common(deps, pool, signal));
-      return relayAndConfirm(deps, message, { pool, kind: 'repay' }, signal);
+      try {
+        const signal = nextSignal();
+        const message = await buildRepayMessage(await common(deps, pool, signal));
+        return await relayAndConfirm(deps, message, { pool, kind: 'repay' }, signal);
+      } catch (thrown) {
+        throw toAppError(thrown);
+      }
     },
   });
   return { borrow, repay };

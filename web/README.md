@@ -28,6 +28,10 @@ Four layers, dependencies pointing inward (`docs/CODING-GUIDELINES.md` §3; enfo
 | `src/app/` | Config, deps, one hook per use case (`use-borrow-flow`, `use-credential`, `use-loan`, `use-status`) |
 | `src/pages/`, `src/routes/` | Composition only |
 
+Two tests (`domain/loan-tx.test.ts`, `app/use-loan.test.tsx`) import `gateway/src/loan-relay.ts`
+directly: the relayer's own shape check is the oracle for the transactions the browser builds,
+so a change there can fail the web tests on purpose.
+
 The gateway is untrusted: the browser rebuilds the intent before signing, checks the result
 against the wallet's attestation PDA and payload, and confirms a relayed loan by reading the
 Loan account.

@@ -210,6 +210,22 @@ describe('rate limiting and failures', () => {
     expect(calls).toBe(2);
   });
 
+  it.each([
+    [-32005, 'rpc_busy'],
+    [-32602, 'network'],
+  ])('maps a JSON-RPC error %i to %s, not protocol_error', async (code, expected) => {
+    stubFetch(async (_, init) => {
+      const { id } = JSON.parse(bodyOf(init)) as { id: unknown };
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message: 'm' } }), {
+        status: 200,
+      });
+    });
+    expect(await createChain(RPC_URL).accounts([OTHER], signal())).toMatchObject({
+      ok: false,
+      error: { code: expected },
+    });
+  });
+
   it('is a network error for a server error or a rejected fetch', async () => {
     stubFetch(async () => new Response('boom', { status: 500 }));
     expect(await createChain(RPC_URL).accounts([OTHER], signal())).toMatchObject({

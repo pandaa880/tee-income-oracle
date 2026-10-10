@@ -32,11 +32,34 @@ export type FlowAction =
 
 export const initialFlowState: FlowState = { step: 'wallet' };
 
+/** FORMATS §16: stages arrive once each, in this order; REJECT has no `submit` stage. */
+export const STAGE_ORDER: readonly Stage[] = [
+  'bind',
+  'fi_request',
+  'fi_fetch',
+  'evaluate',
+  'submit',
+];
+
+const outOfOrder = (wallet: Address): FlowState => ({
+  step: 'failed',
+  wallet,
+  error: { code: 'protocol_error' },
+});
+
 function onEvent(state: FlowState, event: FlowEvent): FlowState {
   if (state.step !== 'processing') return state;
-  if (event.kind === 'stage') return { ...state, stages: [...state.stages, event.stage] };
   if (event.kind === 'error') return { step: 'failed', wallet: state.wallet, error: event.error };
+  const done = state.stages.length;
+  if (event.kind === 'stage') {
+    // Only the next stage is accepted: a duplicate, skipped or late stage is a broken stream.
+    if (event.stage !== STAGE_ORDER[done]) return outOfOrder(state.wallet);
+    return { ...state, stages: [...state.stages, event.stage] };
+  }
   const { result } = event;
+  // A tier is written in `submit`; a REJECT is decided in `evaluate` and never submits.
+  const expectedLast = result.tier === 'REJECT' ? 'evaluate' : 'submit';
+  if (state.stages.at(-1) !== expectedLast) return outOfOrder(state.wallet);
   if (result.tier === 'REJECT') return { step: 'rejected', wallet: state.wallet };
   const { tier, attestation, tx } = result;
   return { step: 'result', wallet: state.wallet, tier, attestation, tx };

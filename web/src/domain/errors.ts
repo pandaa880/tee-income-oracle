@@ -85,6 +85,29 @@ export function messageFor(error: AppError): ErrorMessage {
   if (error.code === 'upstream_error') {
     return msg('Service error', 'A service behind the gateway refused the request.');
   }
-  // Every remaining code is a plain one; the Record's type makes a missing message a compile error.
-  return SIMPLE[error.code];
+  // Every remaining code is a plain one; the Record's type makes a missing message a compile
+  // error. The `??` covers a value that isn't really an AppError at runtime (a stray throw).
+  return SIMPLE[error.code] ?? SIMPLE.protocol_error;
+}
+
+const ERROR_CODES = new Set<string>([
+  ...Object.keys(SIMPLE),
+  'bad_transaction',
+  'simulation_failed',
+  'invalid_amount',
+  'upstream_error',
+]);
+
+/**
+ * Whatever a query or mutation threw, as an AppError. TanStack's error type is only a cast, so
+ * a stray throw (a codec RangeError, a kit signer error, WebCrypto) becomes `protocol_error`
+ * instead of reaching a component as an untyped object.
+ */
+export function toAppError(thrown: unknown): AppError {
+  return isAppError(thrown) ? thrown : { code: 'protocol_error' };
+}
+
+function isAppError(value: unknown): value is AppError {
+  if (typeof value !== 'object' || value === null || !('code' in value)) return false;
+  return typeof value.code === 'string' && ERROR_CODES.has(value.code);
 }

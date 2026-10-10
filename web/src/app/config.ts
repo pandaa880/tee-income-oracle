@@ -78,5 +78,9 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   const cluster = env['VITE_CLUSTER'];
   if (cluster !== 'devnet')
     throw new Error(`VITE_CLUSTER must be "devnet", got ${String(cluster)}`);
-  return { gatewayUrl, rpcUrl, cluster, deployment: loadDeployment(devnet), features: FEATURES };
+  const deployment = loadDeployment(devnet);
+  if (deployment.cluster !== cluster) {
+    throw new Error(`bundled deployment is for ${deployment.cluster}, VITE_CLUSTER is ${cluster}`);
+  }
+  return { gatewayUrl, rpcUrl, cluster, deployment, features: FEATURES };
 }

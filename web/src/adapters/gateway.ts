@@ -1,9 +1,16 @@
 // The gateway HTTP API (FORMATS §16). The `complete` reply is a live SSE stream, read event by
 // event so the processing screen shows each stage as it starts.
-import { type Address, address } from '@solana/kit';
+import { type Address, address, isSignature } from '@solana/kit';
 import { EventSourceParserStream } from 'eventsource-parser/stream';
 import { z } from 'zod';
-import { errorFrom, errorOfResponse, fetchFailure, protocolError, requestJson } from './http.ts';
+import {
+  errorFieldsSchema,
+  errorFrom,
+  errorOfResponse,
+  fetchFailure,
+  protocolError,
+  requestJson,
+} from './http.ts';
 import type { GatewayPort } from '../domain/ports.ts';
 import type { AppError, FlowEvent, Info, PersonaId, Session } from '../domain/types.ts';
 
@@ -57,20 +64,14 @@ const stageSchema = z.object({
 const resultSchema = z.union([
   z.object({
     tier: z.enum(['A', 'B', 'C']),
-    tx: z.string().nullable(),
+    // It becomes an explorer link: only a real base58 signature, never arbitrary text.
+    tx: z.string().refine(isSignature).nullable(),
     attestation: addressSchema,
     expiry: z.number().int(),
     payload_hex: z.string().regex(/^[0-9a-f]{166}$/i),
   }),
   z.object({ tier: z.literal('REJECT') }),
 ]);
-
-const streamErrorSchema = z.object({
-  code: z.string(),
-  message: z.string().optional(),
-  stage: z.string().optional(),
-  detail: z.unknown().optional(),
-});
 
 const fail = (error: AppError): FlowEvent => ({ kind: 'error', error });
 
@@ -107,7 +108,7 @@ export function toFlowEvent(event: string | undefined, data: string): FlowEvent 
     };
   }
   if (event === 'error') {
-    const parsed = streamErrorSchema.safeParse(json);
+    const parsed = errorFieldsSchema.safeParse(json);
     return fail(parsed.success ? errorFrom(parsed.data) : protocolError);
   }
   return fail(protocolError);

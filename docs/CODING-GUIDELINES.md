@@ -310,7 +310,14 @@ pages, it is server state or URL state.
   base58 signatures); on-chain integers get zod bounds matching the Rust type (u8 0..255,
   u64 ≤ 2^64−1).
 - A chain read right after `confirmed` can reach a node a slot behind (load-balanced RPC):
-  retry it briefly (or pin `minContextSlot`) before calling it a failure.
+  retry it briefly (or pin `minContextSlot`) before calling it a failure. To prove *your*
+  transaction landed, verify the returned signature (the fee payer's) over your own message
+  bytes; account reads alone can't.
+- Every untrusted value that can become a URL or link is format-checked at the adapter
+  (`isSignature`, `isAddress`). Query and mutation functions map any stray throw to an
+  `AppError` (TanStack's error type is only a cast).
+- A component-owned cancel scope that swaps its controller aborts `ref.current` on unmount,
+  not the value its effect captured.
 
 #### `@tio/ui` package rules
 - Standalone, so it can be extracted as a design system later: no imports from `web/`,
@@ -376,6 +383,8 @@ yet; the rules below describe the target.
   when the flag is off.
 - No snapshot tests.
 - Every review fix lands with a test that fails if the fix is reverted.
+- A builder of signed text is tested against the other side's literal (e.g. the enclave's
+  §9 golden), never only against expectations made with the builder under test.
 
 #### Tooling
 - Same root `.oxlintrc.json` / `.oxfmtrc.json` (named exports only, no barrel

@@ -6,6 +6,7 @@ import { attestationAddress, decodePayload } from '@tio/oracle-client/attest';
 import { type Deps, realDeps } from './deps.ts';
 import { queryKeys } from './query-keys.ts';
 import { type CredentialStatus, readCredential } from '../domain/credential.ts';
+import { toAppError } from '../domain/errors.ts';
 import type { AppError } from '../domain/types.ts';
 
 /** Reads the attestation and pool, then the registry entry of the payload's enclave build. */
@@ -36,10 +37,17 @@ export async function fetchCredential(
   return readCredential({ attestation, enclaveEntry, pool, sasSigner, now });
 }
 
+/** Query reads give up after 15 s, so a hung RPC can't leave a badge loading forever. */
+export const withDeadline = (signal: AbortSignal) =>
+  AbortSignal.any([signal, AbortSignal.timeout(15_000)]);
+
 export function useCredential(wallet: Address, poolAddress: Address, deps: Deps = realDeps()) {
   return useQuery<CredentialStatus, AppError>({
     queryKey: [...queryKeys.credential(deps.config.cluster, wallet), poolAddress],
-    queryFn: ({ signal }) => fetchCredential(deps, wallet, poolAddress, signal),
+    queryFn: ({ signal }) =>
+      fetchCredential(deps, wallet, poolAddress, withDeadline(signal)).catch((thrown: unknown) => {
+        throw toAppError(thrown);
+      }),
     staleTime: 15_000,
   });
 }

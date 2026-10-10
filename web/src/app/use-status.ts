@@ -4,7 +4,9 @@ import { findEnclaveEntryPda } from '@tio/oracle-client';
 import { type Deps, realDeps } from './deps.ts';
 import { queryKeys } from './query-keys.ts';
 import { type ServiceStatus, serviceStatus } from '../domain/status.ts';
+import { toAppError } from '../domain/errors.ts';
 import type { Result } from '../domain/types.ts';
+import { withDeadline } from './use-credential.ts';
 import type { EnclaveEntry } from '@tio/oracle-client';
 
 export async function fetchStatus(deps: Deps, signal: AbortSignal): Promise<ServiceStatus> {
@@ -27,7 +29,10 @@ export async function fetchStatus(deps: Deps, signal: AbortSignal): Promise<Serv
 export function useStatus(deps: Deps = realDeps()) {
   return useQuery({
     queryKey: queryKeys.status(deps.config.cluster),
-    queryFn: ({ signal }) => fetchStatus(deps, signal),
+    queryFn: ({ signal }) =>
+      fetchStatus(deps, withDeadline(signal)).catch((thrown: unknown) => {
+        throw toAppError(thrown);
+      }),
     staleTime: 30_000,
     refetchInterval: 60_000,
   });

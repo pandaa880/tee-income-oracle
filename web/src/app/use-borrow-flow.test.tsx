@@ -31,6 +31,12 @@ import {
 } from '../test-support/fixtures.ts';
 
 const SIGNATURE = new Uint8Array(64).fill(7) as SignatureBytes;
+/** The §16 stages before a tier result, and the four before a REJECT (no submit). */
+const TIER_STAGES: FlowEvent[] = (
+  ['bind', 'fi_request', 'fi_fetch', 'evaluate', 'submit'] as const
+).map((stage) => ({ kind: 'stage', stage }));
+const REJECT_STAGES = TIER_STAGES.slice(0, 4);
+const TX = getBase58Decoder().decode(new Uint8Array(64).fill(9));
 const POLICY_HEX = '11'.repeat(32);
 
 /** A tier A result the hook accepts: the wallet's own attestation PDA, tier byte 1. */
@@ -39,7 +45,7 @@ async function resultFor(wallet: Address): Promise<FlowEvent> {
     kind: 'result',
     result: {
       tier: 'A',
-      tx: 'sig-1',
+      tx: TX,
       attestation: await attestationAddress(CREDENTIAL, SCHEMA, wallet),
       expiry: 99n,
       payloadHex: getBase16Codec().decode(payloadBytes({ tier: 1 })),
@@ -130,8 +136,7 @@ describe('useBorrowFlow', () => {
 
   it('confirmConsent signs the exact §9 intent bytes, completes with base58, ends in result', async () => {
     const { result, signer, completeSession } = await setup(async (wallet) => [
-      { kind: 'stage', stage: 'bind' },
-      { kind: 'stage', stage: 'submit' },
+      ...TIER_STAGES,
       await resultFor(wallet),
     ]);
     await toConsent(result);
@@ -151,7 +156,7 @@ describe('useBorrowFlow', () => {
       getBase58Decoder().decode(SIGNATURE),
       expect.any(AbortSignal),
     );
-    expect(result.current.state).toMatchObject({ step: 'result', tier: 'A', tx: 'sig-1' });
+    expect(result.current.state).toMatchObject({ step: 'result', tier: 'A', tx: TX });
   });
 
   it('shows the stages as they arrive while processing', async () => {
@@ -161,6 +166,7 @@ describe('useBorrowFlow', () => {
       completeSession: async function* () {
         yield { kind: 'stage', stage: 'bind' } satisfies FlowEvent;
         await gate;
+        yield* TIER_STAGES.slice(1);
         if (final !== undefined) yield final;
       },
     });
@@ -182,7 +188,10 @@ describe('useBorrowFlow', () => {
   });
 
   it('a REJECT result ends in rejected', async () => {
-    const { result } = await setup([{ kind: 'result', result: { tier: 'REJECT' } }]);
+    const { result } = await setup([
+      ...REJECT_STAGES,
+      { kind: 'result', result: { tier: 'REJECT' } },
+    ]);
     await toConsent(result);
     await act(() => result.current.confirmConsent());
     expect(result.current.state.step).toBe('rejected');
@@ -248,7 +257,7 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
     const { result } = await setup(async (wallet) => {
       const event = await resultFor(wallet);
       return event.kind === 'result' && event.result.tier !== 'REJECT'
-        ? [{ ...event, result: { ...event.result, attestation: POOL_1 } }]
+        ? [...TIER_STAGES, { ...event, result: { ...event.result, attestation: POOL_1 } }]
         : [];
     });
     await toConsent(result);
@@ -263,7 +272,7 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
     const { result } = await setup(async (wallet) => {
       const event = await resultFor(wallet);
       return event.kind === 'result' && event.result.tier !== 'REJECT'
-        ? [{ ...event, result: { ...event.result, tier: 'B' as const } }]
+        ? [...TIER_STAGES, { ...event, result: { ...event.result, tier: 'B' as const } }]
         : [];
     });
     await toConsent(result);
@@ -332,9 +341,12 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
 
   it('accepts a policy used by only one of the listed pools', async () => {
     const policyB = new Uint8Array(32).fill(0x33);
-    const { result, signer, deps } = await setup(async (wallet) => [await resultFor(wallet)], {
-      createSession: tampered((w) => intent(w, { policyHashHex: '33'.repeat(32) })),
-    });
+    const { result, signer, deps } = await setup(
+      async (wallet) => [...TIER_STAGES, await resultFor(wallet)],
+      {
+        createSession: tampered((w) => intent(w, { policyHashHex: '33'.repeat(32) })),
+      },
+    );
     const store = new Map<Address, ChainAccount>([
       [POOL_0, { kind: 'pool', pool: pool() }],
       [POOL_1, { kind: 'pool', pool: pool({ policyHash: policyB }) }],
@@ -349,6 +361,7 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
 
   it('signs and completes once when confirmConsent is called twice before a render', async () => {
     const { result, signer, completeSession } = await setup(async (wallet) => [
+      ...TIER_STAGES,
       await resultFor(wallet),
     ]);
     await toConsent(result);
@@ -379,5 +392,44 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
     release();
     await act(() => stale);
     expect(result.current.state.step).toBe('persona');
+  });
+
+  it('rejects a result scored under a policy other than the one the borrower signed', async () => {
+    const { result } = await setup(async (wallet) => {
+      const event = await resultFor(wallet);
+      if (event.kind !== 'result' || event.result.tier === 'REJECT') return [];
+      const otherPolicy = payloadBytes({ tier: 1, policyHash: new Uint8Array(32).fill(0x44) });
+      return [
+        ...TIER_STAGES,
+        { ...event, result: { ...event.result, payloadHex: getBase16Codec().decode(otherPolicy) } },
+      ];
+    });
+    await toConsent(result);
+    await act(() => result.current.confirmConsent());
+    expect(result.current.state).toMatchObject({
+      step: 'failed',
+      error: { code: 'protocol_error' },
+    });
+  });
+
+  it('aborts a stream started after a reset when the component unmounts', async () => {
+    let seen: AbortSignal | undefined;
+    const { promise: never } = Promise.withResolvers<void>();
+    const { result, unmount } = await setup([], {
+      completeSession: async function* (_id, _sig, signal) {
+        seen = signal;
+        await never;
+        yield { kind: 'stage', stage: 'bind' } satisfies FlowEvent;
+      },
+    });
+    act(() => result.current.connect());
+    act(() => result.current.reset()); // swaps the cancel scope's controller
+    await toConsent(result);
+    act(() => {
+      void result.current.confirmConsent();
+    });
+    await waitFor(() => expect(seen).toBeDefined());
+    unmount();
+    expect(seen?.aborted).toBe(true);
   });
 });
