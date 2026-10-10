@@ -2,8 +2,11 @@ import { act, renderHook } from '@testing-library/react';
 import {
   decompileTransactionMessage,
   generateKeyPairSigner,
+  getBase58Decoder,
   getBase64Encoder,
   getCompiledTransactionMessageDecoder,
+  getTransactionDecoder,
+  signBytes,
   type Address,
   type KeyPairSigner,
 } from '@solana/kit';
@@ -17,9 +20,9 @@ import { attestationAddress, parseSasAttestation, SAS_PROGRAM_ID } from '@tio/or
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { checkLoanTx, verifyBorrowerSignature } from '../../../gateway/src/loan-relay.ts';
 import { useLoan } from './use-loan.ts';
-import type { ChainPort, RelayPort } from '../domain/ports.ts';
+import type { ChainPort, GatewayPort, RelayPort } from '../domain/ports.ts';
 import type { ChainAccount } from '../domain/types.ts';
-import { fail, fakeChain, fakeDeps, ok, SIG } from '../test-support/fakes.ts';
+import { fail, fakeChain, fakeDeps, fakeGateway, INFO, ok, SIG } from '../test-support/fakes.ts';
 import {
   CREDENTIAL,
   entry,
@@ -28,16 +31,25 @@ import {
   payloadBytes,
   POOL_0,
   POOL_1,
-  RELAYER,
   SCHEMA,
   sasAccountBytes,
 } from '../test-support/fixtures.ts';
 import { queryWrapper } from '../test-support/query.tsx';
 
 let key: KeyPairSigner;
+/** Stands in for the gateway's relayer: a real key, so its signature over the message verifies. */
+let relayer: KeyPairSigner;
 beforeAll(async () => {
   key = await generateKeyPairSigner();
+  relayer = await generateKeyPairSigner();
 });
+
+/** What the real relayer's signature (= the transaction id) is: Ed25519 over the message bytes. */
+async function relayerSignature(txB64: string): Promise<string> {
+  const wire = Uint8Array.from(getBase64Encoder().encode(txB64));
+  const { messageBytes } = getTransactionDecoder().decode(wire);
+  return getBase58Decoder().decode(await signBytes(relayer.keyPair.privateKey, messageBytes));
+}
 
 /**
  * A chain with the borrower's attestation (measurement id 1) and its registry entry. The default
@@ -67,10 +79,14 @@ async function setup(
   overrides.chain?.(chain);
   const relay: RelayPort = overrides.relay ?? {
     relay: vi.fn<RelayPort['relay']>(async (txB64) => {
-      const shape = await checkLoanTx(Uint8Array.from(getBase64Encoder().encode(txB64)), RELAYER, {
-        ...LOAN_DEPLOYMENT,
-        pools: [POOL_0, POOL_1],
-      });
+      const shape = await checkLoanTx(
+        Uint8Array.from(getBase64Encoder().encode(txB64)),
+        relayer.address,
+        {
+          ...LOAN_DEPLOYMENT,
+          pools: [POOL_0, POOL_1],
+        },
+      );
       if (shape.ok && shape.value.kind === 'borrow' && overrides.loanAppears !== false) {
         const compiled = getCompiledTransactionMessageDecoder().decode(shape.value.tx.messageBytes);
         const data = decompileTransactionMessage(compiled).instructions[1]?.data;
@@ -81,13 +97,18 @@ async function setup(
         });
       }
       if (shape.ok && shape.value.kind === 'repay') store.delete(loanAddress);
-      return ok(SIG);
+      return ok(await relayerSignature(txB64));
     }),
   };
   const deps = fakeDeps(
     { address: key.address, signIntent: async () => new Uint8Array(64) as never, signer: key },
     chain,
-    { relay },
+    {
+      relay,
+      gateway: fakeGateway({
+        info: vi.fn<GatewayPort['info']>(async () => ok({ ...INFO, relayer: relayer.address })),
+      }),
+    },
   );
   return { deps, relay, chain, store, loanAddress };
 }
@@ -106,8 +127,8 @@ describe('useLoan borrow', () => {
     await act(async () => {
       signature = await result.current.borrow.mutateAsync(2_000_000n);
     });
-    expect(signature).toBe(SIG);
-    const shape = await checkLoanTx(sentBytes(relay), RELAYER, GATEWAY_DEPLOYMENT);
+    expect(signature).toBe(await relayerSignature(vi.mocked(relay.relay).mock.calls[0]?.[0] ?? ''));
+    const shape = await checkLoanTx(sentBytes(relay), relayer.address, GATEWAY_DEPLOYMENT);
     expect(shape).toMatchObject({ ok: true, value: { kind: 'borrow', borrower: key.address } });
     expect(shape.ok && (await verifyBorrowerSignature(shape.value))).toBe(true);
     if (!shape.ok) return;
@@ -131,12 +152,16 @@ describe('useLoan borrow', () => {
   });
 
   it('polls for confirmation after the relay answers', async () => {
-    const { deps, chain } = await setup();
+    const { deps, chain, relay } = await setup();
     const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
     await act(async () => {
       await result.current.borrow.mutateAsync(1n);
     });
-    expect(chain.signatureStatus).toHaveBeenCalledWith(SIG, expect.any(AbortSignal));
+    const sent = vi.mocked(relay.relay).mock.calls[0]?.[0] ?? '';
+    expect(chain.signatureStatus).toHaveBeenCalledWith(
+      await relayerSignature(sent),
+      expect.any(AbortSignal),
+    );
   });
 
   it('rejects with the typed relay error and never polls when the relayer refuses', async () => {
@@ -207,7 +232,9 @@ describe('useLoan readback and cancellation', () => {
     });
     const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
     await act(async () => {
-      await expect(result.current.borrow.mutateAsync(5n)).resolves.toBe(SIG);
+      await expect(result.current.borrow.mutateAsync(5n)).resolves.toMatch(
+        /^[1-9A-HJ-NP-Za-km-z]{64,88}$/,
+      );
     });
     expect(loanReads).toBeGreaterThanOrEqual(2);
   });
@@ -251,6 +278,32 @@ describe('useLoan readback and cancellation', () => {
   });
 });
 
+describe('useLoan binds the confirmation to its own transaction', () => {
+  it('rejects an unrelated confirmed signature even when a stale read hides an existing loan', async () => {
+    const { deps, chain, store, loanAddress } = await setup({
+      relay: { relay: vi.fn<RelayPort['relay']>(async () => ok(SIG)) },
+    });
+    // The loan exists, but the pre-read hits a node a slot behind and sees nothing.
+    store.set(loanAddress, {
+      kind: 'loan',
+      loan: getLoanDecoder().decode(loanBytes(key.address, 5n)),
+    });
+    const real = vi.mocked(chain.accounts).getMockImplementation();
+    let loanReads = 0;
+    vi.mocked(chain.accounts).mockImplementation(async (addresses, signal) => {
+      if (addresses[0] === loanAddress && ++loanReads === 1) return ok([null]);
+      return real ? real(addresses, signal) : ok([]);
+    });
+    const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
+    await act(async () => {
+      await expect(result.current.borrow.mutateAsync(5n)).rejects.toMatchObject({
+        code: 'protocol_error',
+      });
+    });
+    expect(chain.signatureStatus).not.toHaveBeenCalled();
+  });
+});
+
 describe('useLoan repay', () => {
   it('relays a repay transaction the relayer accepts and resolves the signature', async () => {
     const { deps, relay, store, loanAddress } = await setup();
@@ -260,8 +313,8 @@ describe('useLoan repay', () => {
     await act(async () => {
       signature = await result.current.repay.mutateAsync();
     });
-    expect(signature).toBe(SIG);
-    const shape = await checkLoanTx(sentBytes(relay), RELAYER, GATEWAY_DEPLOYMENT);
+    expect(signature).toBe(await relayerSignature(vi.mocked(relay.relay).mock.calls[0]?.[0] ?? ''));
+    const shape = await checkLoanTx(sentBytes(relay), relayer.address, GATEWAY_DEPLOYMENT);
     expect(shape).toMatchObject({ ok: true, value: { kind: 'repay', borrower: key.address } });
   });
 });

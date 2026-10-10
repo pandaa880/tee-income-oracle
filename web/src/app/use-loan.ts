@@ -1,5 +1,13 @@
 // Borrow and repay through the gateway's relayer: build → borrower signs → relay → confirm.
-import type { Address } from '@solana/kit';
+import {
+  type Address,
+  getBase58Encoder,
+  getBase64Encoder,
+  getPublicKeyFromAddress,
+  getTransactionDecoder,
+  isSignatureBytes,
+  verifySignature,
+} from '@solana/kit';
 import { useMutation } from '@tanstack/react-query';
 import { findLoanPda } from '@tio/demo-pool-client';
 import { attestationAddress, decodePayload } from '@tio/oracle-client/attest';
@@ -85,6 +93,21 @@ async function loanLanded(deps: Deps, expect: Expect, signal: AbortSignal): Prom
   }
 }
 
+/**
+ * A transaction's id is its fee payer's signature over the message bytes, and the fee payer here
+ * is the relayer. So the signature the gateway returns must verify, under the relayer's key,
+ * over the exact message we built and the borrower signed. An unrelated (or replayed) signature
+ * can't, and once it verifies, "confirmed" can only mean this transaction landed. Account reads
+ * can't establish this: any of them may come from a stale node.
+ */
+async function isOurTransaction(signature: string, txB64: string, relayer: Address) {
+  const wire = Uint8Array.from(getBase64Encoder().encode(txB64));
+  const { messageBytes } = getTransactionDecoder().decode(wire);
+  const bytes = Uint8Array.from(getBase58Encoder().encode(signature));
+  if (!isSignatureBytes(bytes)) return false;
+  return verifySignature(await getPublicKeyFromAddress(relayer), bytes, messageBytes);
+}
+
 async function relayAndConfirm(
   deps: Deps,
   message: LoanMessage,
@@ -92,7 +115,11 @@ async function relayAndConfirm(
   signal: AbortSignal,
 ): Promise<string> {
   requireBefore(await readLoan(deps, expect.pool, signal), expect.kind);
-  const signature = unwrap(await deps.relay.relay(await signForRelay(message), signal));
+  const txB64 = await signForRelay(message);
+  const signature = unwrap(await deps.relay.relay(txB64, signal));
+  if (!(await isOurTransaction(signature, txB64, message.feePayer.address))) {
+    throw { code: 'protocol_error' } satisfies AppError;
+  }
   const outcome = await waitConfirmed(deps.chain, signature, { ...CONFIRM, signal });
   if (outcome.status !== 'confirmed') {
     throw { code: outcome.status === 'failed' ? 'tx_failed' : outcome.status } satisfies AppError;
