@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.3.0...v0.4.0) (2026-10-10)
+
+
+### Features
+
+* **gateway,ops:** sponsor loan transactions and add a second demo pool ([#34](https://github.com/pandaa880/tee-income-oracle/issues/34)) ([8f94594](https://github.com/pandaa880/tee-income-oracle/commit/8f945942a0aa1e3e99176c9feb200e1d017ebab3))
+* **ui:** add the @tio/ui package (tokens, primitives, patterns) ([#36](https://github.com/pandaa880/tee-income-oracle/issues/36)) ([4ba94ed](https://github.com/pandaa880/tee-income-oracle/commit/4ba94edb76141c5b33b764adf5a5616fd259e59a))
+* **web:** add the borrow-flow logic layer (gateway stream, relay, chain checks) ([#38](https://github.com/pandaa880/tee-income-oracle/issues/38)) ([2df24c2](https://github.com/pandaa880/tee-income-oracle/commit/2df24c26c5088e3fc3920762ad3384464825ad60))
+* **web:** scaffold the Vite app on @tio/ui with Vercel config ([#37](https://github.com/pandaa880/tee-income-oracle/issues/37)) ([86390cc](https://github.com/pandaa880/tee-income-oracle/commit/86390cc3130fbb73552a3df5b11ed8452dd00945))
+
 ## [0.3.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.2.0...v0.3.0) (2026-10-08)
 
 
