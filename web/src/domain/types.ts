@@ -31,7 +31,9 @@ export type ClientCode =
   | 'network'
   | 'rpc_busy'
   | 'timeout'
-  | 'signing_failed';
+  | 'signing_failed'
+  | 'loan_exists'
+  | 'no_open_loan';
 
 export type AmountProblem =
   | 'empty'

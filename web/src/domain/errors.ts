@@ -36,6 +36,8 @@ const SIMPLE: Record<GatewayCode | ClientCode, ErrorMessage> = {
   rpc_busy: msg('Network busy', 'The Solana RPC is rate-limiting; retrying shortly.', true),
   timeout: msg('Timed out', 'No confirmation arrived in time.', true),
   signing_failed: msg('Signing failed', 'The wallet could not sign the request.', true),
+  loan_exists: msg('Loan already open', 'Repay the open loan in this pool before borrowing again.'),
+  no_open_loan: msg('No open loan', 'There is no loan in this pool to repay.'),
 };
 
 /** demo_pool borrow/repay errors (FORMATS §14) seen in `simulation_failed.custom`. */

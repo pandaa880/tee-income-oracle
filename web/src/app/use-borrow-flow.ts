@@ -60,6 +60,9 @@ export function useBorrowFlow(deps: Deps = realDeps()): BorrowFlow {
   const { next: nextSignal, cancel } = useCancelScope(SESSION_TIMEOUT_MS);
   // One request at a time: a double click before the next render can't sign or complete twice.
   const busy = useRef(false);
+  // Bumped by reset(): a request from an earlier flow may still settle (e.g. as `cancelled`), and
+  // must neither dispatch into the new flow nor clear its busy guard.
+  const generation = useRef(0);
 
   const connect = useCallback(() => {
     dispatch({ type: 'connect', wallet: deps.signer.address });
@@ -70,15 +73,17 @@ export function useBorrowFlow(deps: Deps = realDeps()): BorrowFlow {
       const current = stateRef.current;
       if (current.step !== 'persona' || busy.current) return;
       busy.current = true;
+      const mine = generation.current;
       try {
         const result = await deps.gateway.createSession(current.wallet, persona, nextSignal());
+        if (mine !== generation.current) return;
         dispatch(
           result.ok
             ? { type: 'session_created', persona, session: result.value }
             : { type: 'failed', error: result.error },
         );
       } finally {
-        busy.current = false;
+        if (mine === generation.current) busy.current = false;
       }
     },
     [deps, nextSignal],
@@ -100,6 +105,8 @@ export function useBorrowFlow(deps: Deps = realDeps()): BorrowFlow {
     const current = stateRef.current;
     if (current.step !== 'consent' || busy.current) return;
     busy.current = true;
+    const mine = generation.current;
+    const live = () => mine === generation.current;
     const signal = nextSignal();
     const { session, wallet } = current;
     dispatch({ type: 'consent_given' });
@@ -110,20 +117,23 @@ export function useBorrowFlow(deps: Deps = realDeps()): BorrowFlow {
         : policies;
       const signed = bytes.ok ? await signIntent(bytes.value, signal) : bytes;
       if (!signed.ok) {
-        dispatch({ type: 'event', event: failure(signed.error) });
+        if (live()) dispatch({ type: 'event', event: failure(signed.error) });
         return;
       }
       const events = deps.gateway.completeSession(session.sessionId, signed.value, signal);
       for await (const event of events) {
-        dispatch({ type: 'event', event: await checkedEvent(event, deps, wallet) });
+        const checked = await checkedEvent(event, deps, wallet);
+        if (!live()) return;
+        dispatch({ type: 'event', event: checked });
       }
     } finally {
-      busy.current = false;
+      if (live()) busy.current = false;
     }
   }, [deps, nextSignal, signIntent]);
 
   // Abort whatever is in flight, so a late stream can't hold the busy guard after a reset.
   const reset = useCallback(() => {
+    generation.current += 1;
     cancel();
     busy.current = false;
     dispatch({ type: 'reset' });

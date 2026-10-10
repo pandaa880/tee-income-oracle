@@ -55,21 +55,31 @@ type Expect = { pool: Address; kind: 'borrow'; amount: bigint } | { pool: Addres
 
 /**
  * The relayer's word isn't proof: the signature it returns could belong to any landed
- * transaction. After it confirms, read the Loan PDA: after a borrow it must hold this borrower's
- * loan of exactly this amount (an older open loan doesn't count); after a repay it must be gone.
+ * transaction. So the Loan PDA (one per borrower and pool) is read before and after: a borrow
+ * needs it absent before and present with this amount after; a repay needs it present before and
+ * gone after. Only this borrower's own signed transaction can make that transition.
  */
+async function readLoan(deps: Deps, pool: Address, signal: AbortSignal) {
+  const [loanAddress] = await findLoanPda({ pool, borrower: deps.signer.address });
+  const [account] = unwrap(await deps.chain.accounts([loanAddress], signal));
+  return account?.kind === 'loan' ? account.loan : null;
+}
+
+function requireBefore(loan: Awaited<ReturnType<typeof readLoan>>, kind: Expect['kind']): void {
+  if (kind === 'borrow' && loan !== null) throw { code: 'loan_exists' } satisfies AppError;
+  if (kind === 'repay' && loan === null) throw { code: 'no_open_loan' } satisfies AppError;
+}
+
 async function loanLanded(deps: Deps, expect: Expect, signal: AbortSignal): Promise<boolean> {
-  const borrower = deps.signer.address;
-  const [loanAddress] = await findLoanPda({ pool: expect.pool, borrower });
   for (let attempt = 1; ; attempt++) {
-    const [account] = unwrap(await deps.chain.accounts([loanAddress], signal));
+    const loan = await readLoan(deps, expect.pool, signal);
     const landed =
       expect.kind === 'repay'
-        ? account === null
-        : account?.kind === 'loan' &&
-          account.loan.borrower === borrower &&
-          account.loan.pool === expect.pool &&
-          account.loan.amount === expect.amount;
+        ? loan === null
+        : loan !== null &&
+          loan.borrower === deps.signer.address &&
+          loan.pool === expect.pool &&
+          loan.amount === expect.amount;
     if (landed || attempt >= READBACK.tries || signal.aborted) return landed;
     await sleep(READBACK.intervalMs, signal);
   }
@@ -81,6 +91,7 @@ async function relayAndConfirm(
   expect: Expect,
   signal: AbortSignal,
 ): Promise<string> {
+  requireBefore(await readLoan(deps, expect.pool, signal), expect.kind);
   const signature = unwrap(await deps.relay.relay(await signForRelay(message), signal));
   const outcome = await waitConfirmed(deps.chain, signature, { ...CONFIRM, signal });
   if (outcome.status !== 'confirmed') {

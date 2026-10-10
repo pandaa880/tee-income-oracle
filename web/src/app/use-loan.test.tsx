@@ -212,7 +212,7 @@ describe('useLoan readback and cancellation', () => {
     expect(loanReads).toBeGreaterThanOrEqual(2);
   });
 
-  it('does not count an older open loan of a different amount as this borrow', async () => {
+  it('refuses to borrow while a loan is open, before relaying anything', async () => {
     const { deps, store, loanAddress } = await setup({
       relay: { relay: vi.fn<RelayPort['relay']>(async () => ok(SIG)) },
     });
@@ -223,7 +223,7 @@ describe('useLoan readback and cancellation', () => {
     const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
     await act(async () => {
       await expect(result.current.borrow.mutateAsync(5n)).rejects.toMatchObject({
-        code: 'protocol_error',
+        code: 'loan_exists',
       });
     });
   });
@@ -253,7 +253,8 @@ describe('useLoan readback and cancellation', () => {
 
 describe('useLoan repay', () => {
   it('relays a repay transaction the relayer accepts and resolves the signature', async () => {
-    const { deps, relay } = await setup();
+    const { deps, relay, store, loanAddress } = await setup();
+    store.set(loanAddress, { kind: 'loan', loan: getLoanDecoder().decode(loanBytes(key.address)) });
     const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
     let signature: unknown;
     await act(async () => {

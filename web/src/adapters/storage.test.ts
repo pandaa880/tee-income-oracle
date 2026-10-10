@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { demoWallet } from './wallet-demo.ts';
 import { createStorage } from './storage.ts';
 
 const throwing: Storage = {
@@ -23,6 +24,7 @@ const throwing: Storage = {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   sessionStorage.clear();
 });
 
@@ -42,5 +44,17 @@ describe('createStorage', () => {
     expect(storage.get('k')).toBeNull();
     expect(() => storage.set('k', 'v')).not.toThrow();
     expect(() => storage.remove('k')).not.toThrow();
+  });
+
+  it('survives a browser where even reading window.sessionStorage throws (blocked storage)', async () => {
+    vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => {
+      throw new DOMException('The operation is insecure.', 'SecurityError');
+    });
+    const storage = createStorage();
+    expect(storage.get('k')).toBeNull();
+    expect(() => storage.set('k', 'v')).not.toThrow();
+    // The demo wallet still starts, as an ephemeral one.
+    const wallet = await demoWallet(storage);
+    expect(wallet.address.length).toBeGreaterThanOrEqual(32);
   });
 });

@@ -360,4 +360,24 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
     expect(signer.signIntent).toHaveBeenCalledOnce();
     expect(completeSession).toHaveBeenCalledOnce();
   });
+
+  it('ignores a request from before reset() that settles after reconnecting', async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    const { result } = await setup([], {
+      createSession: vi.fn<GatewayPort['createSession']>(async () => {
+        await gate;
+        return fail({ code: 'cancelled' });
+      }),
+    });
+    act(() => result.current.connect());
+    let stale: Promise<void> = Promise.resolve();
+    act(() => {
+      stale = result.current.choosePersona('declining');
+    });
+    act(() => result.current.reset());
+    act(() => result.current.connect());
+    release();
+    await act(() => stale);
+    expect(result.current.state.step).toBe('persona');
+  });
 });
