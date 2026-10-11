@@ -1,6 +1,7 @@
 // Shared test fixtures. Account bytes come from the generated Codama encoders and the SAS offsets
 // in `attest.ts`, not hand-written byte arrays. Not a test file: vitest does not collect it.
-import { getAddressEncoder, address, type Address } from '@solana/kit';
+import { getAddressEncoder, address, none, type Address } from '@solana/kit';
+import { AccountState, getTokenDecoder, getTokenEncoder, type Token } from '@solana-program/token';
 import { getLoanEncoder, getPoolDecoder, getPoolEncoder, type Pool } from '@tio/demo-pool-client';
 import {
   getEnclaveEntryDecoder,
@@ -166,4 +167,24 @@ export function entry(
 
 export function toBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('base64');
+}
+
+/** A 165-byte SPL token account (the pool vault) as the on-chain bytes. */
+export function tokenAccountBytes(f: { mint?: Address; owner?: Address; amount: bigint }) {
+  return Uint8Array.from(
+    getTokenEncoder().encode({
+      mint: f.mint ?? MINT,
+      owner: f.owner ?? ADMIN,
+      amount: f.amount,
+      delegate: none(),
+      state: AccountState.Initialized,
+      isNative: none(),
+      delegatedAmount: 0n,
+      closeAuthority: none(),
+    }),
+  );
+}
+
+export function tokenAccount(f: { mint?: Address; owner?: Address; amount: bigint }): Token {
+  return getTokenDecoder().decode(tokenAccountBytes(f));
 }

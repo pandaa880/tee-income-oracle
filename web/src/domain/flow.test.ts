@@ -76,13 +76,19 @@ describe('flowReducer happy path', () => {
       type: 'event',
       event: { kind: 'error', error: { code: 'stale_attestation' } },
     });
-    expect(state).toMatchObject({ step: 'failed', error: { code: 'stale_attestation' } });
+    // Stream events arrive only after the signed intent was sent.
+    expect(state).toMatchObject({
+      step: 'failed',
+      error: { code: 'stale_attestation' },
+      sent: true,
+    });
   });
 
   it('a failed action (for example session creation failing) ends in failed', () => {
     expect(run(connect, { type: 'failed', error: { code: 'rate_limited' } })).toMatchObject({
       step: 'failed',
       error: { code: 'rate_limited' },
+      sent: false,
     });
   });
 

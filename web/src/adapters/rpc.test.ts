@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { type Address } from '@solana/kit';
 import { DEMO_POOL_PROGRAM_ADDRESS } from '@tio/demo-pool-client';
+import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import { ORACLE_PROGRAM_ID, SAS_PROGRAM_ID } from '@tio/oracle-client/attest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createChain } from './rpc.ts';
@@ -15,6 +16,7 @@ import {
   poolBytes,
   sasAccountBytes,
   toBase64,
+  tokenAccountBytes,
 } from '../test-support/fixtures.ts';
 
 const RPC_URL = 'https://rpc.test';
@@ -113,6 +115,40 @@ describe('accounts', () => {
     expect(result).toMatchObject({
       ok: true,
       value: [{ kind: 'loan', loan: { amount: 7n, borrower: ADMIN } }],
+    });
+  });
+
+  it('decodes an SPL token account (the pool vault) with its amount', async () => {
+    stubFetch(
+      rpcHandler(
+        new Map([
+          [
+            OTHER,
+            { owner: TOKEN_PROGRAM_ADDRESS, data: tokenAccountBytes({ amount: 42_000_000n }) },
+          ],
+        ]),
+      ),
+    );
+    const result = await createChain(RPC_URL).accounts([OTHER], signal());
+    expect(result).toMatchObject({
+      ok: true,
+      value: [{ kind: 'token', token: { amount: 42_000_000n } }],
+    });
+  });
+
+  it('is a protocol_error for a token-program account of the wrong length', async () => {
+    const data = tokenAccountBytes({ amount: 1n });
+    stubFetch(
+      rpcHandler(
+        new Map([
+          [OTHER, { owner: TOKEN_PROGRAM_ADDRESS, data: data.slice(0, 82) }],
+          [ADMIN, { owner: TOKEN_PROGRAM_ADDRESS, data }],
+        ]),
+      ),
+    );
+    expect(await createChain(RPC_URL).accounts([ADMIN, OTHER], signal())).toMatchObject({
+      ok: false,
+      error: { code: 'protocol_error' },
     });
   });
 

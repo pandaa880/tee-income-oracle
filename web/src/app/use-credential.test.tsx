@@ -1,9 +1,12 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { generateKeyPairSigner, type Address } from '@solana/kit';
 import { findEnclaveEntryPda } from '@tio/oracle-client';
 import { attestationAddress, parseSasAttestation, SAS_PROGRAM_ID } from '@tio/oracle-client/attest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useCredential } from './use-credential.ts';
+import type { Deps } from './deps.ts';
+import { type CredentialOptions, useCredential } from './use-credential.ts';
 import type { BorrowerSigner } from '../domain/ports.ts';
 import type { ChainAccount } from '../domain/types.ts';
 import { fail, fakeChain, fakeDeps } from '../test-support/fakes.ts';
@@ -56,13 +59,32 @@ async function world(
   return { wallet, deps: fakeDeps(signer, fakeChain(store)) };
 }
 
+const accountCalls = (deps: Deps) => vi.mocked(deps.chain.accounts).mock.calls.length;
+
+async function renderPolling(poll: CredentialOptions['poll']) {
+  vi.useFakeTimers();
+  vi.setSystemTime(Number(NOW) * 1000);
+  const { wallet, deps } = await world();
+  const options = poll === undefined ? undefined : { poll };
+  const { result } = renderHook(() => useCredential(wallet, POOL_0, deps, options), {
+    wrapper: queryWrapper(),
+  });
+  // The first read is two chain calls (attestation + pool, then the registry entry) behind
+  // real async PDA derivation. The interval is scheduled when the query settles, so wait for
+  // the settled result, not just the calls, before measuring.
+  await act(async () => {
+    await vi.waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+  return deps;
+}
+
 describe('useCredential', () => {
   it('reports valid for a fresh attestation from the oracle signer', async () => {
     const { wallet, deps } = await world();
     const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
       wrapper: queryWrapper(),
     });
-    await waitFor(() => expect(result.current.data).toBe('valid'));
+    await waitFor(() => expect(result.current.data?.status).toBe('valid'));
   });
 
   it('reports none when the wallet has no attestation', async () => {
@@ -70,7 +92,7 @@ describe('useCredential', () => {
     const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
       wrapper: queryWrapper(),
     });
-    await waitFor(() => expect(result.current.data).toBe('none'));
+    await waitFor(() => expect(result.current.data?.status).toBe('none'));
   });
 
   it('reports foreign_signer for an attestation signed by someone else', async () => {
@@ -78,7 +100,7 @@ describe('useCredential', () => {
     const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
       wrapper: queryWrapper(),
     });
-    await waitFor(() => expect(result.current.data).toBe('foreign_signer'));
+    await waitFor(() => expect(result.current.data?.status).toBe('foreign_signer'));
   });
 
   it('reports policy_mismatch when the lender changed its policy hash', async () => {
@@ -86,7 +108,7 @@ describe('useCredential', () => {
     const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
       wrapper: queryWrapper(),
     });
-    await waitFor(() => expect(result.current.data).toBe('policy_mismatch'));
+    await waitFor(() => expect(result.current.data?.status).toBe('policy_mismatch'));
   });
 
   it('reads the registry entry of the payload measurement id, not a default one', async () => {
@@ -118,7 +140,7 @@ describe('useCredential', () => {
     const { result } = renderHook(() => useCredential(key.address, POOL_0, deps), {
       wrapper: queryWrapper(),
     });
-    await waitFor(() => expect(result.current.data).toBe('valid'));
+    await waitFor(() => expect(result.current.data?.status).toBe('valid'));
   });
 
   it('surfaces a chain error as the query error (the AppError object), not as a status', async () => {
@@ -130,5 +152,98 @@ describe('useCredential', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toMatchObject({ code: 'rpc_busy' });
     expect(result.current.data).toBeUndefined();
+  });
+
+  it('returns the decoded record and the pool limit of the payload tier', async () => {
+    const { wallet, deps } = await world();
+    const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
+      wrapper: queryWrapper(),
+    });
+    await waitFor(() => expect(result.current.data?.status).toBe('valid'));
+    expect(result.current.data?.limit).toBe(5_000_000n);
+    expect(result.current.data?.record).toMatchObject({
+      payload: { tier: 1 },
+      expiry: NOW + 10_000n,
+    });
+  });
+
+  it('has no record and a zero limit when the wallet has no attestation', async () => {
+    const { wallet, deps } = await world({ attestation: false });
+    const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
+      wrapper: queryWrapper(),
+    });
+    await waitFor(() => expect(result.current.data?.status).toBe('none'));
+    expect(result.current.data).toMatchObject({ record: null, limit: 0n });
+  });
+
+  it('reads afresh when the epoch changes, without waiting for a poll', async () => {
+    const { wallet, deps } = await world();
+    const { result, rerender } = renderHook(
+      ({ epoch }: { epoch: string }) => useCredential(wallet, POOL_0, deps, { epoch }),
+      { wrapper: queryWrapper(), initialProps: { epoch: 'a' } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const before = accountCalls(deps);
+    rerender({ epoch: 'b' });
+    await waitFor(() => expect(accountCalls(deps)).toBeGreaterThan(before));
+  });
+
+  it('seeds the shared credential key with an epoch read, so other pages see it', async () => {
+    const { wallet, deps } = await world();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useCredential(wallet, POOL_0, deps, { epoch: 'e1' }), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(client.getQueryData(['credential', 'devnet', wallet, POOL_0])).toBe(result.current.data);
+  });
+
+  describe('polling', () => {
+    it('refetches about every 3 s with poll: true', async () => {
+      const deps = await renderPolling(true);
+      const before = accountCalls(deps);
+      expect(before).toBeGreaterThan(0);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+        // The refetch derives the PDA on real time before it calls the chain.
+        await vi.waitFor(() => expect(accountCalls(deps)).toBeGreaterThan(before));
+      });
+    });
+
+    it('polls while the predicate holds for the latest read, then stops', async () => {
+      const seen: (string | undefined)[] = [];
+      const deps = await renderPolling((latest) => {
+        seen.push(latest?.status);
+        return latest === undefined;
+      });
+      const before = accountCalls(deps);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(seen).toContain('valid');
+      expect(accountCalls(deps)).toBe(before);
+    });
+
+    it('keeps polling while the predicate holds', async () => {
+      const deps = await renderPolling(() => true);
+      const before = accountCalls(deps);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3_100);
+        // The refetch derives the PDA on real time before it calls the chain.
+        await vi.waitFor(() => expect(accountCalls(deps)).toBeGreaterThan(before));
+      });
+    });
+
+    it.each([false, undefined])('does not refetch on its own with poll: %s', async (poll) => {
+      const deps = await renderPolling(poll);
+      const before = accountCalls(deps);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_000);
+      });
+      expect(accountCalls(deps)).toBe(before);
+    });
   });
 });

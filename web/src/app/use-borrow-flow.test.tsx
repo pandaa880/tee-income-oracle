@@ -207,6 +207,7 @@ describe('useBorrowFlow', () => {
     expect(result.current.state).toMatchObject({
       step: 'failed',
       error: { code: 'enclave_revoked' },
+      sent: true,
     });
   });
 
@@ -250,6 +251,7 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
     expect(result.current.state).toMatchObject({
       step: 'failed',
       error: { code: 'protocol_error' },
+      sent: false,
     });
   });
 
@@ -289,9 +291,11 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
     await toConsent(result);
     await act(() => result.current.confirmConsent());
     expect(completeSession).not.toHaveBeenCalled();
+    // Nothing reached the gateway: a plain failure the page must not wait out on chain.
     expect(result.current.state).toMatchObject({
       step: 'failed',
       error: { code: 'signing_failed' },
+      sent: false,
     });
   });
 
@@ -336,7 +340,12 @@ describe('useBorrowFlow treats the gateway as untrusted', () => {
     await toConsent(result);
     await act(() => result.current.confirmConsent());
     expect(signer.signIntent).not.toHaveBeenCalled();
-    expect(result.current.state).toMatchObject({ step: 'failed', error: { code: 'rpc_busy' } });
+    // rpc_busy before anything was sent: a plain failure, not a dropped stream to wait out.
+    expect(result.current.state).toMatchObject({
+      step: 'failed',
+      error: { code: 'rpc_busy' },
+      sent: false,
+    });
   });
 
   it('accepts a policy used by only one of the listed pools', async () => {
