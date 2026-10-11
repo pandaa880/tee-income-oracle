@@ -17,7 +17,7 @@ All three are untrusted clients — no privileged logic lives here.
 
 | Route | Page |
 |---|---|
-| `/` | Landing: hero, proof bar, how it works (data-path schematic), borrower and lender doors, final CTA, live status strip |
+| `/` | Landing: the receipts thesis with an example receipt, proof bar, what a funder can check on every loan, how it works (data-path schematic), borrower and lender doors, the pilot ask, live status strip |
 | `/borrow` | Borrower flow: demo wallet → bank account (4 sandbox personas) → consent (signs the exact §9 intent, 10-minute countdown) → live stages → result or REJECT |
 | `/loan?pool=0\|1` | Loan screen, one tab per pool: borrow up to `min(tier limit, vault)`, the open loan, repay. Reads only the chain, so a reload or a returning wallet lands in the right state |
 

@@ -22,7 +22,7 @@ describe('app router', () => {
   it('renders the landing page at /', async () => {
     await renderAt('/');
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
-      /years of real income/i,
+      /every loan decision, with receipts/i,
     );
   });
 

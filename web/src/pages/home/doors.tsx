@@ -29,7 +29,8 @@ export function Doors({ features }: DoorsProps) {
           <CardHeader rule="double">
             <h2 className="font-display text-xl leading-tight">Try the borrower flow</h2>
             <CardDescription>
-              Prove it blind. Show lenders a tier, not your statement.
+              Years of real income, no credit file? Show a lender a tier computed from your
+              statement, not the statement.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -50,9 +51,9 @@ export function Doors({ features }: DoorsProps) {
               Built for NBFCs and the credit vehicles that fund them
             </h2>
             <CardDescription>
-              An NBFC shows its book without exposing statements; the vehicle funding it checks
-              every loan’s attestation, policy and freshness. The borrower is the data subject, not
-              the customer.
+              An NBFC shows each funded loan’s receipt without sharing statements; the vehicle
+              funding it checks every loan’s policy, enclave build and freshness. The borrower is
+              the data subject, not the customer.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -69,7 +70,7 @@ export function Doors({ features }: DoorsProps) {
                 <Badge variant="outline" tone="accent">
                   NEXT
                 </Badge>
-                The loan book: every loan with its attestation, policy and freshness.
+                The loan book: every loan with its receipt, side by side.
               </p>
             )}
           </CardContent>

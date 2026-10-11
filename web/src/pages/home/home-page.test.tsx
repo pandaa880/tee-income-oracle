@@ -16,10 +16,12 @@ import { HomePage } from './home-page.tsx';
 import { Hero } from './hero.tsx';
 import { HowItWorks } from './how-it-works.tsx';
 import { Doors } from './doors.tsx';
-import { FinalCta } from './final-cta.tsx';
+import { Pilot } from './pilot.tsx';
+import { FunderChecks } from './funder-checks.tsx';
 import type { WorldOptions } from '../../test-support/world.ts';
 
 const GITHUB = 'https://github.com/pandaa880/tee-income-oracle';
+const PILOT_REQUEST = `${GITHUB}/issues/new?title=Pilot%20request%3A%20%3Corganisation%3E`;
 const BOTH_OFF = { book: false, verify: false };
 
 async function renderHome(options: WorldOptions = {}) {
@@ -29,16 +31,36 @@ async function renderHome(options: WorldOptions = {}) {
 }
 
 describe('HomePage', () => {
-  it('leads with the promise', async () => {
+  it('leads with the receipts promise', async () => {
     await renderHome();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Years of real income, no credit file. Prove it without the statement.',
+      'Every loan decision, with receipts. No bank statement attached.',
     );
   });
 
-  it('offers the live demo as a link to /borrow, with the honest line under it', async () => {
+  it('lays the sections out in order, the pilot reachable by its anchor', async () => {
     await renderHome();
-    const cta = screen.getAllByRole('link', { name: /run the live demo/i })[0];
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual([
+      'What a funder can check on every loan',
+      'From consent to loan in four steps',
+      'Try the borrower flow',
+      'Built for NBFCs and the credit vehicles that fund them',
+      'Explore a pilot',
+    ]);
+    expect(document.getElementById('pilot')).toContainElement(
+      screen.getByRole('heading', { level: 2, name: 'Explore a pilot' }),
+    );
+  });
+
+  it('borrows no outside slogan', async () => {
+    await renderHome();
+    expect(document.body).not.toHaveTextContent(/superteam|not just lending|plug into/i);
+  });
+
+  it('offers the devnet demo as a link to /borrow, with the honest line under it', async () => {
+    await renderHome();
+    const cta = screen.getAllByRole('link', { name: /run the devnet demo/i })[0];
     expect(cta).toHaveAttribute('href', '/borrow');
     expect(
       screen.getByText('Devnet · simulated bank, real protocol · nothing to install'),
@@ -102,10 +124,10 @@ describe('HomePage', () => {
 
   it('disables the hero CTA instead of linking when the service is down', async () => {
     await renderHome({ revokedAt: 5n });
-    const ctas = await screen.findAllByRole('button', { name: /run the live demo/i });
+    const ctas = await screen.findAllByRole('button', { name: /run the devnet demo/i });
     expect(ctas).toHaveLength(2);
     for (const cta of ctas) expect(cta).toBeDisabled();
-    expect(screen.queryByRole('link', { name: /run the live demo/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /run the devnet demo/i })).not.toBeInTheDocument();
   });
 });
 
@@ -113,18 +135,51 @@ describe('Hero', () => {
   it('links the primary CTA to /borrow when the demo is available', async () => {
     hoisted.deps = (await world()).deps;
     await renderWithRouter(<Hero ctaDisabledReason={null} />);
-    expect(await screen.findByRole('link', { name: 'Run the live demo' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Run the devnet demo' })).toHaveAttribute(
       'href',
       '/borrow',
     );
   });
 
+  it('offers a pilot next to the demo, as a jump to the pilot section', async () => {
+    hoisted.deps = (await world()).deps;
+    await renderWithRouter(<Hero ctaDisabledReason={null} />);
+    expect(await screen.findByRole('link', { name: 'Explore a pilot' })).toHaveAttribute(
+      'href',
+      '#pilot',
+    );
+  });
+
+  it('says who never sees the statement, and never claims to prove income', async () => {
+    hoisted.deps = (await world()).deps;
+    await renderWithRouter(<Hero ctaDisabledReason={null} />);
+    expect(
+      await screen.findByText(
+        'Only the enclave decrypts the statement. The gateway, the lender and we never see it.',
+      ),
+    ).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent(
+      /prove (it|income|real income)|no one, including us/i,
+    );
+  });
+
+  it('shows an example receipt, labelled as an example, with the statement not attached', async () => {
+    hoisted.deps = (await world()).deps;
+    await renderWithRouter(<Hero ctaDisabledReason={null} />);
+    const receipt = within(await screen.findByRole('figure', { name: 'Example receipt' }));
+    expect(receipt.getByText('EXAMPLE · DEVNET')).toBeInTheDocument();
+    expect(receipt.getByText('81112a23…932e1c')).toBeInTheDocument();
+    expect(receipt.getByText('not attached')).toBeInTheDocument();
+    // An example makes no live claim: registration is only ever shown from the registry read.
+    expect(receipt.queryByText(/registered/i)).not.toBeInTheDocument();
+  });
+
   it('replaces the link with a disabled button and shows the reason', async () => {
     hoisted.deps = (await world()).deps;
     await renderWithRouter(<Hero ctaDisabledReason="The enclave build was revoked." />);
-    expect(await screen.findByRole('button', { name: 'Run the live demo' })).toBeDisabled();
+    expect(await screen.findByRole('button', { name: 'Run the devnet demo' })).toBeDisabled();
     expect(screen.getByText('The enclave build was revoked.')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Run the live demo' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Run the devnet demo' })).not.toBeInTheDocument();
   });
 });
 
@@ -162,6 +217,32 @@ const lenderDoor = () =>
       .closest('article, section') as HTMLElement,
   );
 
+describe('FunderChecks', () => {
+  beforeEach(async () => {
+    hoisted.deps = (await world()).deps;
+    await renderWithRouter(<FunderChecks />);
+    await screen.findByRole('heading', { name: 'What a funder can check on every loan' });
+  });
+
+  it('lists what a funder can check per loan, with an honest status on each', async () => {
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(5);
+    expect(rows.map((r) => r.querySelector('[data-tone]')?.textContent)).toEqual([
+      'CHECKABLE NOW',
+      'CHECKABLE NOW',
+      'CHECKABLE NOW',
+      'NOT YET',
+      'NEXT',
+    ]);
+    expect(rows[4]).toHaveTextContent(/repaid their last loan/i);
+  });
+
+  it('sets the tier apart from a statement analyser and from a repayment prediction', async () => {
+    expect(screen.getByText(/asks you to trust its score/i)).toBeInTheDocument();
+    expect(screen.getByText(/whether those rules predict repayment/i)).toBeInTheDocument();
+  });
+});
+
 describe('Doors', () => {
   it('sends the borrower door to /borrow', async () => {
     await renderDoors(BOTH_OFF);
@@ -183,9 +264,22 @@ describe('Doors', () => {
     ).toBeInTheDocument();
   });
 
+  it('tells each side its own story', async () => {
+    await renderDoors(BOTH_OFF);
+    expect(
+      screen.getByText(
+        'Years of real income, no credit file? Show a lender a tier computed from your statement, not the statement.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      lenderDoor().getByText(/each funded loan’s receipt without sharing statements/),
+    ).toBeInTheDocument();
+  });
+
   it('marks the lender door NEXT with no link while the book flag is off', async () => {
     await renderDoors(BOTH_OFF);
     expect(lenderDoor().getByText('NEXT')).toBeInTheDocument();
+    expect(lenderDoor().getByText(/every loan with its receipt/i)).toBeInTheDocument();
     expect(lenderDoor().queryByRole('link')).not.toBeInTheDocument();
   });
 
@@ -196,27 +290,40 @@ describe('Doors', () => {
   });
 });
 
-describe('FinalCta', () => {
+describe('Pilot', () => {
   beforeEach(async () => {
     hoisted.deps = (await world()).deps;
   });
 
-  it('closes with a CTA to /borrow, a risk reversal and the lender ask', async () => {
-    await renderWithRouter(<FinalCta ctaDisabledReason={null} />);
+  it('says what a pilot tests and where to ask for one', async () => {
+    await renderWithRouter(<Pilot ctaDisabledReason={null} />);
+    const heading = await screen.findByRole('heading', { level: 2, name: 'Explore a pilot' });
+    const section = within(heading.closest('section') as HTMLElement);
+    const tests = section.getAllByRole('listitem');
+    expect(tests).toHaveLength(3);
+    expect(tests[0]).toHaveTextContent(/your affordability policy, hash-committed/i);
+    expect(tests[1]).toHaveTextContent(/no statements exchanged/i);
+    expect(tests[2]).toHaveTextContent(/statement handling/i);
+    const request = section.getByRole('link', { name: /request a pilot/i });
+    expect(request).toHaveAttribute('href', PILOT_REQUEST);
+    expect(request).toHaveAttribute('rel', expect.stringContaining('noopener'));
+  });
+
+  it('keeps the demo one click away, with the risk reversal', async () => {
+    await renderWithRouter(<Pilot ctaDisabledReason={null} />);
     expect(
-      await screen.findByRole('heading', { level: 2, name: 'See it run, end to end' }),
+      await screen.findByRole('heading', { level: 3, name: 'Or see it run first' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /run the live demo/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /run the devnet demo/i })).toHaveAttribute(
       'href',
       '/borrow',
     );
     expect(screen.getByText(/devnet only/i)).toBeInTheDocument();
-    expect(screen.getByText(/design partners/i)).toBeInTheDocument();
   });
 
-  it('disables the CTA with the reason when the demo is unavailable', async () => {
-    await renderWithRouter(<FinalCta ctaDisabledReason="Gateway unreachable." />);
-    expect(await screen.findByRole('button', { name: /run the live demo/i })).toBeDisabled();
+  it('disables the demo CTA with the reason when the demo is unavailable', async () => {
+    await renderWithRouter(<Pilot ctaDisabledReason="Gateway unreachable." />);
+    expect(await screen.findByRole('button', { name: /run the devnet demo/i })).toBeDisabled();
     expect(screen.getByText('Gateway unreachable.')).toBeInTheDocument();
   });
 });

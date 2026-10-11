@@ -5,9 +5,10 @@ import { useStatus } from '../../app/use-status.ts';
 import { type ServiceStatus, registeredBuild, statusLabel } from '../../domain/status.ts';
 import { StatusStrip } from '../layout/status-strip.tsx';
 import { Doors } from './doors.tsx';
-import { FinalCta } from './final-cta.tsx';
+import { FunderChecks } from './funder-checks.tsx';
 import { Hero } from './hero.tsx';
 import { HowItWorks } from './how-it-works.tsx';
+import { Pilot } from './pilot.tsx';
 
 /**
  * Every proof item is a system fact the reader can check; none is a testimonial. The build
@@ -31,7 +32,10 @@ function proofItems(status: ServiceStatus | undefined, pending: boolean, verify:
   return verify ? [...items, { label: 'Verify any tier yourself', href: '/verify' }] : items;
 }
 
-/** The landing page (copy deck scope b): hero, proof bar, how it works, two doors, final CTA. */
+/**
+ * The landing page: the receipts thesis with an example receipt, the proof bar, what a funder can
+ * check per loan, how it works, the two doors and the pilot ask.
+ */
 export function HomePage() {
   const { features } = useConfig();
   const status = useStatus();
@@ -42,9 +46,10 @@ export function HomePage() {
       <main className="mx-auto flex max-w-(--content-max) flex-col gap-16 px-4 py-12">
         <Hero ctaDisabledReason={down} />
         <ProofBar items={proofItems(status.data, status.isPending, features.verify)} />
+        <FunderChecks />
         <HowItWorks />
         <Doors features={features} />
-        <FinalCta ctaDisabledReason={down} />
+        <Pilot ctaDisabledReason={down} />
       </main>
     </>
   );
