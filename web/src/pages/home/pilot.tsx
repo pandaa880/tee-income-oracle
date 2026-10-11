@@ -6,9 +6,9 @@ import { DemoCta } from './demo-cta.tsx';
 export type PilotProps = { ctaDisabledReason: string | null };
 
 const TESTS = [
-  'Your affordability policy, hash-committed and run blind on consented AA data: in the sandbox first, then on a live AA with you as the FIU.',
-  'Your funder checking every loan’s receipt (tier, policy, freshness) with no statements exchanged.',
-  'How much statement handling each funding relationship stops needing.',
+  'Your pool’s eligibility criteria, hash-committed and run blind on consented AA data: in the sandbox first, then on a live AA with your originator as the FIU.',
+  'Checking every loan’s receipt yourself (tier, criteria, freshness), with no statements exchanged.',
+  'Which trust-based checks on a loan tape (sampling, re-underwriting) per-loan receipts can replace.',
 ];
 
 /** The business ask (what a pilot tests), with the demo kept one click away. */

@@ -7,8 +7,8 @@ export function FunderChecks() {
     <section className="flex flex-col gap-5">
       <h2 className="font-display text-2xl leading-tight">What a funder can check on every loan</h2>
       <p className="max-w-prose text-lg text-muted-foreground">
-        A statement analyser asks you to trust its score. Here each loan carries its own evidence,
-        and anyone can check it without seeing the data.
+        Today a funder sees an NBFC’s loan tape: loan IDs and scores the NBFC reported itself. Here
+        each loan carries its own evidence, and anyone can check it without seeing the data.
       </p>
       <ul className="m-0 flex list-none flex-col border-t-3 border-double border-rule-strong p-0">
         {FUNDER_CHECKS.map((check) => (
@@ -28,8 +28,9 @@ export function FunderChecks() {
         ))}
       </ul>
       <p className="max-w-prose text-sm text-muted-foreground">
-        A tier says the borrower passed the lender’s rules on real bank data. Whether those rules
-        predict repayment is the lender’s call; outcomes per tier come next.
+        A tier says the borrower passed the pool’s eligibility criteria on real bank data. It isn’t
+        a score: the NBFC’s own bureau checks and models still pick and price each loan. Whether the
+        criteria predict repayment is the funder’s call; outcomes per tier come next.
       </p>
     </section>
   );

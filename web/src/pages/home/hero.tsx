@@ -20,8 +20,9 @@ export function Hero({ ctaDisabledReason }: HeroProps) {
         </h1>
         <p className="max-w-prose text-lg text-muted-foreground">
           India’s Account Aggregator proves where a borrower’s data came from. We prove what was
-          computed from it. The lender’s own rules run inside an attested enclave and leave one tier
-          on Solana, stamped with the policy and the code that produced it.
+          computed from it. The funder sets the pool’s eligibility criteria; each loan is checked
+          against them inside an attested enclave and leaves one tier on Solana, stamped with the
+          criteria and the code that produced it.
         </p>
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex flex-col items-start gap-2">
@@ -33,7 +34,8 @@ export function Hero({ ctaDisabledReason }: HeroProps) {
         </div>
         <div className="flex flex-col gap-1 font-mono text-xs text-muted-foreground">
           <p>
-            Only the enclave decrypts the statement. The gateway, the lender and we never see it.
+            Only the enclave, in AWS Mumbai, decrypts the statement. The gateway, the lender, its
+            funder and we never see it.
           </p>
           <p>Devnet · simulated bank, real protocol · nothing to install</p>
         </div>

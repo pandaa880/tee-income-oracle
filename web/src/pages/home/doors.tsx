@@ -12,7 +12,7 @@ const ROLES = [
   { label: 'LPs', note: 'supply the money' },
   {
     label: 'Credit vehicle',
-    note: 'on-chain reader; funds the NBFC, checks every loan’s attestation',
+    note: 'on chain; sets the criteria, funds the NBFC, checks every loan’s receipt',
   },
   { label: 'NBFC', note: 'regulated lender; originates, disburses INR, holds the loans' },
   { label: 'Borrower', note: 'data subject; consents, gets the loan' },
@@ -51,9 +51,9 @@ export function Doors({ features }: DoorsProps) {
               Built for NBFCs and the credit vehicles that fund them
             </h2>
             <CardDescription>
-              An NBFC shows each funded loan’s receipt without sharing statements; the vehicle
-              funding it checks every loan’s policy, enclave build and freshness. The borrower is
-              the data subject, not the customer.
+              The funder sets the eligibility criteria every loan must pass; the NBFC keeps its own
+              underwriting and shows each funded loan’s receipt without sharing statements. The
+              borrower is the data subject, not the customer.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">

@@ -8,8 +8,8 @@ export type FunderCheck = { claim: string; evidence: string; status: CheckStatus
 
 export const FUNDER_CHECKS: readonly FunderCheck[] = [
   {
-    claim: "The borrower's bank cash flow passed this lender's rules",
-    evidence: 'AA-signed, bank-originated data. The policy hash names the rules.',
+    claim: "The borrower's bank cash flow passed this pool's eligibility criteria",
+    evidence: 'AA-signed, bank-originated data. The policy hash names the criteria the funder set.',
     status: 'now',
   },
   {
@@ -21,7 +21,7 @@ export const FUNDER_CHECKS: readonly FunderCheck[] = [
     status: 'now',
   },
   {
-    claim: "The tier is fresh, and the rules haven't changed since",
+    claim: "The tier is fresh, and the criteria haven't changed since",
     evidence: 'Pools refuse stale tiers and tiers from an older policy, on chain.',
     status: 'now',
   },
@@ -31,8 +31,14 @@ export const FUNDER_CHECKS: readonly FunderCheck[] = [
     status: 'not_yet',
   },
   {
-    claim: 'They repaid their last loan',
-    evidence: 'Repayment history that follows the wallet to the next lender.',
+    claim: "Each receipt matches a loan on the NBFC's tape",
+    evidence: "Receipts keyed to a loan ID under the NBFC's credential, not only to a wallet.",
+    status: 'next',
+  },
+  {
+    claim: 'The loan was paid out and is being repaid',
+    evidence:
+      'Later AA pulls on the same account show the disbursement arriving and the EMIs leaving.',
     status: 'next',
   },
 ];

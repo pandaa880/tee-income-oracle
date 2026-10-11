@@ -58,6 +58,11 @@ describe('HomePage', () => {
     expect(document.body).not.toHaveTextContent(/superteam|not just lending|plug into/i);
   });
 
+  it('calls the rules the pool’s eligibility criteria, never the lender’s', async () => {
+    await renderHome();
+    expect(document.body).not.toHaveTextContent(/lender['’]s (own )?(rules|policy)/i);
+  });
+
   it('offers the devnet demo as a link to /borrow, with the honest line under it', async () => {
     await renderHome();
     const cta = screen.getAllByRole('link', { name: /run the devnet demo/i })[0];
@@ -150,12 +155,20 @@ describe('Hero', () => {
     );
   });
 
+  it('says the funder sets the criteria the enclave runs', async () => {
+    hoisted.deps = (await world()).deps;
+    await renderWithRouter(<Hero ctaDisabledReason={null} />);
+    expect(
+      await screen.findByText(/the funder sets the pool’s eligibility criteria/i),
+    ).toBeInTheDocument();
+  });
+
   it('says who never sees the statement, and never claims to prove income', async () => {
     hoisted.deps = (await world()).deps;
     await renderWithRouter(<Hero ctaDisabledReason={null} />);
     expect(
       await screen.findByText(
-        'Only the enclave decrypts the statement. The gateway, the lender and we never see it.',
+        'Only the enclave, in AWS Mumbai, decrypts the statement. The gateway, the lender, its funder and we never see it.',
       ),
     ).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent(
@@ -226,20 +239,23 @@ describe('FunderChecks', () => {
 
   it('lists what a funder can check per loan, with an honest status on each', async () => {
     const rows = screen.getAllByRole('listitem');
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     expect(rows.map((r) => r.querySelector('[data-tone]')?.textContent)).toEqual([
       'CHECKABLE NOW',
       'CHECKABLE NOW',
       'CHECKABLE NOW',
       'NOT YET',
       'NEXT',
+      'NEXT',
     ]);
-    expect(rows[4]).toHaveTextContent(/repaid their last loan/i);
+    expect(rows[4]).toHaveTextContent(/matches a loan on the NBFC's tape/i);
+    expect(rows[5]).toHaveTextContent(/paid out and is being repaid/i);
   });
 
-  it('sets the tier apart from a statement analyser and from a repayment prediction', async () => {
-    expect(screen.getByText(/asks you to trust its score/i)).toBeInTheDocument();
-    expect(screen.getByText(/whether those rules predict repayment/i)).toBeInTheDocument();
+  it('sets the receipt against today’s self-reported tape, and the tier apart from a score', async () => {
+    expect(screen.getByText(/scores the NBFC reported itself/i)).toBeInTheDocument();
+    expect(screen.getByText(/it isn’t a score/i)).toBeInTheDocument();
+    expect(screen.getByText(/whether the criteria predict repayment/i)).toBeInTheDocument();
   });
 });
 
@@ -274,6 +290,9 @@ describe('Doors', () => {
     expect(
       lenderDoor().getByText(/each funded loan’s receipt without sharing statements/),
     ).toBeInTheDocument();
+    expect(
+      lenderDoor().getByText(/the funder sets the eligibility criteria every loan must pass/i),
+    ).toBeInTheDocument();
   });
 
   it('marks the lender door NEXT with no link while the book flag is off', async () => {
@@ -301,9 +320,10 @@ describe('Pilot', () => {
     const section = within(heading.closest('section') as HTMLElement);
     const tests = section.getAllByRole('listitem');
     expect(tests).toHaveLength(3);
-    expect(tests[0]).toHaveTextContent(/your affordability policy, hash-committed/i);
+    expect(tests[0]).toHaveTextContent(/your pool’s eligibility criteria, hash-committed/i);
+    expect(tests[0]).toHaveTextContent(/your originator as the FIU/i);
     expect(tests[1]).toHaveTextContent(/no statements exchanged/i);
-    expect(tests[2]).toHaveTextContent(/statement handling/i);
+    expect(tests[2]).toHaveTextContent(/trust-based checks on a loan tape/i);
     const request = section.getByRole('link', { name: /request a pilot/i });
     expect(request).toHaveAttribute('href', PILOT_REQUEST);
     expect(request).toHaveAttribute('rel', expect.stringContaining('noopener'));

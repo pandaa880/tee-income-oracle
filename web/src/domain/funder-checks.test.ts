@@ -3,7 +3,21 @@ import { FUNDER_CHECKS, checkStatusLabel, checkStatusTone } from './funder-check
 
 describe('FUNDER_CHECKS', () => {
   it('claims as checkable now only what the chain and the attestation show today', () => {
-    expect(FUNDER_CHECKS.map((c) => c.status)).toEqual(['now', 'now', 'now', 'not_yet', 'next']);
+    expect(FUNDER_CHECKS.map((c) => c.status)).toEqual([
+      'now',
+      'now',
+      'now',
+      'not_yet',
+      'next',
+      'next',
+    ]);
+  });
+
+  it('names the criteria as the funder’s, never the lender’s rules', () => {
+    expect(FUNDER_CHECKS[0]?.evidence).toMatch(/criteria the funder set/);
+    for (const check of FUNDER_CHECKS) {
+      expect(`${check.claim} ${check.evidence}`).not.toMatch(/lender['’]s (rules|policy)/i);
+    }
   });
 
   it('never presents repayment as something a tier shows', () => {

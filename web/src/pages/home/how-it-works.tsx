@@ -8,7 +8,7 @@ const STEPS = [
   ],
   [
     'Verify blind',
-    'The enclave checks the AA signature, decrypts, runs the lender’s policy and wipes the data.',
+    'The enclave checks the AA signature, decrypts, runs the pool’s eligibility criteria and wipes the data.',
   ],
   ['Attest', 'One tier, the policy hash and the enclave build are written to Solana.'],
   ['Lend', 'Pools read the tier inside their own instruction and lend within their own limits.'],
