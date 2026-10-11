@@ -45,8 +45,8 @@ const COPY: Record<CredentialStatus, Copy> = {
   ),
   policy_mismatch: copy(
     'OLD POLICY',
-    'The lender changed its rules',
-    'Your tier was produced under an older policy. This pool only lends on tiers from its current rules, enforced on chain. Re-attest under the new policy.',
+    'The pool changed its criteria',
+    'Your tier was checked against older criteria. This pool only lends on tiers checked against its current ones, enforced on chain. Re-attest under the new criteria.',
   ),
   tier_not_accepted: copy(
     'NOT ACCEPTED',

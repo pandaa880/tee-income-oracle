@@ -36,8 +36,8 @@ export function ConsentStep({
               Sandbox AA · consent request
             </p>
             <p>
-              TEE Income Oracle (FIU) asks to view your deposit account once, to run a lender’s
-              affordability policy on it.
+              TEE Income Oracle (FIU) asks to view your deposit account once, to check it against a
+              lending pool’s eligibility criteria.
             </p>
           </div>
           <Badge tone="caution">SIMULATED</Badge>
@@ -91,9 +91,9 @@ export function ConsentStep({
           <AccordionItem value="policy">
             <AccordionTrigger>What is the policy hash?</AccordionTrigger>
             <AccordionContent>
-              The SHA-256 of the lender’s published scoring rules. The demo pools run the published
-              default policy. The enclave puts the same hash into the attestation, so anyone can
-              check which rules produced your tier.
+              The SHA-256 of the pool’s published eligibility criteria, set by whoever funds the
+              pool. The demo pools run the published default policy. The enclave puts the same hash
+              into the attestation, so anyone can check which criteria produced your tier.
             </AccordionContent>
           </AccordionItem>
         </Accordion>

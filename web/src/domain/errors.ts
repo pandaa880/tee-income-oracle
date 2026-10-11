@@ -88,8 +88,8 @@ const ANCHOR: Record<number, ErrorMessage> = {
   6006: msg('Tier not accepted', 'This pool does not lend to your tier.'),
   6007: msg('Over the limit', 'The amount is above what this pool lends to your tier.', 'retry'),
   6008: msg(
-    'The lender changed its rules',
-    'Your tier was produced under an older policy. This pool only lends on tiers from its current rules, enforced on chain. Re-attest under the new policy.',
+    'The pool changed its criteria',
+    'Your tier was checked against older criteria. This pool only lends on tiers checked against its current ones, enforced on chain. Re-attest under the new criteria.',
     'reattest',
   ),
   6009: msg(

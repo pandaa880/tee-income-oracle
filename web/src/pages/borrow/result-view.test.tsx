@@ -163,7 +163,9 @@ describe('RejectView', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'No tier this time' }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/doesn't pass the lender's published policy/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/doesn't pass the pool's published eligibility criteria/i),
+    ).toBeInTheDocument();
     expect(screen.getByText(/nothing was written on chain/i)).toBeInTheDocument();
     expect(screen.getByText(/wiped/i)).toBeInTheDocument();
   });

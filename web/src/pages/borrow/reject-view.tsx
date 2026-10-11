@@ -11,7 +11,7 @@ export function RejectView({ onReset }: RejectViewProps) {
       <Seal tone={tierTone('REJECT')} label="NO TIER" />
       <h2 className="font-display text-2xl leading-tight">No tier this time</h2>
       <p className="max-w-prose text-muted-foreground">
-        This account doesn't pass the lender's published policy.
+        This account doesn't pass the pool's published eligibility criteria.
       </p>
       <ul className="flex list-disc flex-col gap-1 pl-5">
         <li>Nothing was written on chain. No lender can see a rejection.</li>

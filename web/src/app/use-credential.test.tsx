@@ -103,7 +103,7 @@ describe('useCredential', () => {
     await waitFor(() => expect(result.current.data?.status).toBe('foreign_signer'));
   });
 
-  it('reports policy_mismatch when the lender changed its policy hash', async () => {
+  it('reports policy_mismatch when the pool changed its policy hash', async () => {
     const { wallet, deps } = await world({ policy: new Uint8Array(32).fill(0x99) });
     const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
       wrapper: queryWrapper(),

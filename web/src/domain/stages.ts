@@ -16,7 +16,7 @@ export const STAGE_COPY: Record<Stage, { title: string; note: string }> = {
   },
   evaluate: {
     title: 'Policy run blind inside the enclave',
-    note: "AA signature checked, decrypted, the lender's policy applied, plaintext wiped.",
+    note: "AA signature checked, decrypted, the pool's eligibility criteria applied, plaintext wiped.",
   },
   submit: {
     title: 'Tier written to Solana',

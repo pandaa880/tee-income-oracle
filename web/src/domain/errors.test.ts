@@ -46,9 +46,9 @@ describe('messageFor', () => {
     expect(new Set(texts).size).toBe(SIMPLE_CODES.length);
   });
 
-  it('explains a policy mismatch (6008) as the lender changing its rules', () => {
+  it('explains a policy mismatch (6008) as the pool changing its criteria', () => {
     const message = messageFor({ code: 'simulation_failed', index: 1, custom: 6008 });
-    expect(`${message.title} ${message.detail}`).toMatch(/lender changed its rules/i);
+    expect(`${message.title} ${message.detail}`).toMatch(/pool changed its criteria/i);
     expect(`${message.title} ${message.detail}`).toMatch(/re-attest/i);
   });
 
