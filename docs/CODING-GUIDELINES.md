@@ -306,6 +306,12 @@ pages, it is server state or URL state.
   rebuilt locally or checked against chain first: the §9 intent is rebuilt byte for byte (and
   its policy must be a listed pool's); a result must name the wallet's attestation PDA and a
   payload whose tier byte matches; a relayed loan counts only once the Loan account says so.
+- A gateway-reported result is *pending* until a chain read holds the identical record (every
+  payload field, an oracle signer); then everything shown (tier, dates, build, pool limits)
+  comes from that read, and a contradicting record is a `protocol_error`, never the gateway's
+  version. Verified markers (seal, "registered", positive tone) take only chain-derived inputs.
+- Copy that states a credential fact ("still valid", "registered on Solana") is conditioned on
+  the chain-derived status beside it.
 - Untrusted strings that end up in signed text or URLs get strict schemas (UUIDs, hex,
   base58 signatures); on-chain integers get zod bounds matching the Rust type (u8 0..255,
   u64 ≤ 2^64−1).
@@ -318,6 +324,11 @@ pages, it is server state or URL state.
   `AppError` (TanStack's error type is only a cast).
 - A component-owned cancel scope that swaps its controller aborts `ref.current` on unmount,
   not the value its effect captured.
+- A mutation's success receipt lives in the component that owns the mutation (it survives the
+  refetch its own invalidation triggers); a success resets the opposite mutation's data.
+- A poll predicate given to `useQueries` judges the view's source of truth, not each query's
+  own read; after a read keyed to a new epoch confirms new state, the un-keyed entry other
+  routes use is updated too.
 
 #### `@tio/ui` package rules
 - Standalone, so it can be extracted as a design system later: no imports from `web/`,
@@ -349,7 +360,9 @@ yet; the rules below describe the target.
   stages, `prefers-reduced-motion` respected (schematic, stepper).
 - Text pairs ≥ 4.5:1 (tokens already ≥ 5.2:1). Hit targets ≥ 40 px.
 - Phone width works: 16 px gutters, no horizontal scroll, tables collapse to
-  ledger rows.
+  ledger rows. A grid with an `sm:`/`md:` column template also gets a base `grid-cols-1`
+  (`minmax(0, 1fr)`), or long mono content (`<pre>`, hashes) widens the implicit track past
+  the viewport.
 
 #### Security (browser is untrusted)
 - No secrets in the bundle; every `VITE_*` value is public by definition.
@@ -368,6 +381,9 @@ yet; the rules below describe the target.
 - Each route owns its search-param schema (zod) and its loader queries.
 - Loading and error states are explicit components (`skeleton`, error row)
   with the same tokens; no blank screens and no spinners without text.
+- Every waiting or terminal view has an exit: an error whose message has no action of its own
+  still gets the page's fallback (Start again, Retry), and a wait that may never end (a result
+  the chain doesn't show yet) offers Start again. A message that says "try again" has a button.
 
 #### Testing
 - Domain: plain vitest, exhaustive tables (every credential status, every
