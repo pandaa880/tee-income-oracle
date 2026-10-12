@@ -53,6 +53,13 @@ describe('HomePage', () => {
     );
   });
 
+  it('keeps the full-width hero and pilot bands inside the main landmark', async () => {
+    await renderHome();
+    const main = screen.getByRole('main');
+    expect(main).toContainElement(screen.getByRole('heading', { level: 1 }));
+    expect(main).toContainElement(document.getElementById('pilot'));
+  });
+
   it('borrows no outside slogan', async () => {
     await renderHome();
     expect(document.body).not.toHaveTextContent(/superteam|not just lending|plug into/i);
@@ -63,7 +70,7 @@ describe('HomePage', () => {
     expect(document.body).not.toHaveTextContent(/lender['’]s (own )?(rules|policy)/i);
   });
 
-  it('offers the devnet demo as a link to /borrow, with the honest line under it', async () => {
+  it('offers the devnet demo as a link to /borrow, with the honest line beside it', async () => {
     await renderHome();
     const cta = screen.getAllByRole('link', { name: /run the devnet demo/i })[0];
     expect(cta).toHaveAttribute('href', '/borrow');
@@ -144,6 +151,14 @@ describe('Hero', () => {
       'href',
       '/borrow',
     );
+  });
+
+  it('says who sees the statement before the calls to action, not after them', async () => {
+    hoisted.deps = (await world()).deps;
+    await renderWithRouter(<Hero ctaDisabledReason={null} />);
+    const note = await screen.findByText(/only the enclave, in aws mumbai/i);
+    const cta = screen.getByRole('link', { name: 'Run the devnet demo' });
+    expect(note.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('offers a pilot next to the demo, as a jump to the pilot section', async () => {
@@ -261,6 +276,14 @@ describe('FunderChecks', () => {
     expect(screen.getByText(/it isn’t a score/i)).toBeInTheDocument();
     expect(screen.getByText(/whether the criteria predict repayment/i)).toBeInTheDocument();
   });
+
+  it('puts the not-a-score note right under the intro, before the list', () => {
+    const intro = screen.getByText(/scores the NBFC reported itself/i);
+    const note = screen.getByText(/it isn’t a score/i);
+    const list = screen.getByRole('list');
+    expect(intro.nextElementSibling).toBe(note);
+    expect(note.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
 
 describe('Doors', () => {
@@ -334,6 +357,9 @@ describe('Pilot', () => {
     const request = section.getByRole('link', { name: /request a pilot/i });
     expect(request).toHaveAttribute('href', PILOT_REQUEST);
     expect(request).toHaveAttribute('rel', expect.stringContaining('noopener'));
+    // On the inverted band the default --ring is under 3:1; the ring takes the band's paper.
+    expect(request).toHaveClass('focus-visible:outline-background');
+    expect(section.getByText('For funders and NBFCs')).toBeInTheDocument();
   });
 
   it('keeps the demo one click away, with the risk reversal', async () => {

@@ -36,7 +36,7 @@ export function BookPage() {
                 </TabsTrigger>
               ))}
             </TabsList>
-            <h1 className="font-display text-3xl leading-[1.08] font-medium md:text-[2.75rem]">
+            <h1 className="font-display text-2xl leading-[1.08] font-medium md:text-[2.75rem]">
               {`Pool ${current?.poolId ?? selected} · loan book`}
             </h1>
             <p className="text-muted-foreground">

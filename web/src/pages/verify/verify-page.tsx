@@ -28,7 +28,7 @@ export function VerifyPage() {
   return (
     <main className="mx-auto flex max-w-(--content-max) flex-col gap-7 px-4 py-10">
       <div className="flex max-w-3xl flex-col gap-2">
-        <h1 className="font-display text-3xl leading-[1.08] font-medium md:text-[2.75rem]">
+        <h1 className="font-display text-2xl leading-[1.08] font-medium md:text-[2.75rem]">
           Check any tier yourself
         </h1>
         <p className="text-muted-foreground">
