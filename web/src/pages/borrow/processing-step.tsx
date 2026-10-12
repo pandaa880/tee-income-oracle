@@ -1,5 +1,6 @@
 import { Badge } from '@tio/ui/badge';
 import { Button } from '@tio/ui/button';
+import { cn } from '@tio/ui/cn';
 import { Schematic } from '@tio/ui/schematic';
 import { STAGE_ORDER } from '../../domain/flow.ts';
 import { DATA_NODES, dataPath, litPath, STAGE_COPY } from '../../domain/stages.ts';
@@ -91,11 +92,19 @@ export function ProcessingStep(props: ProcessingStepProps) {
                   {state === 'done' ? '✓' : String(i + 1).padStart(2, '0')}
                 </span>
                 <span className="flex flex-col gap-1">
-                  <span className={state === 'todo' ? 'text-muted-foreground' : 'font-medium'}>
+                  <span
+                    className={cn(
+                      'transition-colors duration-(--dur-line) ease-out',
+                      state === 'todo' ? 'text-muted-foreground' : 'font-medium',
+                    )}
+                  >
                     {STAGE_COPY[stage].title}
                   </span>
                   {state !== 'todo' && (
-                    <span className="text-sm text-muted-foreground">{STAGE_COPY[stage].note}</span>
+                    // Mounts when the stage arrives: the line writes in, as a ledger line does.
+                    <span className="text-sm text-muted-foreground motion-safe:animate-line-in">
+                      {STAGE_COPY[stage].note}
+                    </span>
                   )}
                   {state === 'done' && <span className="sr-only">(done)</span>}
                 </span>
@@ -109,10 +118,15 @@ export function ProcessingStep(props: ProcessingStepProps) {
           </figcaption>
           <Schematic nodes={NODES} lit={lit.nodes} spokes={lit.spokes} />
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+            {/* Keyed by the text, so each new stage's path writes in instead of swapping. */}
             <dt className="font-mono tracking-(--tracking-caps) uppercase">Path</dt>
-            <dd>{path.path}</dd>
+            <dd key={path.path} className="motion-safe:animate-line-in">
+              {path.path}
+            </dd>
             <dt className="font-mono tracking-(--tracking-caps) uppercase">Carries</dt>
-            <dd>{path.carries}</dd>
+            <dd key={path.carries} className="motion-safe:animate-line-in">
+              {path.carries}
+            </dd>
           </dl>
           <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-t border-border pt-3 text-xs">
             <dt className="col-span-2 font-mono tracking-(--tracking-caps) text-muted-foreground uppercase">

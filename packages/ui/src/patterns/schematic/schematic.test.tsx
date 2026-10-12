@@ -69,6 +69,16 @@ describe('Schematic', () => {
     expect(queryAll(container, 'schematic-node')[0]).toHaveClass('border-dashed');
   });
 
+  it('fades nodes and spokes in on the line token instead of snapping', () => {
+    const { container } = render(<Schematic nodes={NODES} lit={['hub']} spokes={['bank']} />);
+    for (const el of [
+      ...queryAll(container, 'schematic-node'),
+      ...queryAll(container, 'schematic-edge'),
+    ]) {
+      expect(el).toHaveClass('transition-colors', 'duration-(--dur-line)', 'ease-out');
+    }
+  });
+
   it('draws nothing for empty input', () => {
     const { container } = render(<Schematic nodes={[]} />);
     expect(queryAll(container, 'schematic-node')).toHaveLength(0);

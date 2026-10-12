@@ -236,6 +236,21 @@ describe('ProcessingStep', () => {
     setupProcessing();
     expect(screen.getByRole('img')).toBeInTheDocument();
   });
+
+  it('lights the running stage on the drawing and writes each arrived stage in', () => {
+    const { container } = setupProcessing({ stages: ['bind', 'fi_request', 'fi_fetch'] });
+    // fi_fetch: bank → gateway → enclave.
+    expect(
+      container.querySelectorAll('[data-slot="schematic-node"][data-lit="true"]'),
+    ).toHaveLength(3);
+    expect(screen.getByText(STAGE_COPY.fi_fetch.note)).toHaveClass('motion-safe:animate-line-in');
+    expect(screen.queryByText(STAGE_COPY.submit.note)).not.toBeInTheDocument();
+  });
+
+  it('puts the drawing at rest once every stage ran', () => {
+    const { container } = setupProcessing({ stages: [...STAGE_ORDER], done: true });
+    expect(container.querySelectorAll('[data-lit="true"], [data-active="true"]')).toHaveLength(0);
+  });
 });
 
 describe('ProcessingStep while reading the tier back', () => {

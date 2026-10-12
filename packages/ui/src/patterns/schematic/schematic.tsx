@@ -43,6 +43,12 @@ const SPOKE: Record<Spoke, { cell: string; vertical: boolean }> = {
   bottom: { cell: 'col-start-3 row-start-4 w-0 justify-self-center', vertical: true },
 };
 
+/**
+ * Lighting up fades in on `--dur-line` rather than snapping, so a stage arriving reads as the
+ * data moving; the tokens zero the duration under prefers-reduced-motion.
+ */
+const FADE = 'transition-colors duration-(--dur-line) ease-out';
+
 function nodeClass(node: SchematicNode, lit: boolean): string {
   if (node.sealed === true) {
     return cn(
@@ -94,7 +100,7 @@ export function Schematic({ nodes, lit = [], spokes = [], className }: Schematic
               key={`spoke-${node.id}`}
               data-slot="schematic-edge"
               data-active={on ? 'true' : 'false'}
-              className={cn(spoke.cell, spokeClass(spoke.vertical, on))}
+              className={cn(spoke.cell, FADE, spokeClass(spoke.vertical, on))}
             />
           );
         })}
@@ -108,6 +114,7 @@ export function Schematic({ nodes, lit = [], spokes = [], className }: Schematic
               className={cn(
                 CELL[node.slot],
                 'flex min-w-0 flex-col gap-px rounded-xs p-2.5 sm:p-3',
+                FADE,
                 nodeClass(node, on),
               )}
             >

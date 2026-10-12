@@ -33,7 +33,7 @@ import type { Tone } from '@tio/ui/tokens';
 |---|---|
 | `./fonts.css` | Google Fonts import (Newsreader, IBM Plex Sans, IBM Plex Mono) |
 | `./tokens.css` | CSS variables: colours, type scale, radii, spacing, motion. Dark via `prefers-color-scheme` or `[data-theme=dark]`; motion zeroed under `prefers-reduced-motion` |
-| `./theme.css` | Tailwind v4 `@theme inline` map (`bg-card`, `text-tone-positive`, `font-display`, …), Tailwind's default palette removed, `dark:` variant on `[data-theme=dark]`, the `seal-press` animation |
+| `./theme.css` | Tailwind v4 `@theme inline` map (`bg-card`, `text-tone-positive`, `font-display`, …), Tailwind's default palette removed, `dark:` variant on `[data-theme=dark]`, the `seal-press` and `line-in` animations |
 | `./tokens` | `Tone`, `TONES`, `TONE_TEXT`, `TONE_BORDER` |
 | `./cn` | `cn(...classes)`: `clsx` + `tailwind-merge` |
 
