@@ -66,7 +66,7 @@ take a tone, never a tier or status; `web/` maps those to tones.
 | `./schematic` | `Schematic` | `nodes: { id, label, slot, note?, kicker?, sealed? }[]` (`slot`: `top` / `left` / `center` / `right` / `bottom`), `lit?: id[]`, `spokes?: id[]` (outer nodes whose spoke to the hub is lit); boxed nodes in a plus shape on the `--blueprint-grid` panel, one `role="img"` named by every node and note |
 | `./flow-strip` | `FlowStrip` | `items: { label, note, kicker? }[]`, `bracket?: { from, to, label }` (inclusive, zero-based; the bracketed items sit together above the label, arrows between items) |
 | `./proof-bar` | `ProofBar` | `items: { label, href? }[]`; links open with `rel="noopener noreferrer"` |
-| `./theme-toggle` | `ThemeToggle` | sets `data-theme` on `<html>`, remembers it in `localStorage` |
+| `./theme-toggle` | `ThemeToggle` | sun/moon icon button (named by `aria-label`); sets `data-theme` on `<html>`, remembers it in `localStorage` |
 
 Every component takes `className`. List labels (stepper, flow strip, proof bar) must be
 unique: they are the React keys.
