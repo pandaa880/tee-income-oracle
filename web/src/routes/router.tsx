@@ -36,7 +36,14 @@ const loanRoute = createRoute({
   component: lazyRouteComponent(() => import('../pages/loan/loan-page.tsx'), 'LoanPage'),
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, borrowRoute, loanRoute]);
+const bookRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/book',
+  validateSearch: poolSearchSchema,
+  component: lazyRouteComponent(() => import('../pages/book/book-page.tsx'), 'BookPage'),
+});
+
+const routeTree = rootRoute.addChildren([homeRoute, borrowRoute, loanRoute, bookRoute]);
 
 export function createAppRouter(options: { history?: RouterHistory } = {}) {
   return createRouter({ routeTree, ...(options.history ? { history: options.history } : {}) });

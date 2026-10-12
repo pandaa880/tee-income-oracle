@@ -42,8 +42,8 @@ describe('loadConfig', () => {
     );
   });
 
-  it('keeps the verify page and the loan book switched off', () => {
-    expect(loadConfig(GOOD).features).toEqual({ verify: false, book: false });
+  it('switches the loan book on and keeps the verify page off', () => {
+    expect(loadConfig(GOOD).features).toEqual({ verify: false, book: true });
   });
 
   it('allows plain http only for localhost', () => {

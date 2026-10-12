@@ -58,6 +58,15 @@ export function fakeChain(store: Map<Address, ChainAccount>): ChainPort {
     accounts: vi.fn<ChainPort['accounts']>(async (addresses) =>
       ok(addresses.map((a) => store.get(a) ?? null)),
     ),
+    poolLoans: vi.fn<ChainPort['poolLoans']>(async (pool) =>
+      ok(
+        [...store.entries()].flatMap(([address, account]) =>
+          account.kind === 'loan' && account.loan.pool === pool
+            ? [{ address, loan: account.loan }]
+            : [],
+        ),
+      ),
+    ),
     latestBlockhash: vi.fn<ChainPort['latestBlockhash']>(async () =>
       ok({
         blockhash: blockhash('4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi'),

@@ -25,8 +25,8 @@ export type Config = {
   features: Features;
 };
 
-/** Gates nav items and CTAs per PR: verify (5b) and the loan book (5c) are off until they ship. */
-const FEATURES: Features = { verify: false, book: false };
+/** Gates nav items and CTAs per PR: the loan book (5c) is on, verify (5b-2) still off. */
+const FEATURES: Features = { verify: false, book: true };
 
 const isLocal = (host: string) => host === 'localhost' || host === '127.0.0.1';
 

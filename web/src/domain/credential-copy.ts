@@ -76,6 +76,12 @@ export function credentialMessage(status: CredentialStatus): { title: string; de
   return { title, detail };
 }
 
+/** The loan book's chip: the label, plus what fixes it when a re-attest would ("STALE · RE-ATTEST"). */
+export function bookHealthLabel(status: CredentialStatus): string {
+  const label = credentialLabel(status);
+  return needsReattest(status) ? `${label} · RE-ATTEST` : label;
+}
+
 /** Would a new attestation fix it? Not for a fresh tier, a missing one, or a pool that refuses the tier. */
 export function needsReattest(status: CredentialStatus): boolean {
   return COPY[status].reattest;

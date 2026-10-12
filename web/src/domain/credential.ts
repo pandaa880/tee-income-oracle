@@ -37,8 +37,15 @@ const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
   a.length === b.length && a.every((byte, i) => byte === b[i]);
 
 /** Bit `id % 8` of byte `id / 8`, as the program's `is_approved` reads it. */
-function isApproved(bitmap: Uint8Array, id: number): boolean {
+function isApproved(bitmap: ArrayLike<number>, id: number): boolean {
   return ((bitmap[Math.floor(id / 8)] ?? 0) & (1 << (id % 8))) !== 0;
+}
+
+/** Every enclave build a pool's bitmap approves, ascending. */
+export function approvedIds(bitmap: ArrayLike<number>): number[] {
+  const ids: number[] = [];
+  for (let id = 0; id < bitmap.length * 8; id++) if (isApproved(bitmap, id)) ids.push(id);
+  return ids;
 }
 
 const TIER_OF: Record<number, Tier> = { 1: 'A', 2: 'B', 3: 'C' };

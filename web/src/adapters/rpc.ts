@@ -1,7 +1,7 @@
 // Solana JSON-RPC for the browser: a small client so 429s can back off and every reply is
 // validated before any decoder sees it. Account bytes are checked for owner, length and
 // discriminator here; the generated decoders check neither (gateway/src/registry.ts).
-import { type Address, address, blockhash, getBase64Encoder } from '@solana/kit';
+import { type Address, address, blockhash, getBase58Decoder, getBase64Encoder } from '@solana/kit';
 import { TOKEN_PROGRAM_ADDRESS, getTokenDecoder, getTokenSize } from '@solana-program/token';
 import {
   DEMO_POOL_PROGRAM_ADDRESS,
@@ -21,7 +21,7 @@ import { ORACLE_PROGRAM_ID, SAS_PROGRAM_ID, parseSasAttestation } from '@tio/ora
 import { z } from 'zod';
 import { fetchFailure, protocolError } from './http.ts';
 import { sleep } from './sleep.ts';
-import type { ChainPort } from '../domain/ports.ts';
+import type { ChainPort, PoolLoan } from '../domain/ports.ts';
 import type { AppError, ChainAccount, Result } from '../domain/types.ts';
 
 /** Waits before retry 2 and 3 of a rate-limited call; then the RPC is "busy". */
@@ -35,9 +35,20 @@ const envelopeSchema = z.union([
 /** JSON-RPC error codes nodes answer with when they want us to slow down. */
 const BUSY_CODES = new Set([-32005, -32429]);
 
-const accountSchema = z
-  .object({ owner: z.string(), data: z.tuple([z.string(), z.literal('base64')]) })
-  .nullable();
+const accountShape = z.object({
+  owner: z.string(),
+  data: z.tuple([z.string(), z.literal('base64')]),
+});
+
+const accountSchema = accountShape.nullable();
+
+/** `getMultipleAccounts` takes at most 100 keys per call. */
+const MAX_KEYS = 100;
+
+/** `Loan.pool` follows the 8-byte discriminator and three one-byte fields (version, bump, tier). */
+const LOAN_POOL_OFFSET = 11;
+
+const LOAN_DISCRIMINATOR_B58 = getBase58Decoder().decode(Uint8Array.from(LOAN_DISCRIMINATOR));
 
 class BadAccount extends Error {}
 
@@ -139,6 +150,36 @@ function parseAccounts(result: unknown): Result<(ChainAccount | null)[]> {
   }
 }
 
+const programRowsSchema = z.array(z.object({ pubkey: z.string(), account: accountShape }));
+
+/**
+ * The RPC is not trusted to have applied the filters: every row is decoded with the same owner,
+ * size and discriminator checks as a single read, and must be a Loan of the asked pool. One bad
+ * row fails the whole read, so a partial book is never shown as the book.
+ */
+function parsePoolLoans(result: unknown, pool: Address): Result<PoolLoan[]> {
+  const parsed = programRowsSchema.safeParse(result);
+  if (!parsed.success) return { ok: false, error: protocolError };
+  const base64 = getBase64Encoder();
+  try {
+    const loans = parsed.data.map(({ pubkey, account }) => {
+      const data = Uint8Array.from(base64.encode(account.data[0]));
+      const decoded = decodeAccount(address(account.owner), data);
+      if (decoded.kind !== 'loan' || decoded.loan.pool !== pool) throw new BadAccount();
+      return { address: address(pubkey), loan: decoded.loan };
+    });
+    return { ok: true, value: loans };
+  } catch {
+    return { ok: false, error: protocolError };
+  }
+}
+
+function chunks<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 const blockhashSchema = z.object({
   value: z.object({ blockhash: z.string(), lastValidBlockHeight: z.number().int() }),
 });
@@ -157,15 +198,43 @@ const statusSchema = z.object({
 export function createChain(rpcUrl: string): ChainPort {
   return {
     async accounts(addresses, signal) {
+      const all: (ChainAccount | null)[] = [];
+      for (const keys of chunks(addresses, MAX_KEYS)) {
+        const reply = await rpcCall(
+          rpcUrl,
+          {
+            method: 'getMultipleAccounts',
+            params: [keys, { encoding: 'base64', commitment: 'confirmed' }],
+          },
+          signal,
+        );
+        const parsed = reply.ok ? parseAccounts(reply.value) : reply;
+        if (!parsed.ok) return parsed;
+        // Callers match accounts to keys by index: a short or long reply would hand one
+        // borrower another's attestation, so it is a bad reply, not a partial one.
+        if (parsed.value.length !== keys.length) return { ok: false, error: protocolError };
+        all.push(...parsed.value);
+      }
+      return { ok: true, value: all };
+    },
+    async poolLoans(pool, signal) {
+      const filters = [
+        { dataSize: getLoanSize() },
+        { memcmp: { offset: 0, bytes: LOAN_DISCRIMINATOR_B58, encoding: 'base58' } },
+        { memcmp: { offset: LOAN_POOL_OFFSET, bytes: pool, encoding: 'base58' } },
+      ];
       const reply = await rpcCall(
         rpcUrl,
         {
-          method: 'getMultipleAccounts',
-          params: [addresses, { encoding: 'base64', commitment: 'confirmed' }],
+          method: 'getProgramAccounts',
+          params: [
+            DEMO_POOL_PROGRAM_ADDRESS,
+            { encoding: 'base64', commitment: 'confirmed', filters },
+          ],
         },
         signal,
       );
-      return reply.ok ? parseAccounts(reply.value) : reply;
+      return reply.ok ? parsePoolLoans(reply.value, pool) : reply;
     },
     async latestBlockhash(signal) {
       const reply = await rpcCall(

@@ -21,9 +21,9 @@ export function SiteHeader() {
           Borrow
         </Link>
         {features.book && (
-          <a href="/book" className={NAV_LINK}>
+          <Link to="/book" search={{ pool: 0 }} className={NAV_LINK}>
             Loan book
-          </a>
+          </Link>
         )}
         {features.verify && (
           <a href="/verify" className={NAV_LINK}>

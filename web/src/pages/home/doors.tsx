@@ -2,23 +2,10 @@ import { Link } from '@tanstack/react-router';
 import { Badge } from '@tio/ui/badge';
 import { Button } from '@tio/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@tio/ui/card';
-import { FlowStrip } from '@tio/ui/flow-strip';
 import type { Features } from '../../app/config.ts';
+import { RoleStrip } from '../layout/role-strip.tsx';
 
 export type DoorsProps = { features: Features };
-
-/** Money flows left to right; the demo pool plays the two middle roles at once. */
-const ROLES = [
-  { label: 'LPs', note: 'supply the money' },
-  {
-    label: 'Credit vehicle',
-    note: 'on chain; sets the criteria, funds the NBFC, checks every loan’s receipt',
-  },
-  { label: 'NBFC', note: 'regulated lender; originates, disburses INR, holds the loans' },
-  { label: 'Borrower', note: 'data subject; consents, gets the loan' },
-];
-
-const BRACKET = { from: 1, to: 2, label: 'DEMO POOL = NBFC + CREDIT VEHICLE IN ONE PROGRAM' };
 
 /** Two doors: the borrower flow (live) and the lender view (the loan book, with 5c). */
 export function Doors({ features }: DoorsProps) {
@@ -57,13 +44,12 @@ export function Doors({ features }: DoorsProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <p className="font-mono text-xs tracking-(--tracking-caps) text-muted-foreground uppercase">
-              Who funds whom · money flows left to right
-            </p>
-            <FlowStrip items={ROLES} bracket={BRACKET} />
+            <RoleStrip />
             {features.book ? (
               <Button asChild variant="outline">
-                <a href="/book">See the loan book</a>
+                <Link to="/book" search={{ pool: 0 }}>
+                  See the loan book
+                </Link>
               </Button>
             ) : (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
