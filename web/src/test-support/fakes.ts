@@ -1,11 +1,20 @@
 // Fake ports and canned values for hook and adapter tests. Not a test file.
 import { type Address, blockhash, getBase58Decoder } from '@solana/kit';
+import { parseDeployment } from '@tio/verifier/deployment';
+import { VerifierError } from '@tio/verifier/errors';
+import devnet from '../../../deployments/devnet.json';
 import { buildIntent } from '../domain/intent.ts';
 import type { Config } from '../app/config.ts';
 import { vi } from 'vitest';
 import type { Deps } from '../app/deps.ts';
-import type { BorrowerSigner, ChainPort, GatewayPort, RelayPort } from '../domain/ports.ts';
-import type { AppError, ChainAccount, Info, Result } from '../domain/types.ts';
+import type {
+  BorrowerSigner,
+  ChainPort,
+  GatewayPort,
+  RelayPort,
+  SourcesPort,
+} from '../domain/ports.ts';
+import type { AppError, ChainAccount, Info, RawAccount, Result } from '../domain/types.ts';
 import {
   CREDENTIAL,
   MINT,
@@ -49,12 +58,22 @@ export const CONFIG: Config = {
       { address: POOL_1, poolId: 1 },
     ],
   },
+  verifier: parseDeployment(devnet),
   features: { verify: false, book: false },
 };
 
-/** A chain whose `accounts` answers from a map keyed by address; unknown addresses are `null`. */
-export function fakeChain(store: Map<Address, ChainAccount>): ChainPort {
+/**
+ * A chain whose `accounts` answers from a map keyed by address; unknown addresses are `null`.
+ * `rawAccounts` answers from the second map (owner + bytes, as the verifier reads them).
+ */
+export function fakeChain(
+  store: Map<Address, ChainAccount>,
+  raw: Map<Address, RawAccount> = new Map(),
+): ChainPort {
   return {
+    rawAccounts: vi.fn<ChainPort['rawAccounts']>(async (addresses) =>
+      ok(addresses.map((a) => raw.get(a) ?? null)),
+    ),
     accounts: vi.fn<ChainPort['accounts']>(async (addresses) =>
       ok(addresses.map((a) => store.get(a) ?? null)),
     ),
@@ -114,6 +133,19 @@ export function fakeRelay(signature: string = SIG): RelayPort {
   return { relay: vi.fn<RelayPort['relay']>(async () => ok(signature)) };
 }
 
+const unknownSource = async (): Promise<Uint8Array> => {
+  throw new VerifierError('deployment_malformed', 'no such source');
+};
+
+/** Sources that know nothing: every read throws `deployment_malformed` unless overridden. */
+export function fakeSources(overrides: Partial<SourcesPort> = {}): SourcesPort {
+  return {
+    archivedDocument: vi.fn<SourcesPort['archivedDocument']>(unknownSource),
+    composeAtTag: vi.fn<SourcesPort['composeAtTag']>(unknownSource),
+    ...overrides,
+  };
+}
+
 export function memoryStorage(): Deps['storage'] {
   const map = new Map<string, string>();
   return {
@@ -132,6 +164,7 @@ export function fakeDeps(
     gateway: fakeGateway(),
     relay: fakeRelay(),
     chain,
+    sources: fakeSources(),
     storage: memoryStorage(),
     signer,
     config: CONFIG,

@@ -1,6 +1,6 @@
 // Shared test fixtures. Account bytes come from the generated Codama encoders and the SAS offsets
 // in `attest.ts`, not hand-written byte arrays. Not a test file: vitest does not collect it.
-import { getAddressEncoder, address, none, type Address } from '@solana/kit';
+import { getAddressEncoder, getBase16Codec, address, none, type Address } from '@solana/kit';
 import { AccountState, getTokenDecoder, getTokenEncoder, type Token } from '@solana-program/token';
 import { getLoanEncoder, getPoolDecoder, getPoolEncoder, type Pool } from '@tio/demo-pool-client';
 import {
@@ -198,4 +198,49 @@ export function tokenAccountBytes(f: { mint?: Address; owner?: Address; amount: 
 
 export function tokenAccount(f: { mint?: Address; owner?: Address; amount: bigint }): Token {
   return getTokenDecoder().decode(tokenAccountBytes(f));
+}
+
+// --- verify page: an entry consistent with the real archived documents -----------------------
+
+/** Lower-case hex to bytes. */
+export function hexBytes(hex: string): Uint8Array {
+  return Uint8Array.from(getBase16Codec().encode(hex));
+}
+
+/** The image id both archived devnet documents (and so both registry entries) carry. */
+export const IMAGE_ID_HEX = '7dd33d974511a825c871f267ebdc6b34fb9cdc2c63210e27a31a8c7cfb96daff';
+/** The enclave key address of each archived document (`deployments/devnet.json`). */
+export const ATTESTER_HEX = {
+  0: 'c39b71ae1d2bbc0919ee8c1250728a9b2380052b',
+  1: 'b6dda6eed87322334ba37809bd451a852ae6574c',
+} as const;
+
+export type VerifyDocId = keyof typeof ATTESTER_HEX;
+
+export type VerifyEntryOverrides = {
+  revokedAt?: bigint;
+  attester?: Uint8Array;
+  measurement?: Uint8Array;
+  attestationDocHash?: Uint8Array;
+};
+
+/** An EnclaveEntry (account bytes) that matches archived document `docId` whose sha256 is `docHash`. */
+export function verifyEntryBytes(
+  docId: VerifyDocId,
+  docHash: Uint8Array,
+  overrides: VerifyEntryOverrides = {},
+): Uint8Array {
+  return Uint8Array.from(
+    getEnclaveEntryEncoder().encode({
+      version: 1,
+      bump: 255,
+      measurementId: docId,
+      measurementKind: 1,
+      measurement: overrides.measurement ?? hexBytes(IMAGE_ID_HEX),
+      attester: overrides.attester ?? hexBytes(ATTESTER_HEX[docId]),
+      attestationDocHash: overrides.attestationDocHash ?? docHash,
+      registeredAt: 1_790_000_000n,
+      revokedAt: overrides.revokedAt ?? 0n,
+    }),
+  );
 }

@@ -4,10 +4,10 @@ import { Skeleton } from '@tio/ui/skeleton';
 import { useBook } from '../../app/use-book.ts';
 import { useConfig } from '../../app/use-config.ts';
 import { ErrorCard } from '../borrow/error-card.tsx';
+import { RefreshFailed } from '../layout/refresh-failed.tsx';
 import { BookKpis } from './book-kpis.tsx';
 import { LoanTable } from './loan-table.tsx';
 import { OutcomesRoadmap } from './outcomes-roadmap.tsx';
-import { RefreshFailed } from './refresh-failed.tsx';
 import { PolicyCard } from './policy-card.tsx';
 import { TierMix } from './tier-mix.tsx';
 
@@ -51,7 +51,13 @@ export function BookPanel({ pool, poolId }: BookPanelProps) {
   return (
     <div className="flex flex-col gap-6">
       {book.error !== null && (
-        <RefreshFailed error={book.error} readAt={book.dataUpdatedAt} onRetry={retry} />
+        <RefreshFailed
+          title="Couldn’t refresh the book"
+          note="badges were judged then"
+          error={book.error}
+          readAt={book.dataUpdatedAt}
+          onRetry={retry}
+        />
       )}
       <PolicyCard policy={policy} cluster={cluster} />
       <BookKpis kpis={kpis} />

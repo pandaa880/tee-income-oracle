@@ -643,6 +643,9 @@ importers:
       '@tio/ui':
         specifier: workspace:*
         version: link:../packages/ui
+      '@tio/verifier':
+        specifier: workspace:*
+        version: link:../verifier
       eventsource-parser:
         specifier: 4.1.1
         version: 4.1.1

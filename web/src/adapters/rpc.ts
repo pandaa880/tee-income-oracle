@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { fetchFailure, protocolError } from './http.ts';
 import { sleep } from './sleep.ts';
 import type { ChainPort, PoolLoan } from '../domain/ports.ts';
-import type { AppError, ChainAccount, Result } from '../domain/types.ts';
+import type { AppError, ChainAccount, RawAccount, Result } from '../domain/types.ts';
 
 /** Waits before retry 2 and 3 of a rate-limited call; then the RPC is "busy". */
 const BACKOFF_MS = [250, 500];
@@ -134,7 +134,8 @@ async function rpcCall(url: string, call: Call, signal: AbortSignal): Promise<Re
   }
 }
 
-function parseAccounts(result: unknown): Result<(ChainAccount | null)[]> {
+/** The reply's accounts as owner + bytes, decoded from base64 and nothing more. */
+function parseRawAccounts(result: unknown): Result<(RawAccount | null)[]> {
   const parsed = z.object({ value: z.array(accountSchema) }).safeParse(result);
   if (!parsed.success) return { ok: false, error: protocolError };
   const base64 = getBase64Encoder();
@@ -142,9 +143,24 @@ function parseAccounts(result: unknown): Result<(ChainAccount | null)[]> {
     const accounts = parsed.data.value.map((account) =>
       account === null
         ? null
-        : decodeAccount(address(account.owner), Uint8Array.from(base64.encode(account.data[0]))),
+        : { owner: address(account.owner), data: Uint8Array.from(base64.encode(account.data[0])) },
     );
     return { ok: true, value: accounts };
+  } catch {
+    return { ok: false, error: protocolError };
+  }
+}
+
+function parseAccounts(result: unknown): Result<(ChainAccount | null)[]> {
+  const raw = parseRawAccounts(result);
+  if (!raw.ok) return raw;
+  try {
+    return {
+      ok: true,
+      value: raw.value.map((account) =>
+        account === null ? null : decodeAccount(account.owner, account.data),
+      ),
+    };
   } catch {
     return { ok: false, error: protocolError };
   }
@@ -195,28 +211,39 @@ const statusSchema = z.object({
   ]),
 });
 
+/**
+ * `getMultipleAccounts` in chunks of 100, each reply parsed by `parse`. Callers match accounts
+ * to keys by index: a short or long reply would hand one borrower another's attestation, so it
+ * is a bad reply, not a partial one.
+ */
+async function readAccounts<T>(
+  rpcUrl: string,
+  addresses: Address[],
+  signal: AbortSignal,
+  parse: (result: unknown) => Result<(T | null)[]>,
+): Promise<Result<(T | null)[]>> {
+  const all: (T | null)[] = [];
+  for (const keys of chunks(addresses, MAX_KEYS)) {
+    const reply = await rpcCall(
+      rpcUrl,
+      {
+        method: 'getMultipleAccounts',
+        params: [keys, { encoding: 'base64', commitment: 'confirmed' }],
+      },
+      signal,
+    );
+    const parsed = reply.ok ? parse(reply.value) : reply;
+    if (!parsed.ok) return parsed;
+    if (parsed.value.length !== keys.length) return { ok: false, error: protocolError };
+    all.push(...parsed.value);
+  }
+  return { ok: true, value: all };
+}
+
 export function createChain(rpcUrl: string): ChainPort {
   return {
-    async accounts(addresses, signal) {
-      const all: (ChainAccount | null)[] = [];
-      for (const keys of chunks(addresses, MAX_KEYS)) {
-        const reply = await rpcCall(
-          rpcUrl,
-          {
-            method: 'getMultipleAccounts',
-            params: [keys, { encoding: 'base64', commitment: 'confirmed' }],
-          },
-          signal,
-        );
-        const parsed = reply.ok ? parseAccounts(reply.value) : reply;
-        if (!parsed.ok) return parsed;
-        // Callers match accounts to keys by index: a short or long reply would hand one
-        // borrower another's attestation, so it is a bad reply, not a partial one.
-        if (parsed.value.length !== keys.length) return { ok: false, error: protocolError };
-        all.push(...parsed.value);
-      }
-      return { ok: true, value: all };
-    },
+    accounts: (addresses, signal) => readAccounts(rpcUrl, addresses, signal, parseAccounts),
+    rawAccounts: (addresses, signal) => readAccounts(rpcUrl, addresses, signal, parseRawAccounts),
     async poolLoans(pool, signal) {
       const filters = [
         { dataSize: getLoanSize() },

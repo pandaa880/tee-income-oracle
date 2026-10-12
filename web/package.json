@@ -24,6 +24,7 @@
     "@tio/demo-pool-client": "workspace:*",
     "@tio/oracle-client": "workspace:*",
     "@tio/ui": "workspace:*",
+    "@tio/verifier": "workspace:*",
     "eventsource-parser": "4.1.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",

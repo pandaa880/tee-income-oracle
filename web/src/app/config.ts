@@ -1,6 +1,7 @@
 // Build-time configuration, parsed once at the edge. Every VITE_* value is public (it ships
 // in the bundle), so nothing secret belongs here: the RPC is the public devnet endpoint.
 import { type Address, address } from '@solana/kit';
+import { type Deployment as VerifierDeployment, parseDeployment } from '@tio/verifier/deployment';
 import { z } from 'zod';
 import devnet from '../../../deployments/devnet.json';
 
@@ -22,11 +23,16 @@ export type Config = {
   rpcUrl: string;
   cluster: 'devnet';
   deployment: Deployment;
+  /**
+   * The same file as the verifier reads it: program ids checked against the client, the
+   * `enclaves[]` records (archive file, release tag) the verify page needs.
+   */
+  verifier: VerifierDeployment;
   features: Features;
 };
 
-/** Gates nav items and CTAs per PR: the loan book (5c) is on, verify (5b-2) still off. */
-const FEATURES: Features = { verify: false, book: true };
+/** Gates nav items and CTAs per PR: the loan book (5c) and verify (5b-2) are both on. */
+const FEATURES: Features = { verify: true, book: true };
 
 const isLocal = (host: string) => host === 'localhost' || host === '127.0.0.1';
 
@@ -82,5 +88,7 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
   if (deployment.cluster !== cluster) {
     throw new Error(`bundled deployment is for ${deployment.cluster}, VITE_CLUSTER is ${cluster}`);
   }
-  return { gatewayUrl, rpcUrl, cluster, deployment, features: FEATURES };
+  // Throws a VerifierError naming the field if the file is not the one this client is built for.
+  const verifier = parseDeployment(devnet);
+  return { gatewayUrl, rpcUrl, cluster, deployment, verifier, features: FEATURES };
 }
