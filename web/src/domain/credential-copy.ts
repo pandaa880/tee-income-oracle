@@ -76,6 +76,25 @@ export function credentialMessage(status: CredentialStatus): { title: string; de
   return { title, detail };
 }
 
+/** The loan book's sentence-case chips (copy deck "Book" row: fresh / stale · re-attest / …). */
+const BOOK_LABEL: Record<CredentialStatus, string> = {
+  valid: 'fresh',
+  none: 'no tier',
+  stale: 'stale · re-attest',
+  expired: 'expired · re-attest',
+  foreign_signer: 'foreign signer',
+  enclave_revoked: 'build retired',
+  not_approved: 'build not approved',
+  policy_mismatch: 'old policy',
+  tier_not_accepted: 'tier not accepted',
+  window_too_old: 'statement too old',
+  window_too_short: 'statement too short',
+};
+
+export function bookHealthLabel(status: CredentialStatus): string {
+  return BOOK_LABEL[status];
+}
+
 /** Would a new attestation fix it? Not for a fresh tier, a missing one, or a pool that refuses the tier. */
 export function needsReattest(status: CredentialStatus): boolean {
   return COPY[status].reattest;

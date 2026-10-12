@@ -29,12 +29,18 @@ export async function renderApp(path: string) {
   return { router, queryClient, ...view };
 }
 
-/** One component under a stub router that knows `/`, `/borrow`, `/loan` and `/verify`. */
+/** One component under a stub router that knows `/`, `/borrow`, `/loan`, `/verify` and `/book`. */
 export async function renderWithRouter(ui: ReactNode, path = '/') {
   const root = createRootRoute({ component: () => ui });
   const stub = (to: string) =>
     createRoute({ getParentRoute: () => root, path: to, component: () => null });
-  const tree = root.addChildren([stub('/'), stub('/borrow'), stub('/loan'), stub('/verify')]);
+  const tree = root.addChildren([
+    stub('/'),
+    stub('/borrow'),
+    stub('/loan'),
+    stub('/verify'),
+    stub('/book'),
+  ]);
   const router = createRouter({
     routeTree: tree,
     history: createMemoryHistory({ initialEntries: [path] }),

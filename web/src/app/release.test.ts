@@ -2,7 +2,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { RELEASE } from './release.ts';
+import { GITHUB_URL, POLICY_URL, RELEASE } from './release.ts';
+
+describe('POLICY_URL', () => {
+  it('is the default policy JSON at the release tag on GitHub', () => {
+    expect(POLICY_URL).toBe(`${GITHUB_URL}/blob/${RELEASE}/test-vectors/policy/default.json`);
+  });
+});
 
 describe('RELEASE', () => {
   it('is a v-prefixed semver', () => {

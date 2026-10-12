@@ -34,7 +34,7 @@ import type { Tone } from '@tio/ui/tokens';
 | `./fonts.css` | Google Fonts import (Newsreader, IBM Plex Sans, IBM Plex Mono) |
 | `./tokens.css` | CSS variables: colours, type scale, radii, spacing, motion. Dark via `prefers-color-scheme` or `[data-theme=dark]`; motion zeroed under `prefers-reduced-motion` |
 | `./theme.css` | Tailwind v4 `@theme inline` map (`bg-card`, `text-tone-positive`, `font-display`, …), Tailwind's default palette removed, `dark:` variant on `[data-theme=dark]`, the `seal-press` and `line-in` animations |
-| `./tokens` | `Tone`, `TONES`, `TONE_TEXT`, `TONE_BORDER` |
+| `./tokens` | `Tone`, `TONES`, `TONE_TEXT`, `TONE_BORDER`, `TONE_TINT` (a 10 % wash, for soft chips) |
 | `./cn` | `cn(...classes)`: `clsx` + `tailwind-merge` |
 
 `Tone = 'positive' | 'info' | 'caution' | 'negative' | 'accent' | 'neutral'`. Components
@@ -46,7 +46,7 @@ take a tone, never a tier or status; `web/` maps those to tones.
 |---|---|---|
 | `./button` | `Button` | `variant` `default \| outline \| ghost \| link`, `size` `sm \| md \| lg`, `asChild`; 44 px min height |
 | `./card` | `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter` | `CardHeader rule="double"` |
-| `./badge` | `Badge` | `variant` `default \| outline`, `tone?` |
+| `./badge` | `Badge` | `variant` `default \| outline \| soft` (soft = sentence-case chip on a wash of its tone), `tone?` |
 | `./dialog` | `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogFooter`, `DialogClose` | Radix Dialog, portal + scrim |
 | `./tabs` | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | Radix Tabs, ledger-style underline |
 | `./toast` | `Toaster`, `toast` | Sonner, themed through its CSS variables |
@@ -64,7 +64,7 @@ take a tone, never a tier or status; `web/` maps those to tones.
 | `./stepper` | `Stepper` | `steps: { label, state: 'done' \| 'current' \| 'todo' }[]` |
 | `./status-badge` | `StatusBadge` | `tone`, `label` |
 | `./schematic` | `Schematic` | `nodes: { id, label, slot, note?, kicker?, sealed? }[]` (`slot`: `top` / `left` / `center` / `right` / `bottom`), `lit?: id[]`, `spokes?: id[]` (outer nodes whose spoke to the hub is lit); boxed nodes in a plus shape on the `--blueprint-grid` panel, one `role="img"` named by every node and note |
-| `./flow-strip` | `FlowStrip` | `items: { label, note }[]`, `bracket?: { from, to, label }` (inclusive, zero-based) |
+| `./flow-strip` | `FlowStrip` | `items: { label, note, kicker? }[]`, `bracket?: { from, to, label }` (inclusive, zero-based; the bracketed items sit together above the label, arrows between items) |
 | `./proof-bar` | `ProofBar` | `items: { label, href? }[]`; links open with `rel="noopener noreferrer"` |
 | `./theme-toggle` | `ThemeToggle` | sets `data-theme` on `<html>`, remembers it in `localStorage` |
 

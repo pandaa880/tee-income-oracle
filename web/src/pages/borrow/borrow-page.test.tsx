@@ -298,4 +298,14 @@ describe('BorrowPage against the chain', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Start again' })).toBeInTheDocument();
   }, 10_000);
+
+  it.each([
+    ['/borrow', '/loan?pool=0'],
+    ['/borrow?pool=1', '/loan?pool=1'],
+    ['/borrow?pool=7', '/loan?pool=0'],
+  ])('from %s, Borrow now opens %s', async (path, loan) => {
+    hoisted.deps = (await world({ attestation: liveAttestation() })).deps;
+    await renderApp(path);
+    expect(await screen.findByRole('link', { name: 'Borrow now' })).toHaveAttribute('href', loan);
+  });
 });

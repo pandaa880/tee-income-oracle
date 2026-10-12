@@ -38,6 +38,7 @@ async function show(props: Partial<Parameters<typeof ResultView>[0]> = {}) {
       matchesPersona={null}
       cluster="devnet"
       verifyHref={null}
+      loanPool={0}
       onReset={onReset}
       {...props}
     />,
@@ -139,6 +140,14 @@ describe('ResultView', () => {
     expect(screen.getByRole('link', { name: 'Borrow now' })).toHaveAttribute(
       'href',
       '/loan?pool=0',
+    );
+  });
+
+  it('leads to the loan screen on the pool the flow was started for', async () => {
+    await show({ loanPool: 1 });
+    expect(screen.getByRole('link', { name: 'Borrow now' })).toHaveAttribute(
+      'href',
+      '/loan?pool=1',
     );
   });
 

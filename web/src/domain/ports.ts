@@ -1,5 +1,6 @@
 // The ports the app layer talks to. Adapters implement them; tests pass fakes.
 import type { Address, SignatureBytes, TransactionSigner } from '@solana/kit';
+import type { Loan } from '@tio/demo-pool-client';
 import type {
   ChainAccount,
   FlowEvent,
@@ -10,6 +11,9 @@ import type {
   Session,
   SignatureStatus,
 } from './types.ts';
+
+/** One open Loan as `getProgramAccounts` returns it: its account address and decoded body. */
+export type PoolLoan = { address: Address; loan: Loan };
 
 export type GatewayPort = {
   createSession: (
@@ -35,6 +39,8 @@ export type RelayPort = {
 export type ChainPort = {
   /** In request order; `null` for an account that doesn't exist. */
   accounts: (addresses: Address[], signal: AbortSignal) => Promise<Result<(ChainAccount | null)[]>>;
+  /** Every open Loan of one pool, each checked to be a demo-pool Loan of that pool. */
+  poolLoans: (pool: Address, signal: AbortSignal) => Promise<Result<readonly PoolLoan[]>>;
   latestBlockhash: (signal: AbortSignal) => Promise<Result<LatestBlockhash>>;
   /** `null` while the cluster doesn't know the signature yet. */
   signatureStatus: (

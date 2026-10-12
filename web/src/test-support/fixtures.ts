@@ -127,18 +127,29 @@ export function pool(overrides: PoolParamsOverrides = {}): Pool {
   return getPoolDecoder().decode(poolBytes(overrides));
 }
 
-export function loanBytes(borrower: Address, amount = 2_000_000n): Uint8Array {
+export type LoanOverrides = {
+  tier?: number;
+  pool?: Address;
+  borrowedAt?: bigint;
+  attestationIssuedAt?: bigint;
+};
+
+export function loanBytes(
+  borrower: Address,
+  amount = 2_000_000n,
+  overrides: LoanOverrides = {},
+): Uint8Array {
   return Uint8Array.from(
     getLoanEncoder().encode({
       version: 1,
       bump: 255,
-      tier: 1,
-      pool: POOL_0,
+      tier: overrides.tier ?? 1,
+      pool: overrides.pool ?? POOL_0,
       borrower,
       rentPayer: RELAYER,
       amount,
-      borrowedAt: NOW,
-      attestationIssuedAt: ISSUED_AT,
+      borrowedAt: overrides.borrowedAt ?? NOW,
+      attestationIssuedAt: overrides.attestationIssuedAt ?? ISSUED_AT,
     }),
   );
 }

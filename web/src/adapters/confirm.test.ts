@@ -16,6 +16,7 @@ function scripted(script: readonly (SignatureStatus | null | 'error')[]) {
   });
   const chain: ChainPort = {
     accounts: vi.fn<ChainPort['accounts']>(async () => ok([])),
+    poolLoans: vi.fn<ChainPort['poolLoans']>(async () => ok([])),
     latestBlockhash: vi.fn<ChainPort['latestBlockhash']>(async () => fail({ code: 'network' })),
     signatureStatus,
   };
@@ -150,6 +151,7 @@ describe('waitConfirmed', () => {
     );
     const chain: ChainPort = {
       accounts: vi.fn<ChainPort['accounts']>(async () => ok([])),
+      poolLoans: vi.fn<ChainPort['poolLoans']>(async () => ok([])),
       latestBlockhash: vi.fn<ChainPort['latestBlockhash']>(async () => fail({ code: 'network' })),
       signatureStatus,
     };

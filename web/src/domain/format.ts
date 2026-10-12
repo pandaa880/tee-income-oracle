@@ -26,6 +26,12 @@ export function formatTokens(value: bigint, decimals = 6): string {
   return fraction === undefined ? grouped : `${grouped}.${fraction}`;
 }
 
+/** Basis points as a percentage with one decimal, rounded down: 3875 → "38.7%". */
+export function formatPercent(bps: number): string {
+  const tenths = Math.floor(bps / 10);
+  return `${Math.floor(tenths / 10)}.${tenths % 10}%`;
+}
+
 /** "9:41"; never negative. */
 export function formatCountdown(seconds: number): string {
   const left = Math.max(0, Math.floor(seconds));

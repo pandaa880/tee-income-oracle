@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { TONES } from '../../tokens/tokens.ts';
+import { TONES, TONE_TINT } from '../../tokens/tokens.ts';
 import { Badge } from './badge.tsx';
 
 describe('Badge', () => {
@@ -37,5 +37,26 @@ describe('Badge', () => {
       return cls;
     });
     expect(new Set(classSets).size).toBe(TONES.length);
+  });
+
+  it.each(TONES)('fills a soft badge with a wash of tone %s, and no other badge', (tone) => {
+    render(
+      <>
+        <Badge variant="soft" tone={tone}>
+          soft
+        </Badge>
+        <Badge variant="outline" tone={tone}>
+          outline
+        </Badge>
+      </>,
+    );
+    expect(screen.getByText('soft')).toHaveClass(TONE_TINT[tone]);
+    expect(screen.getByText('outline')).not.toHaveClass(TONE_TINT[tone]);
+  });
+
+  it('sets a soft badge in sentence case, not mono caps', () => {
+    render(<Badge variant="soft">fresh</Badge>);
+    expect(screen.getByText('fresh')).toHaveClass('normal-case', 'font-sans');
+    expect(screen.getByText('fresh')).not.toHaveClass('uppercase', 'font-mono');
   });
 });

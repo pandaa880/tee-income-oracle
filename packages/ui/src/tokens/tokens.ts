@@ -22,3 +22,13 @@ export const TONE_BORDER: Record<Tone, string> = {
   accent: 'border-tone-accent',
   neutral: 'border-tone-neutral',
 };
+
+/** A light wash of the tone, for filled chips (`Badge variant="soft"`). */
+export const TONE_TINT: Record<Tone, string> = {
+  positive: 'bg-tone-positive/10',
+  info: 'bg-tone-info/10',
+  caution: 'bg-tone-caution/10',
+  negative: 'bg-tone-negative/10',
+  accent: 'bg-tone-accent/10',
+  neutral: 'bg-tone-neutral/10',
+};
