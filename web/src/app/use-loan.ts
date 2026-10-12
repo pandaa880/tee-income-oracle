@@ -14,6 +14,7 @@ import { attestationAddress, decodePayload } from '@tio/oracle-client/attest';
 import { type Deps, realDeps } from './deps.ts';
 import { queryKeys } from './query-keys.ts';
 import { useCancelScope } from './use-cancel-scope.ts';
+import { fetchPool, type PoolRead } from './use-pool.ts';
 import { sleep } from '../adapters/sleep.ts';
 import { waitConfirmed } from '../adapters/confirm.ts';
 import {
@@ -80,9 +81,19 @@ function requireBefore(loan: Awaited<ReturnType<typeof readLoan>>, kind: Expect[
   if (kind === 'repay' && loan === null) throw { code: 'no_open_loan' } satisfies AppError;
 }
 
-async function loanLanded(deps: Deps, expect: Expect, signal: AbortSignal): Promise<boolean> {
+/**
+ * Reads the whole pool (pool, vault, loan in one request, so one node's view) until it shows the
+ * transition. That read is then the freshest the page has: it goes into the cache as is, rather
+ * than being re-fetched from a load-balanced node that may still show the old loan.
+ */
+async function poolLanded(
+  deps: Deps,
+  expect: Expect,
+  signal: AbortSignal,
+): Promise<PoolRead | null> {
   for (let attempt = 1; ; attempt++) {
-    const loan = await readLoan(deps, expect.pool, signal);
+    const read = await fetchPool(deps, expect.pool, deps.signer.address, signal);
+    const { loan } = read;
     const landed =
       expect.kind === 'repay'
         ? loan === null
@@ -90,7 +101,8 @@ async function loanLanded(deps: Deps, expect: Expect, signal: AbortSignal): Prom
           loan.borrower === deps.signer.address &&
           loan.pool === expect.pool &&
           loan.amount === expect.amount;
-    if (landed || attempt >= READBACK.tries || signal.aborted) return landed;
+    if (landed) return read;
+    if (attempt >= READBACK.tries || signal.aborted) return null;
     await sleep(READBACK.intervalMs, signal);
   }
 }
@@ -115,7 +127,7 @@ async function relayAndConfirm(
   message: LoanMessage,
   expect: Expect,
   signal: AbortSignal,
-): Promise<string> {
+): Promise<{ signature: string; read: PoolRead }> {
   requireBefore(await readLoan(deps, expect.pool, signal), expect.kind);
   const txB64 = await signForRelay(message);
   const signature = unwrap(await deps.relay.relay(txB64, signal));
@@ -126,10 +138,9 @@ async function relayAndConfirm(
   if (outcome.status !== 'confirmed') {
     throw { code: outcome.status === 'failed' ? 'tx_failed' : outcome.status } satisfies AppError;
   }
-  if (!(await loanLanded(deps, expect, signal))) {
-    throw { code: 'protocol_error' } satisfies AppError;
-  }
-  return signature;
+  const read = await poolLanded(deps, expect, signal);
+  if (read === null) throw { code: 'protocol_error' } satisfies AppError;
+  return { signature, read };
 }
 
 export function useLoan(pool: Address, deps: Deps = realDeps()) {
@@ -137,12 +148,16 @@ export function useLoan(pool: Address, deps: Deps = realDeps()) {
   const queryClient = useQueryClient();
   const { cluster } = deps.config;
   const wallet = deps.signer.address;
-  // A landed loan changes the pool read (loan, vault) and the credential view: re-read both.
+  const poolKey = queryKeys.pool(cluster, pool, wallet);
+  /** The read that proved the transition becomes the pool view; a fetch in flight can't undo it. */
+  const settle = async ({ signature, read }: { signature: string; read: PoolRead }) => {
+    await queryClient.cancelQueries({ queryKey: poolKey });
+    queryClient.setQueryData(poolKey, read);
+    return signature;
+  };
+  // The pool view is already fresh (`settle`); the credential view re-reads.
   const refresh = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.pool(cluster, pool, wallet) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.credential(cluster, wallet) }),
-    ]);
+    queryClient.invalidateQueries({ queryKey: queryKeys.credential(cluster, wallet) });
   const borrow = useMutation<string, AppError, bigint>({
     onSuccess: refresh,
     mutationFn: async (amount) => {
@@ -154,7 +169,9 @@ export function useLoan(pool: Address, deps: Deps = realDeps()) {
           measurementId: await measurementId(deps, signal),
           amount,
         });
-        return await relayAndConfirm(deps, message, { pool, kind: 'borrow', amount }, signal);
+        return await settle(
+          await relayAndConfirm(deps, message, { pool, kind: 'borrow', amount }, signal),
+        );
       } catch (thrown) {
         throw toAppError(thrown);
       }
@@ -166,7 +183,7 @@ export function useLoan(pool: Address, deps: Deps = realDeps()) {
       try {
         const signal = nextSignal();
         const message = await buildRepayMessage(await common(deps, pool, signal));
-        return await relayAndConfirm(deps, message, { pool, kind: 'repay' }, signal);
+        return await settle(await relayAndConfirm(deps, message, { pool, kind: 'repay' }, signal));
       } catch (thrown) {
         throw toAppError(thrown);
       }

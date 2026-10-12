@@ -167,6 +167,48 @@ describe('PoolPanel with an open loan', () => {
     expect(screen.getByRole('link', { name: /transaction/i })).toBeInTheDocument();
     expect(relay.relay).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps a verified repay on screen when the next read comes from a node a slot behind', async () => {
+    const relayer: KeyPairSigner = await generateKeyPairSigner();
+    const w = await world({
+      attestation: liveAttestation(),
+      poolParams: { tierLimits: LIMITS },
+      loan: 2_500_000_000n,
+    });
+    const lent = w.store.get(w.loanAddress);
+    let relayed = false;
+    let readsAfter = 0;
+    // The first read after the repay sees the loan gone; any later one hits a lagging node.
+    const accounts: Deps['chain']['accounts'] = async (addresses, signal) => {
+      const read = await w.deps.chain.accounts(addresses, signal);
+      if (!relayed || !read.ok || lent === undefined || !addresses.includes(w.loanAddress)) {
+        return read;
+      }
+      readsAfter += 1;
+      if (readsAfter < 2) return read;
+      return ok(read.value.map((account, i) => (addresses[i] === w.loanAddress ? lent : account)));
+    };
+    const relay: RelayPort = {
+      relay: vi.fn<RelayPort['relay']>(async (txB64) => {
+        const wire = Uint8Array.from(getBase64Encoder().encode(txB64));
+        const { messageBytes } = getTransactionDecoder().decode(wire);
+        w.store.delete(w.loanAddress);
+        relayed = true;
+        const signature = await signBytes(relayer.keyPair.privateKey, messageBytes);
+        return ok(getBase58Decoder().decode(signature));
+      }),
+    };
+    hoisted.deps = {
+      ...w.deps,
+      chain: { ...w.deps.chain, accounts },
+      relay,
+      gateway: fakeGateway({ info: async () => ok({ ...INFO, relayer: relayer.address }) }),
+    };
+    await renderApp('/loan?pool=0');
+    fireEvent.click(await screen.findByRole('button', { name: 'Repay 2,500 tokens' }));
+    expect(await screen.findByText(/loan repaid/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^repay/i })).not.toBeInTheDocument();
+  });
 });
 
 describe('PoolPanel when the credential is not usable', () => {
