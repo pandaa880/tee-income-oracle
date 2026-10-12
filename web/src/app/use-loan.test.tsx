@@ -13,6 +13,7 @@ import {
 } from '@solana/kit';
 import {
   findLoanPda,
+  findVaultPda,
   getBorrowInstructionDataDecoder,
   getLoanDecoder,
 } from '@tio/demo-pool-client';
@@ -30,10 +31,12 @@ import {
   LOAN_DEPLOYMENT,
   loanBytes,
   payloadBytes,
+  pool,
   POOL_0,
   POOL_1,
   SCHEMA,
   sasAccountBytes,
+  tokenAccount,
 } from '../test-support/fixtures.ts';
 import { queryKeys } from './query-keys.ts';
 import { queryWrapper } from '../test-support/query.tsx';
@@ -77,6 +80,12 @@ async function setup(
       },
     ],
   ]);
+  // Both pools and their vaults: the readback reads pool, vault and loan in one request.
+  for (const address of [POOL_0, POOL_1]) {
+    store.set(address, { kind: 'pool', pool: pool() });
+    const [vault] = await findVaultPda({ pool: address });
+    store.set(vault, { kind: 'token', token: tokenAccount({ amount: 9_000_000_000n }) });
+  }
   const chain = fakeChain(store);
   overrides.chain?.(chain);
   const relay: RelayPort = overrides.relay ?? {
@@ -227,10 +236,14 @@ describe('useLoan readback and cancellation', () => {
   it('retries the Loan readback when the first read comes from a node a slot behind', async () => {
     const { deps, chain, loanAddress } = await setup();
     const real = vi.mocked(chain.accounts).getMockImplementation();
-    let loanReads = 0;
+    let readbacks = 0;
     vi.mocked(chain.accounts).mockImplementation(async (addresses, signal) => {
-      if (addresses[0] === loanAddress && ++loanReads === 1) return ok([null]);
-      return real ? real(addresses, signal) : ok([]);
+      const read = real ? await real(addresses, signal) : ok([]);
+      // The first pool read after the relay comes from a node that hasn't seen the loan yet.
+      if (read.ok && addresses.length === 3 && addresses[2] === loanAddress && ++readbacks === 1) {
+        return ok(read.value.map((account, i) => (i === 2 ? null : account)));
+      }
+      return read;
     });
     const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
     await act(async () => {
@@ -238,7 +251,7 @@ describe('useLoan readback and cancellation', () => {
         /^[1-9A-HJ-NP-Za-km-z]{64,88}$/,
       );
     });
-    expect(loanReads).toBeGreaterThanOrEqual(2);
+    expect(readbacks).toBeGreaterThanOrEqual(2);
   });
 
   it('refuses to borrow while a loan is open, before relaying anything', async () => {
@@ -353,38 +366,40 @@ async function cached(relay?: RelayPort) {
   const refresh = () => {
     for (const k of [poolKey, credentialKey, otherPoolKey]) client.setQueryData(k, 'cached');
   };
-  return { ...hook, poolKey, credentialKey, otherPoolKey, invalidated, refresh };
+  return { ...hook, client, poolKey, credentialKey, otherPoolKey, invalidated, refresh };
 }
 
 describe('useLoan refreshes what it changed', () => {
-  it('invalidates the pool and credential queries after a successful borrow', async () => {
-    const { result, invalidated, poolKey, credentialKey } = await cached();
+  it('caches the read that proved a borrow, and re-reads the credential', async () => {
+    const { result, client, invalidated, poolKey, credentialKey } = await cached();
     await act(async () => {
       await result.current.borrow.mutateAsync(1_000_000n);
     });
-    expect(invalidated(poolKey)).toBe(true);
+    // A refetch could hit a node that hasn't seen the loan; the verified read stands instead.
+    expect(client.getQueryData(poolKey)).toMatchObject({ loan: { amount: 1_000_000n } });
+    expect(invalidated(poolKey)).toBe(false);
     expect(invalidated(credentialKey)).toBe(true);
   });
 
   it('leaves the other pool alone', async () => {
-    const { result, invalidated, otherPoolKey } = await cached();
+    const { result, client, invalidated, otherPoolKey } = await cached();
     await act(async () => {
       await result.current.borrow.mutateAsync(1_000_000n);
     });
     expect(invalidated(otherPoolKey)).toBe(false);
+    expect(client.getQueryData(otherPoolKey)).toBe('cached');
   });
 
-  it('invalidates the pool and credential queries after a successful repay', async () => {
-    const { result, invalidated, poolKey, credentialKey, refresh } = await cached();
+  it('caches the read that proved a repay (no loan), and re-reads the credential', async () => {
+    const { result, client, invalidated, poolKey, credentialKey, refresh } = await cached();
     await act(async () => {
       await result.current.borrow.mutateAsync(1_000_000n);
     });
     refresh();
-    expect(invalidated(poolKey)).toBe(false);
     await act(async () => {
       await result.current.repay.mutateAsync();
     });
-    expect(invalidated(poolKey)).toBe(true);
+    expect(client.getQueryData(poolKey)).toMatchObject({ loan: null });
     expect(invalidated(credentialKey)).toBe(true);
   });
 
@@ -392,7 +407,7 @@ describe('useLoan refreshes what it changed', () => {
     const relay: RelayPort = {
       relay: vi.fn<RelayPort['relay']>(async () => fail({ code: 'bad_transaction', rule: 7 })),
     };
-    const { result, invalidated, poolKey, credentialKey } = await cached(relay);
+    const { result, client, invalidated, poolKey, credentialKey } = await cached(relay);
     await act(async () => {
       await expect(result.current.borrow.mutateAsync(1n)).rejects.toMatchObject({
         code: 'bad_transaction',
@@ -400,5 +415,6 @@ describe('useLoan refreshes what it changed', () => {
     });
     expect(invalidated(poolKey)).toBe(false);
     expect(invalidated(credentialKey)).toBe(false);
+    expect(client.getQueryData(poolKey)).toBe('cached');
   });
 });

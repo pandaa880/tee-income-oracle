@@ -318,14 +318,16 @@ pages, it is server state or URL state.
 - A chain read right after `confirmed` can reach a node a slot behind (load-balanced RPC):
   retry it briefly (or pin `minContextSlot`) before calling it a failure. To prove *your*
   transaction landed, verify the returned signature (the fee payer's) over your own message
-  bytes; account reads alone can't.
+  bytes; account reads alone can't. Once a read has shown the transition, put that read in the
+  cache (`cancelQueries`, then `setQueryData`) rather than invalidating: the refetch can reach
+  a node that is still behind and bring the old state back.
 - Every untrusted value that can become a URL or link is format-checked at the adapter
   (`isSignature`, `isAddress`). Query and mutation functions map any stray throw to an
   `AppError` (TanStack's error type is only a cast).
 - A component-owned cancel scope that swaps its controller aborts `ref.current` on unmount,
   not the value its effect captured.
 - A mutation's success receipt lives in the component that owns the mutation (it survives the
-  refetch its own invalidation triggers); a success resets the opposite mutation's data.
+  re-render its own cache update triggers); a success resets the opposite mutation's data.
 - A poll predicate given to `useQueries` judges the view's source of truth, not each query's
   own read; after a read keyed to a new epoch confirms new state, the un-keyed entry other
   routes use is updated too.
