@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createApp } from './app.ts';
 import { gatewayError } from './errors.ts';
+import { SENT_SIGNATURE, fakeLoanRelay, type FakeLoanRelay } from './testing/fake-relay.ts';
 import {
   SESSION_ID,
   SUBMITTED,
@@ -25,6 +26,7 @@ const INFO = {
   measurement_id: 0,
   policy_hash: '81112a23f4ee2835f6459b1f25d9159566204bc2e3e4d318b3ac73d526932e1c',
   attester_address: '0x' + 'bb'.repeat(20),
+  relayer: '3gJtuaoBxuAMTvphyRx1KXDHKg2FQfbHCWsvQ4rMgSND',
 };
 const CREATE_BODY = { wallet: WALLET, persona_id: 'salaried_steady' };
 const ALL_STAGES = ['bind', 'fi_request', 'fi_fetch', 'evaluate', 'submit'];
@@ -34,14 +36,17 @@ type SetupOpts = {
   allow?: boolean;
   trustProxy?: boolean;
   fixedIp?: boolean;
+  loanRelay?: FakeLoanRelay;
 };
 
 function setup(opts: SetupOpts = {}) {
   const w = fakeWorld(opts.over);
   const ips: string[] = [];
   const limiter = { allowed: opts.allow ?? true, ips };
+  const loanRelay = opts.loanRelay ?? fakeLoanRelay();
   const app = createApp({
     ...w.deps,
+    loanRelay,
     rateLimiter: {
       allow: (ip: string) => {
         limiter.ips.push(ip);
@@ -51,7 +56,7 @@ function setup(opts: SetupOpts = {}) {
     config: { allowedOrigin: ORIGIN, trustProxy: opts.trustProxy ?? false, info: INFO },
     ...(opts.fixedIp === false ? {} : { clientIp: () => '203.0.113.7' }),
   });
-  return { app, w, limiter };
+  return { app, w, limiter, loanRelay };
 }
 
 type Setup = ReturnType<typeof setup>;
@@ -466,5 +471,157 @@ describe('POST /v1/sessions/:id/complete: SSE stream', () => {
       },
     });
     expect(text).not.toContain('my-secret-detail');
+  });
+});
+
+describe('POST /v1/loans/relay', () => {
+  const TX_B64 = Buffer.from('a transaction, as far as the route cares').toString('base64');
+
+  it('GET /v1/info includes the relayer address', async () => {
+    const res = await setup().app.request('/v1/info');
+    expect((await json(res))['relayer']).toBe(INFO.relayer);
+  });
+
+  it('passes tx_b64 to the relay and answers 200 { signature }', async () => {
+    const s = setup();
+    const res = await post(s, '/v1/loans/relay', { tx_b64: TX_B64 });
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ signature: SENT_SIGNATURE });
+    expect(s.loanRelay.calls).toEqual([{ tx_b64: TX_B64 }]);
+  });
+
+  it('answers 429 rate_limited before any body work (even for an invalid body)', async () => {
+    const s = setup({ allow: false });
+    const res = await post(s, '/v1/loans/relay', 'not json at all');
+    expect(res.status).toBe(429);
+    expect(await errorOf(res)).toMatchObject({ code: 'rate_limited', stage: 'gateway' });
+    expect(s.loanRelay.calls).toEqual([]);
+  });
+
+  it('asks the limiter once per relay, with the client ip', async () => {
+    const s = setup();
+    await post(s, '/v1/loans/relay', { tx_b64: TX_B64 });
+    expect(s.limiter.ips).toEqual(['203.0.113.7']);
+  });
+
+  it('shares one limiter with create: a refused ip is refused on both routes', async () => {
+    const s = setup({ allow: false });
+    const create = await post(s, '/v1/sessions', CREATE_BODY);
+    const relay = await post(s, '/v1/loans/relay', { tx_b64: TX_B64 });
+    expect([create.status, relay.status]).toEqual([429, 429]);
+  });
+
+  it('rejects a body over 4 KiB with 413 body_too_large', async () => {
+    const s = setup();
+    const res = await post(s, '/v1/loans/relay', { tx_b64: TX_B64, pad: 'x'.repeat(5000) });
+    expect(res.status).toBe(413);
+    expect(await errorOf(res)).toMatchObject({ code: 'body_too_large', stage: 'gateway' });
+    expect(s.loanRelay.calls).toEqual([]);
+  });
+
+  it.each([
+    ['not JSON', '{"tx_b64":'],
+    ['a missing tx_b64', {}],
+    ['an empty tx_b64', { tx_b64: '' }],
+    ['a non-string tx_b64', { tx_b64: 5 }],
+    ['non-base64 characters', { tx_b64: 'not base64 !!' }],
+    ['base64url characters', { tx_b64: 'ab-_' }],
+    ['more than 2048 characters', { tx_b64: 'A'.repeat(2049) }],
+    ['an unknown member', { tx_b64: TX_B64, extra: 1 }],
+  ])('rejects %s with 400 bad_request', async (_name, body) => {
+    const s = setup();
+    const res = await post(s, '/v1/loans/relay', body);
+    expect(res.status).toBe(400);
+    expect(await errorOf(res)).toMatchObject({ code: 'bad_request', stage: 'gateway' });
+    expect(s.loanRelay.calls).toEqual([]);
+  });
+
+  it('accepts exactly 2048 base64 characters', async () => {
+    const s = setup();
+    const res = await post(s, '/v1/loans/relay', { tx_b64: 'A'.repeat(2048) });
+    expect(res.status).toBe(200);
+  });
+
+  it('answers bad_transaction 400 with the rule in detail and a fixed message', async () => {
+    const s = setup({
+      loanRelay: fakeLoanRelay(async () => {
+        throw gatewayError('bad_transaction', 'gateway', 400, { rule: 8 });
+      }),
+    });
+    const res = await post(s, '/v1/loans/relay', { tx_b64: TX_B64 });
+    expect(res.status).toBe(400);
+    expect(await json(res)).toEqual({
+      error: {
+        code: 'bad_transaction',
+        message: 'The transaction is not an accepted loan transaction.',
+        stage: 'gateway',
+        detail: { rule: 8 },
+      },
+    });
+  });
+
+  it('answers relay_in_flight 429', async () => {
+    const s = setup({
+      loanRelay: fakeLoanRelay(async () => {
+        throw gatewayError('relay_in_flight', 'gateway', 429);
+      }),
+    });
+    const res = await post(s, '/v1/loans/relay', { tx_b64: TX_B64 });
+    expect(res.status).toBe(429);
+    expect(await json(res)).toEqual({
+      error: {
+        code: 'relay_in_flight',
+        message: 'A relay for this wallet is already in progress; try again shortly.',
+        stage: 'gateway',
+      },
+    });
+  });
+
+  it('carries detail { index, custom } on simulation_failed 409', async () => {
+    const s = setup({
+      loanRelay: fakeLoanRelay(async () => {
+        throw gatewayError('simulation_failed', 'chain', 409, { index: 1, custom: 6008 });
+      }),
+    });
+    const res = await post(s, '/v1/loans/relay', { tx_b64: TX_B64 });
+    expect(res.status).toBe(409);
+    expect(await json(res)).toEqual({
+      error: {
+        code: 'simulation_failed',
+        message: 'The transaction would fail on chain; see detail.',
+        stage: 'chain',
+        detail: { index: 1, custom: 6008 },
+      },
+    });
+  });
+
+  it('leaves detail out of errors that have none', async () => {
+    const s = setup({
+      loanRelay: fakeLoanRelay(async () => {
+        throw gatewayError('tx_failed', 'chain', 502);
+      }),
+    });
+    const res = await post(s, '/v1/loans/relay', { tx_b64: TX_B64 });
+    expect(res.status).toBe(502);
+    const error = (await json(res))['error'];
+    expect(error).not.toHaveProperty('detail');
+  });
+
+  it('answers an unexpected exception with 500 internal_error and no detail', async () => {
+    const s = setup({
+      loanRelay: fakeLoanRelay(async () => {
+        throw new Error('secret internals');
+      }),
+    });
+    const res = await post(s, '/v1/loans/relay', { tx_b64: TX_B64 });
+    expect(res.status).toBe(500);
+    const body = await json(res);
+    expect(body).toMatchObject({ error: { code: 'internal_error' } });
+    expect(JSON.stringify(body)).not.toContain('secret internals');
+  });
+
+  it('sets the CORS header on relay replies', async () => {
+    const res = await post(setup(), '/v1/loans/relay', { tx_b64: TX_B64 }, { origin: ORIGIN });
+    expect(res.headers.get('access-control-allow-origin')).toBe(ORIGIN);
   });
 });

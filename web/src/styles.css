@@ -1,0 +1,13 @@
+/* Order matters: the remote font @import must lead (see @tio/ui README). */
+@import '@tio/ui/fonts.css';
+@import 'tailwindcss';
+@import '@tio/ui/tokens.css';
+@import '@tio/ui/theme.css';
+/* The scanner skips node_modules, where the workspace symlink lives: point it at the source. */
+@source '../../packages/ui/src';
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+}

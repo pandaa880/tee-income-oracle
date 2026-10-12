@@ -131,6 +131,7 @@ async function setup(o: FakeOpts) {
       credential: CREDENTIAL,
       schema: SCHEMA,
       sasProgram: SAS_PROGRAM_ID,
+      pools: [],
     },
     measurementId: MEASUREMENT_ID,
   });
@@ -330,6 +331,7 @@ describe('createRelayer', () => {
           credential: CREDENTIAL,
           schema: SCHEMA,
           sasProgram: SAS_PROGRAM_ID,
+          pools: [],
         },
         measurementId: 0,
       });

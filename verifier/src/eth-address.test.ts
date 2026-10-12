@@ -2,6 +2,7 @@ import { createECDH, randomBytes } from 'node:crypto';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { describe, expect, it } from 'vitest';
 import { ethAddressFromPublicKey, toEthHex } from './eth-address.ts';
+import { ATTESTER_HEX, DOC_IDS, rawDocument } from './test-fixtures.ts';
 
 /** secp256k1 public key (uncompressed, 65 bytes with 0x04) for a secret key, via node:crypto. */
 function uncompressedPublicKey(secret: Uint8Array): Uint8Array {
@@ -67,5 +68,11 @@ describe('toEthHex', () => {
 
   it.each([0, 19, 21, 32])('rejects_length_%i', (length) => {
     expect(() => toEthHex(new Uint8Array(length))).toThrow(/expected 20 bytes/);
+  });
+});
+
+describe('attester addresses of the archived devnet documents', () => {
+  it.each(DOC_IDS)('document_%i_public_key_gives_its_deployment_attester', (id) => {
+    expect(toEthHex(ethAddressFromPublicKey(rawDocument(id).publicKey))).toBe(ATTESTER_HEX[id]);
   });
 });

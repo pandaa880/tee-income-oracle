@@ -49,7 +49,7 @@ import { GatewayError, gatewayError } from './errors.ts';
 import type { Relayer } from './flow.ts';
 import { entryFromAccount } from './registry.ts';
 
-const COMPUTE_BUDGET_PROGRAM = address('ComputeBudget111111111111111111111111111111');
+export const COMPUTE_BUDGET_PROGRAM = address('ComputeBudget111111111111111111111111111111');
 const ENCLAVE_REVOKED = 6019;
 const STALE_ATTESTATION = 6026;
 /** Measured: 22,968 CU for a refresh; the precompile itself costs no CU. */

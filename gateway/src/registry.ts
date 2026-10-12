@@ -5,14 +5,8 @@
  * on a borrower's transaction.
  */
 import type { Address, Rpc, SolanaRpcApi } from '@solana/kit';
-import {
-  ENCLAVE_ENTRY_DISCRIMINATOR,
-  type EnclaveEntry,
-  findEnclaveEntryPda,
-  getEnclaveEntryDecoder,
-  getEnclaveEntrySize,
-} from '@tio/oracle-client';
-import { ORACLE_PROGRAM_ID } from '@tio/oracle-client/attest';
+import { type EnclaveEntry, findEnclaveEntryPda } from '@tio/oracle-client';
+import { ORACLE_PROGRAM_ID, parseEnclaveEntry } from '@tio/oracle-client/attest';
 
 import { b64Decode, toHex } from '@tio/encoding';
 import { gatewayError } from './errors.ts';
@@ -25,13 +19,8 @@ export function entryFromAccount(
   account: { owner: Address; data: Uint8Array } | null,
 ): EnclaveEntry | undefined {
   if (account === null || account.owner !== ORACLE_PROGRAM_ID) return undefined;
-  // The generated decoder checks neither the length nor the discriminator.
-  const { data } = account;
-  if (data.length !== getEnclaveEntrySize()) throw new Error('enclave entry has the wrong length');
-  if (!ENCLAVE_ENTRY_DISCRIMINATOR.every((byte, i) => data[i] === byte)) {
-    throw new Error('account is not an oracle EnclaveEntry');
-  }
-  return getEnclaveEntryDecoder().decode(data);
+  // Checked decode (length + discriminator): the generated decoder checks neither.
+  return parseEnclaveEntry(account.owner, account.data);
 }
 
 /** The entry at `measurementId`, or undefined if there is none. */

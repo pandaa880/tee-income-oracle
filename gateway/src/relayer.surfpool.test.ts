@@ -38,6 +38,7 @@ describe('relayer.submit (surfpool)', { timeout: 120_000 }, () => {
         credential: f.credential,
         schema: f.schema,
         sasProgram: SAS_PROGRAM_ID,
+        pools: [],
       },
       measurementId: f.entryId,
     });

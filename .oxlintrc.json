@@ -21,7 +21,7 @@
   },
   "overrides": [
     {
-      "files": ["**/*.test.ts"],
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
       "rules": {
         "typescript/no-unsafe-type-assertion": "off",
         "vitest/no-conditional-expect": "off",

@@ -100,12 +100,14 @@ programs/oracle/     Anchor. Enclave registry, verifies the enclave's secp256k1
                      signature (precompile), writes the SAS attestation.
 clients/ts/oracle/   TypeScript client for the oracle, generated from its IDL (Codama).
 packages/encoding/   Shared strict byte encodings (hex, base64, base64url) for the TS code.
+packages/ui/         Standalone React UI package for web: design tokens (light/dark),
+                     shadcn/Radix primitives, ledger patterns.
 programs/demo-pool/  Anchor. Reads and checks the SAS attestation, lends testnet tokens.
 clients/ts/demo-pool/  TypeScript client for the demo pool, generated the same way.
 tio-core/            Rust library, no I/O: crypto, parsing, scoring, payload.
 enclave/             Rust HTTP wrapper around tio-core. Runs in the Oyster CVM.
 gateway/             Node/TS, untrusted. Orchestrates sessions, relays signed bytes,
-                     pays Solana fees.
+                     pays Solana fees, sponsors the demo pool's borrow/repay (shape-checked).
 sandbox-bank/        Node/TS mock FIP + AA speaking ReBIT with test keys. Also the
                      test-vector generator.
 verifier/            TS. Checks the Nitro attestation to AWS's root, the image id,
@@ -113,7 +115,7 @@ verifier/            TS. Checks the Nitro attestation to AWS's root, the image i
 ops/                 TS admin scripts: oracle init, SAS credential + schema, demo pool,
                      attested enclave rotation, devnet end-to-end run.
 deployments/         Public addresses per cluster, written by ops.
-web/                 Next.js. Borrower flow, lender dashboard, verify page.
+web/                 Vite + React SPA on packages/ui. Borrower flow, loan book, verify page.
 test-vectors/        Generated fixtures, including golden vectors from Sahamati's
                      reference implementation.
 test-fixtures/       Hand-calculated scoring cases; the SAS program binary dumped
@@ -165,11 +167,19 @@ its attester is active in the on-chain registry; it runs locally, in
 Docker, and on Azure Container Apps, where every route but `/health`
 needs the gateway's bearer token. The `gateway` drives a whole session for the web (consent, enclave
 session, wallet-signed intent, FI request and fetch, evaluate), streams each
-stage over SSE and relays the signed result to the oracle; a local end-to-end
+stage over SSE and relays the signed result to the oracle, and co-signs the demo pool's
+borrow/repay transactions after an 11-rule shape check so the borrower pays no fees; a local end-to-end
 test runs the real enclave container, bank and programs through it. The
 `ops` scripts set a cluster up (oracle config, SAS, demo pool) and register
 the running Oyster enclave from its verified attestation; they are tested on
-surfpool and run on devnet.
+surfpool and run on devnet. The `verifier` library and CLI check a wallet's
+tier end to end from public data: the SAS attestation (written by the
+oracle's signer), the registry entry it names, and the archived Nitro
+attestation document (COSE signature and certificate chain to the pinned AWS
+root, Marlin base-image PCRs, PCR16 recomputed from the compose file at the
+release tag, image id, attester key, document hash, entry active); it runs
+in Node and the browser and is tested against the real devnet documents and
+the real programs on surfpool ([`docs/VERIFY.md`](docs/VERIFY.md)).
 
 **On devnet now:** both programs, the enclave on Marlin Oyster (image id in
 [`deployments/devnet.json`](deployments/devnet.json), reproducible from the
@@ -177,7 +187,13 @@ repo), and the gateway and sandbox bank on Azure Container Apps. The
 headless end-to-end run passes on devnet (tiers A, B, C attested on chain,
 REJECT leaves nothing, tier A borrows and repays), also after an enclave
 restart with a new key. How it is deployed: [`docs/DEPLOY.md`](docs/DEPLOY.md).
-Next: the web app (borrower flow, verify page).
+The web app (`web/`) runs on `@tio/ui` and deploys to Vercel: a landing page, the
+borrower flow (demo wallet, consent, live stages, the tier read back from chain)
+and a loan page that borrows and repays on both pools through the sponsored relay.
+Everything the gateway reports is checked against chain before it is shown. The
+verify page is next.
+Any tier can be re-checked from a clone with
+`pnpm --filter @tio/verifier verify -- <wallet> --cluster devnet` ([`docs/VERIFY.md`](docs/VERIFY.md)).
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.

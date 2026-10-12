@@ -16,6 +16,12 @@ import {
   getProgramDerivedAddress,
   getUtf8Encoder,
 } from '@solana/kit';
+import {
+  ENCLAVE_ENTRY_DISCRIMINATOR,
+  type EnclaveEntry,
+  getEnclaveEntryDecoder,
+  getEnclaveEntrySize,
+} from './generated/index.ts';
 
 export const ORACLE_PROGRAM_ID = address('HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8');
 export const SAS_PROGRAM_ID = address('22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG');
@@ -79,6 +85,36 @@ export function buildMessage(f: MessageFields): Uint8Array {
 /** The payload's `issued_at` (i64 LE at offset 67, FORMATS §7). */
 export function payloadIssuedAt(payload: Uint8Array): bigint {
   return view(payload).getBigInt64(67, true);
+}
+
+/** Every field of the 83-byte FORMATS §7 payload. Hashes are copies, not views. */
+export type DecodedPayload = {
+  tier: number;
+  proofType: number;
+  measurementId: number;
+  policyHash: Uint8Array;
+  consentHash: Uint8Array;
+  issuedAt: bigint;
+  windowFrom: number;
+  windowTo: number;
+};
+
+/** Decodes a FORMATS §7 payload; any length other than 83 is a `RangeError`. */
+export function decodePayload(payload: Uint8Array): DecodedPayload {
+  if (payload.length !== PAYLOAD_LEN) {
+    throw new RangeError(`payload must be ${PAYLOAD_LEN} bytes, got ${payload.length}`);
+  }
+  const v = view(payload);
+  return {
+    tier: v.getUint8(0),
+    proofType: v.getUint8(1),
+    measurementId: v.getUint8(2),
+    policyHash: payload.slice(3, 35),
+    consentHash: payload.slice(35, 67),
+    issuedAt: v.getBigInt64(67, true),
+    windowFrom: v.getUint32(75, true),
+    windowTo: v.getUint32(79, true),
+  };
 }
 
 // --- secp256k1 precompile ------------------------------------------------
@@ -176,4 +212,26 @@ export function parseSasAttestation(owner: Address, data: Uint8Array): StoredAtt
     payload: data.slice(SAS_DATA_OFFSET, SAS_DATA_OFFSET + PAYLOAD_LEN),
     expiry: v.getBigInt64(SAS_EXPIRY_OFFSET, true),
   };
+}
+
+// --- §13 registry entry ----------------------------------------------------
+
+/**
+ * Decodes an `EnclaveEntry` account you didn't create: the generated decoder checks
+ * neither the length nor the discriminator, so this does, after the owner.
+ *
+ * @throws on a wrong owner, length or discriminator.
+ */
+export function parseEnclaveEntry(owner: Address, data: Uint8Array): EnclaveEntry {
+  if (owner !== ORACLE_PROGRAM_ID) throw new Error('account is not owned by the oracle program');
+  const size = getEnclaveEntrySize();
+  if (data.length !== size) {
+    throw new Error(
+      `enclave entry has the wrong length: expected ${size} bytes, got ${data.length}`,
+    );
+  }
+  if (!ENCLAVE_ENTRY_DISCRIMINATOR.every((byte, i) => data[i] === byte)) {
+    throw new Error('account is not an oracle EnclaveEntry (wrong discriminator)');
+  }
+  return getEnclaveEntryDecoder().decode(data);
 }

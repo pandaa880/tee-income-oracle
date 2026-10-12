@@ -3,6 +3,7 @@
  *
  *   POST /v1/sessions               { wallet, persona_id } → { session_id, intent, intent_expires }
  *   POST /v1/sessions/:id/complete  { signature_b58 } → text/event-stream of stages, then result
+ *   POST /v1/loans/relay            { tx_b64 } → { signature }: the relayer co-signs a borrow/repay
  *   GET  /v1/info                   deployment facts for the web
  *   GET  /health
  *
@@ -19,12 +20,16 @@ import { z } from 'zod';
 
 import { GatewayError, errorBody, gatewayError } from './errors.ts';
 import { type Deps, createSession, runSession, takeSession } from './flow.ts';
+import type { LoanRelay } from './loan-relay-flow.ts';
 import type { RateLimiter } from './rate-limit.ts';
 
 const MAX_BODY_BYTES = 4 * 1024;
 /** SSE comment interval: keeps proxies from closing a quiet stream (submit can take a minute). */
 const KEEP_ALIVE_MS = 15_000;
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]+$/;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+/** A v0 transaction is at most 1232 bytes, 1644 base64 characters. */
+const MAX_TX_B64 = 2048;
 const PERSONAS = ['salaried_steady', 'trader_lumpy', 'declining', 'stressed'] as const;
 
 const createSchema = z.strictObject({
@@ -33,6 +38,9 @@ const createSchema = z.strictObject({
 });
 const completeSchema = z.strictObject({
   signature_b58: z.string().min(1).max(88).regex(BASE58),
+});
+const relaySchema = z.strictObject({
+  tx_b64: z.string().min(1).max(MAX_TX_B64).regex(BASE64),
 });
 
 export type GatewayInfo = {
@@ -43,9 +51,12 @@ export type GatewayInfo = {
   measurement_id: number;
   policy_hash: string;
   attester_address: string;
+  /** Fee payer the browser names when it builds a loan transaction for `/v1/loans/relay`. */
+  relayer: string;
 };
 
 export type AppDeps = Deps & {
+  loanRelay: LoanRelay;
   rateLimiter: RateLimiter;
   config: { allowedOrigin: string; trustProxy: boolean; info: GatewayInfo };
   /** Test hook; defaults to X-Forwarded-For (when trusted) or the socket address. */
@@ -158,15 +169,17 @@ export function createApp(deps: AppDeps): Hono {
 
   app.get('/health', (c) => c.json({ status: 'ok' }));
   app.get('/v1/info', (c) => c.json(deps.config.info));
-  app.post(
-    '/v1/sessions',
-    async (c, next) =>
-      deps.rateLimiter.allow(clientIp(c))
-        ? next()
-        : fail(gatewayError('rate_limited', 'gateway', 429)),
-    limitBody,
-    async (c) => c.json(await createSession(deps, await readBody(c, createSchema))),
+  // Create and relay share the buckets: both start work that costs the gateway something.
+  const rateLimit = async (c: Context, next: () => Promise<void>) =>
+    deps.rateLimiter.allow(clientIp(c))
+      ? next()
+      : fail(gatewayError('rate_limited', 'gateway', 429));
+  app.post('/v1/sessions', rateLimit, limitBody, async (c) =>
+    c.json(await createSession(deps, await readBody(c, createSchema))),
   );
   app.post('/v1/sessions/:id/complete', limitBody, (c) => complete(deps, c));
+  app.post('/v1/loans/relay', rateLimit, limitBody, async (c) =>
+    c.json(await deps.loanRelay.relay(await readBody(c, relaySchema))),
+  );
   return app;
 }

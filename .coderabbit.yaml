@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit reviews on request (`@coderabbitai review`) and never commits to a branch:
+# fixes from its findings are made by the author, with a test, like any review fix.
+# `inheritance` keeps the remaining settings from the CodeRabbit UI; the review keys below
+# restate the current UI choices so they hold either way.
+inheritance: true
+reviews:
+  profile: chill
+  auto_review:
+    enabled: false
+  finishing_touches:
+    autofix:
+      enabled: false

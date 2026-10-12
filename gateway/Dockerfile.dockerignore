@@ -1,6 +1,6 @@
 # Context for gateway/Dockerfile (BuildKit reads <Dockerfile>.dockerignore).
-# Only the lockfile, the gateway's sources, the oracle client sources,
-# the deployment addresses and the default policy; never tests or keys.
+# Only the lockfile, the gateway's sources, the oracle and demo-pool client
+# sources, the deployment addresses and the default policy; never tests or keys.
 *
 !package.json
 !pnpm-lock.yaml
@@ -9,6 +9,8 @@
 !gateway/src/
 !clients/ts/oracle/package.json
 !clients/ts/oracle/src/
+!clients/ts/demo-pool/package.json
+!clients/ts/demo-pool/src/
 !sandbox-bank/package.json
 !sandbox-bank/src/crypto/jcs.ts
 !packages/encoding/package.json
@@ -22,3 +24,4 @@ deployments/**/attestation-pending*.hex
 deployments/**/*.tmp
 deployments/**/*.lock
 clients/ts/oracle/src/**/*.test.ts
+clients/ts/demo-pool/src/**/*.test.ts

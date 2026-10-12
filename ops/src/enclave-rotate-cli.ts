@@ -1,6 +1,7 @@
-// Usage: pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip>
+// Usage: pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip> --release <tag>
 // Needs `oyster-cvm` on PATH and the deployed enclave reachable on :1301 (attestation) and
-// :8080 (/v1/info). Archives the attestation in deployments/<cluster>/. Env: see ops/README.md.
+// :8080 (/v1/info). Archives the attestation in deployments/<cluster>/ and records the release
+// tag + attestation endpoint for the verifier. Env: see ops/README.md.
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { isIP } from 'node:net';
@@ -16,6 +17,8 @@ const COMPOSE = repoPath('enclave/docker-compose.yml');
 const ATTESTATION_PORT = 1301; // Oyster attests the secp256k1 key (/app/ecdsa.pub) here
 const ENCLAVE_PORT = 8080;
 const HTTP_TIMEOUT_MS = 15_000;
+/** The tag whose compose file is deployed; the verifier fetches that exact file to recompute PCR16. */
+const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
 const InfoSchema = z.object({ attester_address: z.string() });
 
 /** stdout + stderr of `oyster-cvm`; a non-zero exit rejects (the parsers then never run). */
@@ -55,10 +58,12 @@ function oysterPorts(ip: string): RotatePorts {
 }
 
 async function main(): Promise<void> {
-  const options = cliOptions(['cluster', 'enclave-ip']);
+  const options = cliOptions(['cluster', 'enclave-ip', 'release']);
   const cluster = parseCluster(options.cluster);
   const ip = options['enclave-ip'] ?? '';
   if (isIP(ip) !== 4) throw new Error('--enclave-ip must be an IPv4 address');
+  const release = options.release ?? '';
+  if (!RELEASE_TAG.test(release)) throw new Error('--release must be a release tag like v0.3.0');
   const config = loadConfig(process.env);
   const result = await runRotate({
     ...chainClients(config),
@@ -66,6 +71,8 @@ async function main(): Promise<void> {
     admin: await readKeypair(config.adminKeypairPath),
     deploymentPath: deploymentPath(cluster),
     archiveDir: repoPath(`deployments/${cluster}`),
+    release,
+    endpoint: `http://${ip}:${ATTESTATION_PORT}`,
     ports: oysterPorts(ip),
   });
   const { measurementId } = result;

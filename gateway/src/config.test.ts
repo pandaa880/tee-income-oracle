@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DEMO_POOL_PROGRAM_ADDRESS } from '@tio/demo-pool-client';
 import { describe, expect, it } from 'vitest';
 
 import { ConfigError, loadConfig } from './config.ts';
@@ -64,6 +65,7 @@ describe('loadConfig: accepted', () => {
       credential: LOCALNET.credential,
       schema: LOCALNET.schema,
       sasProgram: LOCALNET.sas_program,
+      pools: [],
     });
   });
 
@@ -322,5 +324,69 @@ describe('loadConfig: BANK_URL transport when BANK_TOKEN is set', () => {
 
   it('keeps accepting a public http BANK_URL when no token is set', () => {
     expect(() => loadConfig(env({ BANK_URL: 'http://bank.example.com' }), REPO_ROOT)).not.toThrow();
+  });
+});
+
+/** A repo root whose deployments/localnet.json is the real one plus `extra`. */
+function rootWith(extra: Record<string, unknown>): string {
+  const root = mkdtempSync(join(tmpdir(), 'tio-config-'));
+  const dir = join(root, 'deployments');
+  mkdirSync(dir);
+  writeFileSync(join(dir, 'localnet.json'), JSON.stringify({ ...LOCALNET, ...extra }));
+  return root;
+}
+
+const loadAt = (root: string) =>
+  loadConfig(env({ POLICY_PATH: join(REPO_ROOT, 'test-vectors/policy/default.json') }), root);
+
+describe('loadConfig: deployment pools and mint', () => {
+  const POOL_A = '3gJtuaoBxuAMTvphyRx1KXDHKg2FQfbHCWsvQ4rMgSND';
+  const POOL_B = 'F8K44XAxQ66GWjtpnnTidox81YHcr2VN5ogFofFViCP7';
+  const MINT = '991nZUZr63g1pZJ7VQ8GQWk5fVbP7WsuX7crsY5q8qKV';
+
+  it('reads mint and the pool addresses (in file order)', () => {
+    const root = rootWith({
+      mint: MINT,
+      demo_pool_program: DEMO_POOL_PROGRAM_ADDRESS,
+      pools: [
+        { address: POOL_A, pool_id: 0 },
+        { address: POOL_B, pool_id: 1 },
+      ],
+    });
+    const d = loadAt(root).deployment;
+    expect(d.mint).toBe(MINT);
+    expect(d.pools).toEqual([POOL_A, POOL_B]);
+  });
+
+  it('leaves mint undefined when the file has none', () => {
+    expect(loadAt(rootWith({})).deployment.mint).toBeUndefined();
+  });
+
+  it('defaults pools to [] when the file has none', () => {
+    expect(loadAt(rootWith({})).deployment.pools).toEqual([]);
+  });
+
+  it('accepts demo_pool_program equal to the compiled-in program address', () => {
+    const root = rootWith({ demo_pool_program: DEMO_POOL_PROGRAM_ADDRESS });
+    expect(loadAt(root).deployment.pools).toEqual([]);
+  });
+
+  it('rejects a demo_pool_program that differs from the compiled-in address with a ConfigError naming it', () => {
+    const root = rootWith({ demo_pool_program: POOL_A });
+    const e = thrown(() => loadAt(root));
+    expect(e).toBeInstanceOf(ConfigError);
+    if (!(e instanceof ConfigError)) throw new Error('unreachable');
+    expect(e.message).toContain('demo_pool_program');
+  });
+
+  it.each([
+    ['a pool that is not a base58 address', { pools: [{ address: 'nope', pool_id: 0 }] }],
+    ['a pool entry without an address', { pools: [{ pool_id: 0 }] }],
+    ['a mint that is not a base58 address', { mint: 'nope' }],
+    ['a pool_id above 255', { pools: [{ address: POOL_A, pool_id: 256 }] }],
+    ['a negative pool_id', { pools: [{ address: POOL_A, pool_id: -1 }] }],
+  ])('rejects %s with a ConfigError', (_name, extra) => {
+    const e = thrown(() => loadAt(rootWith(extra)));
+    expect(e).toBeInstanceOf(ConfigError);
   });
 });

@@ -1,11 +1,13 @@
 /**
- * The four chain operations the relayer needs, as a small port, plus the kit
- * adapter that implements them over RPC with timeouts (CODING-GUIDELINES §3:
- * kit's HTTP transport and signature subscription never time out on their
- * own). Tests fake the port to drive every relayer branch.
+ * The chain operations the relayer needs, as two small ports (`Chain` for the
+ * attestation relayer, `RelayChain` for the loan relay), plus the kit adapter
+ * that implements both over RPC with timeouts (CODING-GUIDELINES §3: kit's HTTP
+ * transport and signature subscription never time out on their own). Tests fake
+ * the ports to drive every branch.
  */
 import {
   type Address,
+  type Base64EncodedWireTransaction,
   type Blockhash,
   type Rpc,
   type RpcSubscriptions,
@@ -30,10 +32,27 @@ export type Chain = {
   account: (at: Address) => Promise<RawAccount | null>;
 };
 
+/**
+ * What the loan relay needs for a fully signed wire transaction it did not
+ * build: a simulation that checks every signature, a plain send, and status
+ * polls (its blockhash lifetime is the browser's, so kit's send-and-confirm
+ * can't be reused).
+ */
+export type RelayChain = {
+  /** `err` is null when the transaction would succeed. */
+  simulate: (wire: Base64EncodedWireTransaction) => Promise<{ err: unknown }>;
+  send: (wire: Base64EncodedWireTransaction) => Promise<Signature>;
+  signatureStatuses: Chain['signatureStatuses'];
+  /** Whether the borrower's token account exists (null = the relayer would pay its rent). */
+  account: Chain['account'];
+  /** Whether any transaction ever touched `address` (a closed account keeps its history). */
+  hasHistory: (address: Address) => Promise<boolean>;
+};
+
 export function kitChain(
   rpc: Rpc<SolanaRpcApi>,
   rpcSubscriptions: RpcSubscriptions<SolanaRpcSubscriptionsApi>,
-): Chain {
+): Chain & RelayChain {
   const sendAndConfirm = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
   return {
     latestBlockhash: async () =>
@@ -53,5 +72,21 @@ export function kitChain(
       if (value === null) return null;
       return { owner: value.owner, data: b64Decode(value.data[0]) };
     },
+    simulate: async (wire) => {
+      const { value } = await rpc
+        .simulateTransaction(wire, { encoding: 'base64', sigVerify: true, commitment: 'confirmed' })
+        .send({ abortSignal: rpcSignal() });
+      return { err: value.err };
+    },
+    send: (wire) =>
+      rpc
+        .sendTransaction(wire, { encoding: 'base64', preflightCommitment: 'confirmed' })
+        .send({ abortSignal: rpcSignal() }),
+    hasHistory: async (at) =>
+      (
+        await rpc
+          .getSignaturesForAddress(at, { limit: 1, commitment: 'confirmed' })
+          .send({ abortSignal: rpcSignal() })
+      ).length > 0,
   };
 }

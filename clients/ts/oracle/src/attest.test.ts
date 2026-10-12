@@ -1,5 +1,7 @@
 // Unit tests for the hand-written attestation helpers (`attest.ts`): the parts Codama cannot
 // generate (FORMATS §8 message, precompile data, SAS attestation address and reader, constants).
+import { readFileSync } from 'node:fs';
+
 import { getAddressEncoder, address, type Address } from '@solana/kit';
 import { describe, expect, it } from 'vitest';
 
@@ -11,7 +13,11 @@ import {
   sasShapedAccount,
   signMessage,
 } from '../../../../programs/oracle/tests/src/attest.ts';
-import { ORACLE_PROGRAM_ADDRESS } from './generated/index.ts';
+import {
+  ORACLE_PROGRAM_ADDRESS,
+  getEnclaveEntryEncoder,
+  getEnclaveEntrySize,
+} from './generated/index.ts';
 import {
   DOMAIN_TAG,
   MAX_SIGNATURE_LIFETIME_SECS,
@@ -33,6 +39,8 @@ import {
   attestationAddress,
   buildMessage,
   buildPrecompileData,
+  decodePayload,
+  parseEnclaveEntry,
   parseSasAttestation,
   payloadIssuedAt,
   precompileInstruction,
@@ -285,5 +293,127 @@ describe('parseSasAttestation', () => {
     const data = sasAccount(WALLET, payload, 99n, signer);
     new DataView(data.buffer).setUint32(SAS_DATA_LEN_OFFSET, 82, true);
     expect(() => parseSasAttestation(SAS_PROGRAM_ID, data)).toThrow(/data length is not 83/);
+  });
+});
+
+const fromHex = (hex: string): Uint8Array => Uint8Array.from(Buffer.from(hex, 'hex'));
+
+describe('decodePayload (FORMATS §7)', () => {
+  const vector = JSON.parse(
+    readFileSync(
+      new URL('../../../../test-vectors/vectors/salaried_steady/expected.json', import.meta.url),
+      'utf8',
+    ),
+  ) as {
+    payload_hex: string;
+    policy_hash: string;
+    consent_hash: string;
+    window_from: number;
+    window_to: number;
+  };
+
+  it('decodes every field of the golden payload', () => {
+    const bytes = fromHex(vector.payload_hex);
+    const decoded = decodePayload(bytes);
+    expect(decoded.tier).toBe(1);
+    expect(decoded.proofType).toBe(1);
+    expect(decoded.measurementId).toBe(0);
+    expect(decoded.policyHash).toEqual(fromHex(vector.policy_hash));
+    expect(decoded.consentHash).toEqual(fromHex(vector.consent_hash));
+    expect(decoded.issuedAt).toBe(payloadIssuedAt(bytes));
+    expect(decoded.windowFrom).toBe(vector.window_from);
+    expect(decoded.windowTo).toBe(vector.window_to);
+  });
+
+  it('round-trips the test builder, including the maximum field values', () => {
+    const policyHash = Uint8Array.from({ length: 32 }, (_, i) => i);
+    const consentHash = Uint8Array.from({ length: 32 }, (_, i) => 255 - i);
+    const bytes = buildPayload({
+      tier: 3,
+      proofType: 2,
+      measurementId: 254,
+      policyHash,
+      consentHash,
+      issuedAt: 9_007_199_254_740_993n,
+      windowFrom: 0,
+      windowTo: 4_294_967_295,
+    });
+    expect(decodePayload(bytes)).toEqual({
+      tier: 3,
+      proofType: 2,
+      measurementId: 254,
+      policyHash,
+      consentHash,
+      issuedAt: 9_007_199_254_740_993n,
+      windowFrom: 0,
+      windowTo: 4_294_967_295,
+    });
+  });
+
+  it('reads correctly from a subarray view with a byte offset', () => {
+    const padded = new Uint8Array(PAYLOAD_LEN + 5);
+    padded.set(buildPayload({ issuedAt: 42n, tier: 2 }), 5);
+    const decoded = decodePayload(padded.subarray(5));
+    expect(decoded.issuedAt).toBe(42n);
+    expect(decoded.tier).toBe(2);
+  });
+
+  it('throws a RangeError on any length other than 83', () => {
+    for (const length of [0, 82, 84]) {
+      expect(() => decodePayload(new Uint8Array(length))).toThrow(RangeError);
+    }
+  });
+});
+
+describe('parseEnclaveEntry', () => {
+  const entryArgs = {
+    version: 1,
+    bump: 254,
+    measurementId: 5,
+    measurementKind: 1,
+    measurement: new Uint8Array(32).fill(0xaa),
+    attester: new Uint8Array(20).fill(0xbb),
+    attestationDocHash: new Uint8Array(32).fill(0xcc),
+    registeredAt: 1_790_000_000n,
+    revokedAt: 0n,
+  };
+  const data = (): Uint8Array => new Uint8Array(getEnclaveEntryEncoder().encode(entryArgs));
+
+  it('decodes_an_account_the_oracle_owns', () => {
+    const entry = parseEnclaveEntry(ORACLE_PROGRAM_ID, data());
+    expect(entry).toMatchObject({
+      version: 1,
+      bump: 254,
+      measurementId: 5,
+      measurementKind: 1,
+      registeredAt: 1_790_000_000n,
+      revokedAt: 0n,
+    });
+    expect(new Uint8Array(entry.attester)).toEqual(entryArgs.attester);
+    expect(new Uint8Array(entry.measurement)).toEqual(entryArgs.measurement);
+    expect(new Uint8Array(entry.attestationDocHash)).toEqual(entryArgs.attestationDocHash);
+  });
+
+  it('rejects_an_account_owned_by_another_program', () => {
+    expect(() => parseEnclaveEntry(SAS_PROGRAM_ID, data())).toThrow(/owner|owned/i);
+  });
+
+  it('rejects_a_length_of_111', () => {
+    expect(data()).toHaveLength(getEnclaveEntrySize());
+    expect(() => parseEnclaveEntry(ORACLE_PROGRAM_ID, data().subarray(0, 111))).toThrow(/112/);
+  });
+
+  it('rejects_a_length_of_113', () => {
+    expect(() => parseEnclaveEntry(ORACLE_PROGRAM_ID, Uint8Array.from([...data(), 0]))).toThrow(
+      /112/,
+    );
+  });
+
+  it('rejects_a_wrong_discriminator', () => {
+    const wrong = data();
+    wrong[0] = (wrong[0] ?? 0) ^ 1;
+    expect(() => parseEnclaveEntry(ORACLE_PROGRAM_ID, wrong)).toThrow(
+      /discriminator|enclave entry/i,
+    );
   });
 });

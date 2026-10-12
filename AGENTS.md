@@ -54,7 +54,10 @@ programs/oracle/      Anchor. Enclave registry (image id → attester), verifies
                       tests/ = TS program tests (vitest on embedded surfpool).
 clients/ts/oracle/    Codama-generated kit client for the oracle (from the IDL; committed).
 packages/encoding/    `@tio/encoding`: the one TS module for hex / base64 / base64url (strict,
-                      canonical decoders). sandbox-bank, gateway and ops use it.
+                      canonical decoders; no Node globals, so it runs in a browser).
+                      sandbox-bank, gateway, ops and the verifier use it.
+packages/ui/          `@tio/ui`: standalone React UI package for web (design tokens light/dark,
+                      shadcn/Radix primitives, ledger patterns). No Solana, no web imports.
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
                       tests/ = TS program tests (reuse the oracle test harness).
 clients/ts/demo-pool/ Codama-generated kit client for the demo pool (committed).
@@ -65,14 +68,16 @@ enclave/              Rust. Runs in the Oyster CVM. HTTP wrapper around tio-core
                       Built with Docker + docker-compose (images pinned by digest).
 gateway/              Node/TS, untrusted orchestrator + tx relayer (formerly proxy/).
 sandbox-bank/         Node/TS mock FIP + AA (ReBIT, demo keys) + test-vector generator.
-verifier/             TS. Nitro attestation doc → AWS root; image id; on-chain key match.
+verifier/             `@tio/verifier`: TS library (Node + browser) + CLI. Wallet → SAS attestation →
+                      registry entry → Nitro document: COSE/chain to the pinned AWS root, image id,
+                      PCR16 from the compose at the release tag, attester, doc hash (`docs/VERIFY.md`).
 ops/                  TS admin scripts (admin wallet): `oracle:init`, `sas:setup` (SAS credential
                       + schema), `pool:setup` (demo mint + pool), `enclave:rotate` (attested
                       Oyster key → registry + pools), `e2e:devnet`.
 deployments/          Public addresses per cluster (`<cluster>.json`), written by ops.
 test-fixtures/        Hand-calculated scoring cases; `sas/` = SAS binary dumped from devnet
                       (+ SOURCE.md with sha256, LICENSE). Not generated, unlike test-vectors/.
-web/                  Next.js. Borrower flow, lender dashboard, verify page.
+web/                  Vite + React SPA on `@tio/ui`. Borrower flow, loan book, verify page.
 test-vectors/         Generated fixtures + TEST-ONLY keys. Positive and negative cases.
 docs/                 ARCHITECTURE.md, FORMATS.md (wire formats, source of truth),
                       CODING-GUIDELINES.md, DEPLOY.md (devnet runbook).
@@ -113,8 +118,7 @@ workspace (TS packages). `enclave/` builds via Docker, not `anchor build`.
 ## Commands
 
 The repo is early: `tio-core` has key exchange, decryption, JWS, a paise money parser, the DEPOSIT FI parser, the scoring policy (v2, canonical JSON hash), the scorer (FORMATS §6.1), and the evaluate pipeline with the attestation payload and message (§7, §8, §10.1); `sandbox-bank`
-has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; deployed on Azure Container Apps behind `BANK_TOKEN`); `enclave` serves the §10 HTTP API around `tio-core` (deployed on Marlin Oyster); `gateway` orchestrates sessions over the §16 HTTP API (SSE stages) and relays the attestation transaction (end to end on localnet and on devnet, deployed on Azure Container Apps); `ops` has the admin scripts for a cluster (oracle init, SAS credential/schema, demo pool, attested enclave rotation, devnet E2E; tested on surfpool and run on devnet, `docs/DEPLOY.md`); the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); most other packages
-hold only READMEs. Update the status as each one starts working.
+has the test-vector and demo-key generators and the live mock FIP + AA HTTP service (FORMATS §15; deployed on Azure Container Apps behind `BANK_TOKEN`); `enclave` serves the §10 HTTP API around `tio-core` (deployed on Marlin Oyster); `gateway` orchestrates sessions over the §16 HTTP API (SSE stages), relays the attestation transaction and sponsors the demo pool's borrow/repay transactions after an 11-rule shape check (end to end on localnet and on devnet, deployed on Azure Container Apps); `ops` has the admin scripts for a cluster (oracle init, SAS credential/schema, demo pool, attested enclave rotation, devnet E2E; tested on surfpool and run on devnet, `docs/DEPLOY.md`); the `oracle` program has the enclave registry and `submit_attestation` (secp256k1 precompile check + SAS write, FORMATS §8, §13), `demo-pool` lends on the attestation (`create_pool`, `update_pool`, `borrow`, `repay`, FORMATS §14); `verifier` checks a wallet's tier end to end (SAS attestation → registry entry → archived Nitro document: COSE + chain to the pinned AWS root, base-image PCRs, PCR16 from the compose at the release tag, image id, attester, doc hash, entry active) as a browser-safe library and a CLI, tested against the real devnet documents and on surfpool; `web` is the Vite SPA in progress. Update the status as each one starts working.
 
 | Step | Command | Status |
 |---|---|---|
@@ -127,18 +131,22 @@ hold only READMEs. Update the status as each one starts working.
 | Test (Rust) | `cargo test -p tio-core` — against `test-vectors/golden/` and the generated vectors (`tests/vectors.rs`) | works (key exchange, decryption, JWS, money parser, FI parser, policy, scoring incl. hand-calculated fixtures in `test-fixtures/scoring/`, evaluate pipeline + payload/message on every vector, check-order boundaries in `tests/evaluate_boundaries.rs`, layered negatives); `cargo test -p oracle`: precompile/message layouts, attestation readers and clock rules; `cargo test -p demo-pool`: the pool's lending rules (all three also in CI) |
 | Test (golden vectors) | `cd test-vectors/golden/rahasya && python3 -m unittest -v test_golden.py` | works |
 | Test (programs) | `anchor test` (= `pnpm --filter @tio/oracle-tests --filter @tio/demo-pool-tests test`, embedded offline surfpool) | works (`oracle` registry + `submit_attestation` against the dumped SAS binary; `demo-pool` against the real oracle, SAS and SPL Token; also in CI) |
-| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ops` unit tests incl. an offline surfpool suite with the dumped SAS binary (`pnpm --filter @tio/ops test:programs` runs the suites that need the built programs), `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`: §8 message, precompile, SAS reader) and `gateway` (unit + surfpool relayer/registry suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
+| Test (TS) | `pnpm -r test` (vitest) | works (`sandbox-bank`, `ui` (components on happy-dom, token contrast and package-rule tests), `web` (domain, adapters with chunk-split SSE and 429 backoff, hooks on fake ports, the gateway's own relay shape check on built loan transactions, page tests on a fake devnet (flow, chain confirmation, loan, flag gating), the import-rule test), `ops` unit tests incl. an offline surfpool suite with the dumped SAS binary (`pnpm --filter @tio/ops test:programs` runs the suites that need the built programs), `oracle-tests`, `demo-pool-tests`, `oracle-client` (hand-written `attest.ts`: §8 message, precompile, SAS reader, payload and entry decoders), `verifier` (COSE, document, chain, image id, chain readers, sources, CLI format against the two archived devnet documents; `pnpm --filter @tio/verifier test:programs` runs `verifyWallet` and the CLI on surfpool) and `gateway` (unit + surfpool relayer/registry/loan-relay suites; the local E2E is skipped without `TIO_E2E=1`) after `anchor build`; also in CI) |
 | Lint (Rust) | `cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings` | works (also in CI) |
-| Lint/typecheck (TS) | `pnpm --filter <@tio/encoding, @tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
+| Lint/typecheck (TS) | `pnpm --filter <@tio/encoding, @tio/ui, @tio/web, @tio/sandbox-bank, @tio/ops, @tio/gateway, @tio/verifier, @tio/oracle-client, @tio/oracle-tests or @tio/demo-pool-tests> typecheck && … lint && … format:check` (tsc, oxlint `--type-aware`, oxfmt; configs `.oxlintrc.json`, `.oxfmtrc.json`) | works (also in CI) |
 | Generate vectors | `pnpm gen:vectors` — must leave `git diff test-vectors/` empty unless a format changed | works (CI regenerates and diffs) |
 | Oracle init (admin) | `pnpm --filter @tio/ops oracle:init --cluster <localnet\|devnet>` — the admin wallet must be the oracle's upgrade authority; env in `ops/README.md` | works on surfpool and devnet (2026-10-08) |
 | SAS setup (admin) | `pnpm --filter @tio/ops sas:setup --cluster localnet` — env in `ops/README.md`; re-run is a no-op, a mismatch fails | works on localnet and devnet (2026-10-08) |
-| Demo pool (admin) | `pnpm --filter @tio/ops pool:setup --cluster <c>` — mint (no freeze authority) + pool 0 + funded vault in one transaction; re-run is a no-op | works on surfpool and devnet (2026-10-08) |
-| Enclave rotate (admin) | `pnpm --filter @tio/ops enclave:rotate --cluster <c> --enclave-ip <ipv4>` — needs `oyster-cvm` on PATH; archives the attestation in `deployments/<c>/` | works on surfpool (fake Oyster ports) and against Oyster on devnet (2026-10-08) |
+| Demo pool (admin) | `pnpm --filter @tio/ops pool:setup --cluster <c> [--pool-id <0–255>] [--tier-limits <a,b,c>]` — mint (no freeze authority, created once and shared) + pool + funded vault in one transaction; re-run is a no-op | works on surfpool and devnet (2026-10-08) |
+| Enclave rotate (admin) | `pnpm --filter @tio/ops enclave:rotate --cluster <c> --enclave-ip <ipv4> --release <tag>` — needs `oyster-cvm` on PATH; archives the attestation in `deployments/<c>/` and records the release tag + attestation endpoint for the verifier | works on surfpool (fake Oyster ports) and against Oyster on devnet (2026-10-08) |
 | E2E (devnet) | `pnpm --filter @tio/ops e2e:devnet --cluster devnet --gateway <url>` — 4 personas + tier A borrow/repay against the deployed gateway | local only; passes on devnet (2026-10-08, before and after an enclave restart) |
 | Test (ops, programs) | `pnpm --filter @tio/ops test:programs` after `anchor build` — `oracle:init`, `pool:setup`, `enclave:rotate` against the real programs | works (also in CI, `programs` job) |
+| Verify a tier (anyone) | `pnpm --filter @tio/verifier verify -- <wallet> --cluster <c> [--deployment <file>] [--rpc <url>] [--doc <hex file>] [--compose <file>]` — archived document from `deployments/<c>/`, compose at the record's `release` tag via `git show`; exit 0 PASS / 1 FAIL / 2 error (`docs/VERIFY.md`) | works on surfpool (CI) and devnet |
+| Test (verifier, programs) | `pnpm --filter @tio/verifier test:programs` after `anchor build` — `verifyWallet` and the CLI against the real oracle registry + SAS on surfnet | works (also in CI, `programs` job) |
 | Run (sandbox bank, local) | `pnpm --filter @tio/sandbox-bank start:local` (demo keys from `sandbox-bank/.secrets/`, RPC defaults to `127.0.0.1:8899`; env in `sandbox-bank/README.md`) | works |
 | Build (sandbox bank image) | `docker build -f sandbox-bank/Dockerfile -t tio-sandbox-bank:dev .` (context = repo root; `sandbox-bank/Dockerfile.dockerignore`) | works (local only; not in CI) |
+| Run (web, local) | `pnpm --filter @tio/web dev` (http://localhost:5173) | works (landing, borrow flow and loan page on `@tio/ui`; demo wallet; gateway via the `/gw` dev proxy) |
+| Build (web) | `pnpm --filter @tio/web build` (→ `web/dist`; deployed by Vercel, `web/README.md`) | works (also in CI) |
 | Run (gateway, local) | `pnpm --filter @tio/gateway start` with the env in `gateway/README.md` (needs a running enclave, the bank and an RPC; boot checks the enclave's registry entry) | works |
 | Build (gateway image) | `docker build -f gateway/Dockerfile -t tio-gateway:dev .` (context = repo root; `gateway/Dockerfile.dockerignore`) | works (local only; not in CI) |
 | E2E (local) | `TIO_E2E=1 [TIO_ENCLAVE_IMAGE=tio-enclave:dev] pnpm --filter @tio/gateway test src/e2e.local.test.ts` — real enclave container + bank process + surfnet (oracle, SAS, demo-pool) + gateway; needs the demo keys and the ops admin wallet | works (local only; never in CI: the demo keys aren't committed) |
@@ -248,6 +256,34 @@ Add a line whenever an agent makes the same mistake twice.
   (locks, pending, temp) get a `.gitignore` entry in the same change.
 - Behind one trusted proxy, the client IP is the **last** `X-Forwarded-For`
   hop (the one the proxy appended); earlier hops are client-written.
+- `@tio/encoding` uses Node's `Buffer`: fine for gateway/ops/sandbox-bank,
+  broken in the browser. `web/` uses kit's codecs.
+- The TS lint config has both `switch-exhaustiveness-check` and
+  `consistent-return`, so any `switch` fails one of them: use `Record`
+  lookups or narrowing `if` chains.
+- Node's `AbortSignal.timeout` ignores vitest fake timers: test a deadline
+  with real, short timeouts.
+- Web CSS order: `@tio/ui/fonts.css` (a remote `@import url()`) must come
+  before `@import "tailwindcss"`; anywhere later, browsers ignore it and the
+  fonts silently don't load. `web/src/styles.css` has the order.
+- `VITE_*` values are compiled into the public web bundle. Never put a
+  secret or a keyed RPC URL (Helius) in one; browser code reads config only
+  through `import.meta.env` (no `process.*`: `web/tsconfig.json` has no node
+  types).
+- In `@tio/ui` tests (happy-dom), a `vi.spyOn` on `localStorage` or
+  `Storage.prototype` leaks into later tests even after `restoreAllMocks`: a
+  test passed alone and failed in the suite. Stub the whole object with
+  `vi.stubGlobal('localStorage', fake)` (`theme-toggle.test.tsx`).
+- `pnpm add` of a package younger than pnpm's minimum release age can silently
+  add a `minimumReleaseAgeExclude` entry to `pnpm-workspace.yaml`. Check that
+  file after every install; pick an older release instead of keeping the entry.
+- `pnpm install` warns "cyclic workspace dependencies" for ops → verifier →
+  (dev) oracle-tests → ops. Expected: all three are source packages with no
+  build step, so the cycle never resolves anything at install time.
+- Nitro attestation documents are COSE_Sign1 with an indefinite-length CBOR
+  payload: hash and verify the payload bytes as received, never
+  `encode(decode(payload))`. Same for X.509: sign-check `tbsCertificateRaw`,
+  not `serialize(parse(tbs))` (`verifier/src/nitro/`).
 - `.claude/` and other AI-tool dirs are gitignored: project-local agent
   settings don't reach other contributors. Shared guidance goes here.
 
