@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.3.0...v0.4.0) (2026-10-12)
+
+
+### Features
+
+* **gateway,ops:** sponsor loan transactions and add a second demo pool ([#34](https://github.com/pandaa880/tee-income-oracle/issues/34)) ([8f94594](https://github.com/pandaa880/tee-income-oracle/commit/8f945942a0aa1e3e99176c9feb200e1d017ebab3))
+* **ui:** add the @tio/ui package (tokens, primitives, patterns) ([#36](https://github.com/pandaa880/tee-income-oracle/issues/36)) ([4ba94ed](https://github.com/pandaa880/tee-income-oracle/commit/4ba94edb76141c5b33b764adf5a5616fd259e59a))
+* **verifier:** add the @tio/verifier library and tio-verify CLI ([#41](https://github.com/pandaa880/tee-income-oracle/issues/41)) ([e2d2971](https://github.com/pandaa880/tee-income-oracle/commit/e2d2971ffc7ce30ba9eca0d86888949e9ed69503))
+* **web:** add the borrow-flow logic layer (gateway stream, relay, chain checks) ([#38](https://github.com/pandaa880/tee-income-oracle/issues/38)) ([2df24c2](https://github.com/pandaa880/tee-income-oracle/commit/2df24c26c5088e3fc3920762ad3384464825ad60))
+* **web:** add the landing, borrow flow and loan pages ([#39](https://github.com/pandaa880/tee-income-oracle/issues/39)) ([8d0e6b3](https://github.com/pandaa880/tee-income-oracle/commit/8d0e6b34aaeb8b4e2cf69ab296719a2e181ca305))
+* **web:** scaffold the Vite app on @tio/ui with Vercel config ([#37](https://github.com/pandaa880/tee-income-oracle/issues/37)) ([86390cc](https://github.com/pandaa880/tee-income-oracle/commit/86390cc3130fbb73552a3df5b11ed8452dd00945))
+
+
+### Bug Fixes
+
+* **web:** keep a verified borrow or repay on screen ([#40](https://github.com/pandaa880/tee-income-oracle/issues/40)) ([c138baa](https://github.com/pandaa880/tee-income-oracle/commit/c138baa20da49d3908127abf8827b06dffea6925))
+
 ## [0.3.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.2.0...v0.3.0) (2026-10-08)
 
 
