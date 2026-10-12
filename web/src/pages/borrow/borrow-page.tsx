@@ -13,6 +13,7 @@ import {
   borrowView,
   confirmationEpoch,
   expireConsent,
+  replacedAtStart,
   shouldPollCredential,
 } from '../../domain/borrow-view.ts';
 import { matchesExpected } from '../../domain/personas.ts';
@@ -45,7 +46,8 @@ export function BorrowPage() {
   const status = useStatus();
   const flow = useBorrowFlow();
   const { state } = flow;
-  // "Attest again": the tier on chain now is being replaced and must not stand in for the new one.
+  // The tier on chain when a flow starts (or the one "Attest again" replaces) must not stand in
+  // for the new one.
   const [replacedIssuedAt, setReplacedIssuedAt] = useState<bigint | null>(null);
   const [chosen, setChosen] = useState<PersonaId | null>(null);
   const [busy, setBusy] = useState(false);
@@ -86,6 +88,7 @@ export function BorrowPage() {
     restart();
   };
   const choose = async (id: PersonaId) => {
+    setReplacedIssuedAt((current) => replacedAtStart(current, primary?.data));
     setChosen(id);
     setBusy(true);
     try {

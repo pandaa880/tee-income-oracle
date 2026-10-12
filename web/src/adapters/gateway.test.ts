@@ -287,11 +287,29 @@ describe('completeSession', () => {
     ]);
   });
 
-  it('is a protocol_error when the stream ends without a result or an error', async () => {
+  it('is a network error when the stream ends without a result or an error', async () => {
     stubFetch(async () => sseResponse([stage('bind'), stage('fi_request')]));
     const events = await collect(createGateway(BASE).completeSession('s', 'sig', signal()));
     expect(events).toHaveLength(3);
-    expect(events.at(-1)).toMatchObject({ kind: 'error', error: { code: 'protocol_error' } });
+    expect(events.at(-1)).toMatchObject({ kind: 'error', error: { code: 'network' } });
+  });
+
+  it('is a network error when the connection drops mid-stream', async () => {
+    // The first read gets a stage, the next one fails the way a dropped connection errors a body.
+    let reads = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        reads += 1;
+        if (reads === 1) controller.enqueue(new TextEncoder().encode(stage('bind')));
+        else controller.error(new TypeError('network error'));
+      },
+    });
+    stubFetch(async () => new Response(body, { headers: { 'content-type': 'text/event-stream' } }));
+    const events = await collect(createGateway(BASE).completeSession('s', 'sig', signal()));
+    expect(events).toEqual([
+      { kind: 'stage', stage: 'bind' },
+      { kind: 'error', error: { code: 'network' } },
+    ]);
   });
 
   it.each([

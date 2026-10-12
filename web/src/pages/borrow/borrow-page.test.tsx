@@ -203,6 +203,38 @@ describe('BorrowPage against the chain', () => {
     ).toBeInTheDocument();
   }, 10_000);
 
+  it.each([
+    // Tier C (byte 3) for the old record, so showing it by mistake can't pass as the new tier A.
+    ['stale', (now: bigint) => liveAttestation({ tier: 3, issuedAt: now - 2_600_000n })],
+    [
+      'expired',
+      (now: bigint) => ({
+        ...liveAttestation({ tier: 3, issuedAt: now - 2_000n }),
+        expiry: now - 10n,
+      }),
+    ],
+  ])(
+    'after a dropped stream, shows the new tier for a wallet that held a %s one',
+    async (_, old) => {
+      const now = BigInt(Math.floor(Date.now() / 1000));
+      const { write } = await scripted(
+        async function* () {
+          yield STAGES[0] as FlowEvent;
+          yield { kind: 'error', error: { code: 'network' } };
+        },
+        { attestation: old(now) },
+      );
+      await renderApp('/borrow');
+      await approveConsent();
+      await screen.findByRole('heading', { name: 'Connection lost — checking the chain…' });
+      await write();
+      expect(
+        await screen.findByRole('heading', { level: 1, name: /you.re tier A/i }, ONE_POLL),
+      ).toBeInTheDocument();
+    },
+    10_000,
+  );
+
   it('shows a plain error, not "checking the chain", for a failure before anything was sent', async () => {
     await scripted(async function* () {}, {
       gateway: { createSession: async () => fail({ code: 'network' }) },

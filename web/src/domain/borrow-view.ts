@@ -37,11 +37,23 @@ export type BorrowViewInput = {
   /** The wallet's attestation PDA, shown for a result read from chain; null until it is known. */
   attestation: Address | null;
   /**
-   * `issued_at` of the tier the borrower chose to replace ("Attest again"): only a newer record
-   * may stand in for the flow, so the old tier can't pose as the new result.
+   * `issued_at` of the tier this flow replaces (`replacedAtStart`): only a newer record may stand
+   * in for the flow, so the old tier can't pose as the new result.
    */
   replacedIssuedAt: bigint | null;
 };
+
+/**
+ * What a new flow must beat, fixed when the borrower picks an account: the record the wallet
+ * holds then, whatever its status (stale, expired, refused by this pool), else the tier chosen
+ * for "Attest again". `issued_at` only grows per wallet (§13), so the current record wins.
+ */
+export function replacedAtStart(
+  replaced: bigint | null,
+  credential: CredentialRecord | undefined,
+): bigint | null {
+  return credential?.record?.payload.issuedAt ?? replaced;
+}
 
 /** The enclave keeps working after a disconnect, so these failures are worth waiting out. */
 const TRANSPORT = new Set<AppError['code']>(['network', 'timeout', 'rpc_busy']);
@@ -110,16 +122,41 @@ function confirmation(flow: FlowState, credential: CredentialRecord | undefined)
 
 const isStreamResult = (flow: FlowState): boolean => flow.step === 'result' || flow.step === 'loan';
 
-function fromChain(input: BorrowViewInput): BorrowView | undefined {
-  const { credential, attestation, replacedIssuedAt } = input;
-  if (attestation === null || credential?.status !== 'valid' || credential.record === null) {
-    return undefined;
-  }
-  const { record } = credential;
-  if (replacedIssuedAt !== null && record.payload.issuedAt <= replacedIssuedAt) return undefined;
+/** The wallet's record if it is newer than the tier this flow replaces; null otherwise. */
+function newRecord(input: BorrowViewInput): ChainRecord | null {
+  const record = input.credential?.record ?? null;
+  if (record === null) return null;
+  const { replacedIssuedAt } = input;
+  return replacedIssuedAt === null || record.payload.issuedAt > replacedIssuedAt ? record : null;
+}
+
+/** A newer record shown as a chain result, if its status passes `show`. */
+function fromChain(
+  input: BorrowViewInput,
+  show: (status: CredentialRecord['status']) => boolean,
+): BorrowView | undefined {
+  const { credential, attestation } = input;
+  const record = newRecord(input);
+  if (attestation === null || credential === undefined || record === null) return undefined;
+  if (!show(credential.status)) return undefined;
   const tier = tierFromByte(record.payload.tier);
   if (tier === null) return undefined;
   return { step: 'result', source: 'chain', tier, attestation, tx: null, record };
+}
+
+/**
+ * A dropped stream whose tier landed: show it whatever this pool thinks of it, as a confirmed
+ * stream result is shown (the pool list says where it's accepted). A newer record that isn't an
+ * oracle tier ends the wait as a failure, never a hang.
+ */
+function recovered(input: BorrowViewInput): BorrowView {
+  if (newRecord(input) === null) return { step: 'recovering' };
+  return (
+    fromChain(input, (status) => !NOT_SHOWABLE.has(status)) ?? {
+      step: 'failed',
+      error: { code: 'protocol_error' },
+    }
+  );
 }
 
 export function borrowView(input: BorrowViewInput): BorrowView {
@@ -148,12 +185,11 @@ export function borrowView(input: BorrowViewInput): BorrowView {
     return { step: 'consent', session, persona, wallet };
   }
   if (flow.step === 'processing') return { step: 'processing', stages: flow.stages };
-  if (flow.step === 'failed' && !isRecoverable(flow)) return { step: 'failed', error: flow.error };
-  // wallet, persona, or a recoverable failure: the chain may already hold the tier.
-  const chain = fromChain(input);
-  if (chain !== undefined) return chain;
-  if (flow.step === 'failed') return { step: 'recovering' };
-  return { step: flow.step };
+  if (flow.step === 'failed') {
+    return isRecoverable(flow) ? recovered(input) : { step: 'failed', error: flow.error };
+  }
+  // wallet or persona: a valid tier already on chain skips the flow.
+  return fromChain(input, (status) => status === 'valid') ?? { step: flow.step };
 }
 
 /** What a fresh credential read should be keyed to: the stream result it must confirm. */
@@ -172,14 +208,11 @@ export function expireConsent(view: BorrowView, secondsLeft: number): BorrowView
  * stream result it doesn't show yet, or a dropped stream whose tier hasn't landed.
  */
 export function shouldPollCredential(input: BorrowViewInput): boolean {
-  const { flow, credential, replacedIssuedAt } = input;
+  const { flow, credential } = input;
   if (isStreamResult(flow)) return confirmation(flow, credential).kind === 'pending';
   if (!isRecoverable(flow)) return false;
-  // A dropped stream: stop once any new tier landed, whatever this pool thinks of it.
-  const record = credential?.record ?? null;
-  return (
-    record === null || (replacedIssuedAt !== null && record.payload.issuedAt <= replacedIssuedAt)
-  );
+  // A dropped stream: stop once any new tier landed; the view then shows or fails, never waits.
+  return newRecord(input) === null;
 }
 
 /**

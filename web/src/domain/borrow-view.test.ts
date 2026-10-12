@@ -8,6 +8,7 @@ import {
   expireConsent,
   isRecoverable,
   isTransportFailure,
+  replacedAtStart,
   shouldPollCredential,
 } from './borrow-view.ts';
 import type { FlowState } from './flow.ts';
@@ -173,7 +174,10 @@ describe('borrowView with a credential', () => {
     'ignores a %s credential',
     (status) => {
       expect(view(flows.wallet, credentialRecord(status)).step).toBe('wallet');
-      expect(view(failed({ code: 'timeout' }), credentialRecord(status)).step).toBe('recovering');
+      // The record the wallet held when the flow started never ends a dropped stream's wait.
+      expect(view(failed({ code: 'timeout' }), credentialRecord(status), ISSUED_AT).step).toBe(
+        'recovering',
+      );
     },
   );
 
@@ -247,6 +251,19 @@ describe('shouldPollCredential', () => {
     expect(shouldPollCredential(pollInput(dropped, refused))).toBe(false);
   });
 
+  it.each(['stale', 'expired'] as const)(
+    'keeps polling past the %s tier the flow started from, until a newer one lands',
+    (status) => {
+      const dropped = failed({ code: 'network' });
+      const replacing = { replacedIssuedAt: ISSUED_AT };
+      expect(
+        shouldPollCredential({ ...pollInput(dropped, credentialRecord(status)), ...replacing }),
+      ).toBe(true);
+      const newer = credentialRecord('valid', { payload: { issuedAt: ISSUED_AT + 1n } });
+      expect(shouldPollCredential({ ...pollInput(dropped, newer), ...replacing })).toBe(false);
+    },
+  );
+
   it.each([
     ['wallet', flows.wallet],
     ['processing', flows.processing],
@@ -286,6 +303,57 @@ describe('borrowView after "Attest again" (replacedIssuedAt)', () => {
     const dropped = failed({ code: 'network' });
     expect(view(dropped, old, ISSUED_AT)).toEqual({ step: 'recovering' });
     expect(view(dropped, newer, ISSUED_AT)).toMatchObject({ source: 'chain', tier: 'B' });
+  });
+});
+
+/** A tier C record that landed after the one the flow replaces (issued_at ISSUED_AT). */
+const landed = (status: Parameters<typeof credentialRecord>[0]) =>
+  credentialRecord(status, { payload: { tier: 3, issuedAt: ISSUED_AT + 10n } });
+
+describe('borrowView recovering a dropped stream', () => {
+  const dropped = failed({ code: 'network' });
+
+  it.each(['tier_not_accepted', 'policy_mismatch', 'not_approved'] as const)(
+    'shows a new tier this pool refuses (%s), as a stream result would be',
+    (status) => {
+      expect(view(dropped, landed(status), ISSUED_AT)).toMatchObject({
+        step: 'result',
+        source: 'chain',
+        tier: 'C',
+      });
+    },
+  );
+
+  it('fails, rather than waits, when the new record is not an oracle tier', () => {
+    expect(view(dropped, landed('foreign_signer'), ISSUED_AT)).toEqual({
+      step: 'failed',
+      error: { code: 'protocol_error' },
+    });
+  });
+
+  it('still lets only a valid tier skip the flow at the wallet step', () => {
+    expect(view(flows.wallet, landed('tier_not_accepted'), ISSUED_AT).step).toBe('wallet');
+  });
+});
+
+describe('replacedAtStart', () => {
+  it.each(['valid', 'stale', 'expired', 'tier_not_accepted'] as const)(
+    'takes the issued_at of the %s record the wallet holds when the flow starts',
+    (status) => {
+      expect(replacedAtStart(null, credentialRecord(status))).toBe(ISSUED_AT);
+    },
+  );
+
+  it('prefers the current record over an older replaced tier', () => {
+    const current = credentialRecord('tier_not_accepted', {
+      payload: { issuedAt: ISSUED_AT + 5n },
+    });
+    expect(replacedAtStart(ISSUED_AT, current)).toBe(ISSUED_AT + 5n);
+  });
+
+  it('keeps what it had when the wallet holds no record or the read is missing', () => {
+    expect(replacedAtStart(null, credentialRecord('none'))).toBeNull();
+    expect(replacedAtStart(ISSUED_AT, undefined)).toBe(ISSUED_AT);
   });
 });
 
