@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.4.0...v0.5.0) (2026-10-12)
+
+
+### Features
+
+* **web:** add the loan book page ([#43](https://github.com/pandaa880/tee-income-oracle/issues/43)) ([31ef71e](https://github.com/pandaa880/tee-income-oracle/commit/31ef71e34b1ed82d899202ae1a4ffb8bf8e06137))
+
 ## [0.4.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.3.0...v0.4.0) (2026-10-12)
 
 
