@@ -188,8 +188,9 @@ headless end-to-end run passes on devnet (tiers A, B, C attested on chain,
 REJECT leaves nothing, tier A borrows and repays), also after an enclave
 restart with a new key. How it is deployed: [`docs/DEPLOY.md`](docs/DEPLOY.md).
 The web app (`web/`) runs on `@tio/ui` and deploys to Vercel: a landing page, the
-borrower flow (demo wallet, consent, live stages, the tier read back from chain)
-and a loan page that borrows and repays on both pools through the sponsored relay.
+borrower flow (demo wallet, consent, live stages, the tier read back from chain),
+a loan page that borrows and repays on both pools through the sponsored relay, and a loan
+book per pool (every open loan with the health of its credential, read from chain).
 Everything the gateway reports is checked against chain before it is shown. The
 verify page is next.
 Any tier can be re-checked from a clone with
