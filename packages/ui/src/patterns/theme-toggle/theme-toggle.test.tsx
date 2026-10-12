@@ -105,6 +105,31 @@ describe('ThemeToggle', () => {
     expect(theme()).toBe('dark');
   });
 
+  it('shows a moon in the light theme and a sun after switching to dark', () => {
+    render(<ThemeToggle />);
+    const button = screen.getByRole('button', { name: /theme/i });
+    expect(button.querySelector('svg')).toHaveAttribute('data-icon', 'moon');
+    fireEvent.click(button);
+    expect(button.querySelector('svg')).toHaveAttribute('data-icon', 'sun');
+  });
+
+  it('hides the icon from assistive tech and has no visible text, so the label names it', () => {
+    render(<ThemeToggle />);
+    const button = screen.getByRole('button', { name: 'Switch to dark theme' });
+    expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
+    expect(button).toHaveTextContent(/^$/);
+    expect(button).toHaveAttribute('title', 'Switch to dark theme');
+  });
+
+  it('names the opposite action after a click, in the label and the title', () => {
+    render(<ThemeToggle />);
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to dark theme' }));
+    expect(screen.getByRole('button', { name: 'Switch to light theme' })).toHaveAttribute(
+      'title',
+      'Switch to light theme',
+    );
+  });
+
   it('merges className', () => {
     render(<ThemeToggle className="tt-x" />);
     expect(screen.getByRole('button', { name: /theme/i })).toHaveClass('tt-x');

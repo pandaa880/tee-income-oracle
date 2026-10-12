@@ -67,6 +67,12 @@ const STATE_WORD: Record<ServiceState, string> = {
   down: 'DOWN ON DEVNET',
 };
 
+const STATE_TONE: Record<ServiceState, Tone> = {
+  live: 'positive',
+  degraded: 'caution',
+  down: 'negative',
+};
+
 /**
  * The gateway's enclave build, but only when the registry read confirmed it: the entry exists,
  * isn't revoked and holds the gateway's attester. `/v1/info` alone is the gateway's word.
@@ -77,19 +83,28 @@ export function registeredBuild(status: ServiceStatus | undefined): number | nul
   return confirmed ? status.measurementId : null;
 }
 
-export type StatusLabel = { strip: string; banner: string | null; bannerTone: Tone };
+export type StatusLabel = {
+  /** "LIVE ON DEVNET" and the like: the strip's first item, shown in `stateTone`. */
+  state: string;
+  stateTone: Tone;
+  /** The rest of the strip, in reading order. */
+  facts: string[];
+  banner: string | null;
+  bannerTone: Tone;
+};
 
 /** The mono-caps strip and, when something is wrong, a sentence for a banner. */
 export function statusLabel(status: ServiceStatus, pools = 0): StatusLabel {
   const build = registeredBuild(status);
-  const parts = [
-    STATE_WORD[status.state],
-    build === null ? 'ENCLAVE BUILD' : `ENCLAVE BUILD #${build}`,
-  ];
-  if (status.state === 'live') parts.push('REGISTERED', 'GATEWAY UP');
-  if (status.state === 'live' && pools > 0) parts.push(`${pools} POOLS READING THE ORACLE`);
+  const buildItem = build === null ? 'ENCLAVE BUILD' : `ENCLAVE BUILD #${build}`;
+  const live = status.state === 'live';
+  const facts = [live ? `${buildItem} · REGISTERED` : buildItem];
+  if (live) facts.push('GATEWAY UP');
+  if (live && pools > 0) facts.push(`${pools} POOLS READING THE ORACLE`);
   return {
-    strip: parts.join(' · '),
+    state: STATE_WORD[status.state],
+    stateTone: STATE_TONE[status.state],
+    facts,
     banner: status.reason === null ? null : BANNER[status.reason],
     bannerTone: status.state === 'down' ? 'negative' : 'caution',
   };
