@@ -24,7 +24,9 @@ export function ExampleReceipt() {
         </Badge>
       </div>
       <p className="m-0 flex items-baseline gap-3">
-        <span className={`font-display text-5xl leading-none ${TONE_TEXT[tierTone('A')]}`}>A</span>
+        <span className={`font-display text-[3rem] leading-none ${TONE_TEXT[tierTone('A')]}`}>
+          A
+        </span>
         <span className="text-muted-foreground">tier, passed the pool’s eligibility criteria</span>
       </p>
       <LedgerList>

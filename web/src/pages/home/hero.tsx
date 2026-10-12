@@ -19,7 +19,7 @@ export function Hero({ ctaDisabledReason }: HeroProps) {
           <p className="font-mono text-xs tracking-(--tracking-caps) text-tone-positive uppercase">
             Verification oracle for on-chain private credit
           </p>
-          <h1 className="font-display text-3xl leading-tight text-balance md:text-4xl">
+          <h1 className="font-display text-2xl leading-tight text-balance md:text-3xl">
             Every loan decision, with receipts. No bank statement attached.
           </h1>
           <p className="max-w-prose text-lg text-muted-foreground">

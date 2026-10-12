@@ -71,3 +71,16 @@ describe('architecture', () => {
     expect(bad).toEqual([]);
   });
 });
+
+describe('styling', () => {
+  // @tio/ui's theme.css drops Tailwind's palette but not its type scale, so a size the tokens
+  // don't define (text-base, text-4xl…) silently compiles to Tailwind's default: the landing
+  // h1 rendered 36 px on desktop that way. Sizes are the tokens (xs…3xl) or an explicit rem.
+  it('uses only the token type scale or an explicit size', () => {
+    const offScale = /\btext-(?:base|[4-9]xl)\b/g;
+    const bad = files
+      .filter((f) => !isTest(f.rel))
+      .flatMap((f) => (f.text.match(offScale) ?? []).map((m) => `${f.rel}: ${m}`));
+    expect(bad).toEqual([]);
+  });
+});

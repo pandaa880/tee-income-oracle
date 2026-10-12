@@ -26,7 +26,7 @@ export function Pilot({ ctaDisabledReason }: PilotProps) {
           <p className="font-mono text-xs tracking-(--tracking-caps) uppercase">
             For funders and NBFCs
           </p>
-          <h2 className="font-display text-3xl leading-tight">Explore a pilot</h2>
+          <h2 className="font-display text-2xl leading-tight md:text-[2.75rem]">Explore a pilot</h2>
           <p className="max-w-prose text-lg">
             Lending to NBFCs or running a private-credit vehicle? A pilot tests three things:
           </p>
