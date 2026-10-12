@@ -457,6 +457,23 @@ describe('BookPage review fixes', () => {
     expect(screen.getByRole('link', { name: `Attestation of ${short}` })).toBeInTheDocument();
   });
 
+  it('links each row to the verify page for its borrower when the verify flag is on', async () => {
+    const w = await open({ features: { book: true, verify: true } });
+    const first = w.bookLoans[0];
+    if (first === undefined) throw new Error('no loan');
+    await screen.findByRole('table');
+    const row = within(rowOf(first.borrower));
+    expect(
+      row.getByRole('link', { name: `Verify of ${shortAddress(first.borrower)}` }),
+    ).toHaveAttribute('href', `/verify?wallet=${first.borrower}`);
+  });
+
+  it('shows no Verify link while the verify flag is off', async () => {
+    await open();
+    await screen.findByRole('table');
+    expect(screen.queryByRole('link', { name: /^Verify/ })).not.toBeInTheDocument();
+  });
+
   it('titles each section with an h2 under the page h1, and names the policy and KPI regions', async () => {
     await open();
     for (const name of ['Tier mix by principal', 'Open loans', 'Outcomes per tier']) {

@@ -54,7 +54,9 @@ export function ChecksCard({ view, wallet }: ChecksCardProps) {
       </ol>
       <div className="flex flex-wrap gap-4 text-sm">
         {links.release !== null && (
-          <ExternalLink href={links.release}>{`Release ${links.releaseTag ?? ''}`}</ExternalLink>
+          <ExternalLink href={links.release}>
+            {`Enclave source: release ${links.releaseTag ?? ''}`}
+          </ExternalLink>
         )}
         {links.archive !== null && (
           <ExternalLink href={links.archive}>Archived attestation</ExternalLink>

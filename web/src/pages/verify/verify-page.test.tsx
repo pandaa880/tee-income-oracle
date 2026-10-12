@@ -1,12 +1,14 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
+import { attestationAddress as attestationPda } from '@tio/oracle-client/attest';
 import { CHECKS } from '@tio/verifier/report';
 import { describe, expect, it, vi } from 'vitest';
 import { GITHUB_URL, RELEASE } from '../../app/release.ts';
 import type { Deps } from '../../app/deps.ts';
+import { exampleWallets } from '../../domain/example-wallets.ts';
 import { CHECK_EXPLANATIONS } from '../../domain/verify-view.ts';
 import { explorerAddressUrl } from '../../domain/explorer.ts';
 import { formatUnixDate, formatUnixDateTime, shortAddress, shortHex } from '../../domain/format.ts';
-import { ADMIN } from '../../test-support/fixtures.ts';
+import { ADMIN, CREDENTIAL, SCHEMA } from '../../test-support/fixtures.ts';
 import { ledgerValue } from '../../test-support/ledger.ts';
 import { renderApp } from '../../test-support/render.tsx';
 import { verifiedOf, world, type WorldOptions } from '../../test-support/world.ts';
@@ -85,6 +87,40 @@ describe('VerifyPage without a wallet', () => {
     await openWallet({}, () => '');
     expect(await screen.findByText('#1')).toBeInTheDocument();
     expect(screen.getByText('#0')).toBeInTheDocument();
+  });
+
+  it('offers the devnet example wallets as links, none marked current yet', async () => {
+    await openWallet({}, () => '');
+    const nav = await screen.findByRole('navigation', { name: 'Example wallets' });
+    expect(within(nav).getByText(/no wallet handy\?/i)).toBeInTheDocument();
+    const examples = exampleWallets('devnet');
+    expect(examples.length).toBeGreaterThan(0);
+    for (const example of examples) {
+      expect(within(nav).getByRole('link', { name: example.label })).toHaveAttribute(
+        'href',
+        `/verify?wallet=${example.wallet}`,
+      );
+    }
+    expect(within(nav).queryByRole('link', { current: 'page' })).not.toBeInTheDocument();
+  });
+
+  it('runs the check for an example wallet when its chip is clicked', async () => {
+    const w = await openWallet({}, () => '');
+    const [example] = exampleWallets('devnet');
+    if (example === undefined) throw new Error('no example wallet');
+    fireEvent.click(await screen.findByRole('link', { name: example.label }));
+    await vi.waitFor(() =>
+      expect(w.router.state.location.search).toMatchObject({ wallet: example.wallet }),
+    );
+    // The check ran for that wallet: its attestation PDA was read. The fake chain holds no
+    // attestation for it, so the page reports that.
+    expect(await screen.findByText('No tier for this wallet', undefined, SLOW)).toBeInTheDocument();
+    const read = vi.mocked(w.chain.rawAccounts).mock.calls.flatMap(([keys]) => keys);
+    expect(read).toContain(await attestationPda(CREDENTIAL, SCHEMA, example.wallet));
+    expect(screen.getByRole('link', { name: example.label })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
   });
 });
 
@@ -221,7 +257,7 @@ describe('VerifyPage with a passing tier', () => {
   it('links the release tag, the archived attestation at this release, and the registry entry', async () => {
     const w = await openWallet();
     await checksHeading('Build #1 · 7 of 7 checks pass');
-    expect(screen.getByRole('link', { name: /^Release v0\.3\.0/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^Enclave source: release v0\.3\.0/ })).toHaveAttribute(
       'href',
       'https://github.com/pandaa880/tee-income-oracle/releases/tag/v0.3.0',
     );

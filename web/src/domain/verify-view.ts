@@ -68,7 +68,7 @@ export const CHECK_EXPLANATIONS: Record<CheckId, string> = {
   base_image:
     'PCR0–2 equal Marlin blue v3.0.0 arm64; debug enclaves have zeroed PCRs and fail here.',
   compose_pcr16:
-    'PCR16 recomputed from enclave/docker-compose.yml at the build’s release tag, which pins the enclave image by digest.',
+    'PCR16 recomputed from enclave/docker-compose.yml at the build’s release tag, which pins the enclave image by digest. That tag can lag the app’s: it moves only when a new enclave build is registered.',
   image_id:
     'The image id derived from the attested PCRs equals the measurement the registry stores for this build.',
   attester:
