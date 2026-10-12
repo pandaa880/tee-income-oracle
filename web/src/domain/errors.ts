@@ -1,5 +1,11 @@
 // One place that turns every expected failure into words. Pages never write their own.
-import type { AmountProblem, AppError, ClientCode, GatewayCode } from './types.ts';
+import type {
+  AmountProblem,
+  AppError,
+  ClientCode,
+  GatewayCode,
+  VerifierErrorCode,
+} from './types.ts';
 
 /** What the one button under the message does: retry the same call, start the flow over, re-attest, or nothing. */
 export type ErrorAction = 'retry' | 'restart' | 'reattest' | 'none';
@@ -73,7 +79,7 @@ const SIMPLE: Record<GatewayCode | ClientCode, ErrorMessage> = {
   cancelled: msg('Cancelled', 'The request was cancelled. Start again when ready.', 'restart'),
   network: msg('Network problem', 'The service could not be reached.', 'retry'),
   rpc_busy: msg('Network busy', 'The Solana RPC is rate-limiting; try again shortly.', 'retry'),
-  timeout: msg('Timed out', 'No confirmation arrived in time.', 'retry'),
+  timeout: msg('Timed out', 'No answer arrived in time.', 'retry'),
   signing_failed: msg('Signing failed', 'The wallet could not sign the request.', 'retry'),
   loan_exists: msg('Loan already open', 'Repay the open loan in this pool before borrowing again.'),
   no_open_loan: msg('No open loan', 'There is no loan in this pool to repay.'),
@@ -126,7 +132,55 @@ const AMOUNT: Record<AmountProblem, string> = {
   over_limit: 'The amount is above your limit.',
 };
 
+/**
+ * Why the verifier stopped before a verdict. Only the reasons a reader can act on or understand
+ * get their own words; a broken document or certificate is "could not run" (the detail lines of
+ * the checks say more once there is a verdict).
+ */
+const VERIFY: Partial<Record<VerifierErrorCode, ErrorMessage>> = {
+  attestation_missing: msg(
+    'No tier for this wallet',
+    'There is no attestation at this wallet’s address on devnet. Only wallets that went through the borrow flow have one.',
+  ),
+  attestation_malformed: msg(
+    'Record not written by the oracle',
+    'The account at this wallet’s attestation address is not a tier record the oracle writes.',
+  ),
+  entry_malformed: msg(
+    'Registry entry not written by the oracle',
+    'The account at the enclave entry’s address is not a registry entry the oracle writes.',
+  ),
+  entry_missing: msg(
+    'Enclave entry missing',
+    'The attestation names an enclave build the registry has no entry for.',
+  ),
+  deployment_malformed: msg(
+    'No archive for this build',
+    'The deployment file this page was built with has no usable record for the enclave that issued the tier (no archived document or release tag), or it does not match the oracle program. A newer deploy may.',
+  ),
+  fetch_failed: msg(
+    'GitHub could not be reached',
+    'The compose file at the release tag is read from the public repository; the request failed.',
+    'retry',
+  ),
+  hex_malformed: msg(
+    'Archived document unreadable',
+    'The archived attestation document bundled with this page is not hex.',
+  ),
+  file_unreadable: msg(
+    'Archived document not loaded',
+    'This tab runs an older build of the page than the server has, so the archived document could not be loaded. Reload the page.',
+  ),
+};
+
+const VERIFY_GENERIC = msg(
+  'Verification could not run',
+  'The verifier stopped before a verdict. Try again; if it repeats, the archived document or the chain record is not what this page expects.',
+  'retry',
+);
+
 export function messageFor(error: AppError): ErrorMessage {
+  if (error.code === 'verify_failed') return VERIFY[error.reason] ?? VERIFY_GENERIC;
   if (error.code === 'bad_transaction') {
     return msg(
       "This page built a transaction the relayer won't sign",
@@ -152,6 +206,7 @@ const ERROR_CODES = new Set<string>([
   'simulation_failed',
   'invalid_amount',
   'upstream_error',
+  'verify_failed',
 ]);
 
 /**

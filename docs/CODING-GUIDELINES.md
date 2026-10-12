@@ -240,8 +240,8 @@ pages / routes  →  app (hooks, queries)  →  domain (pure)
 | Layer | Folder | Contains | May import |
 |---|---|---|---|
 | domain | `web/src/domain/` | pure functions and types: credential status, tier → tone, amount parsing, error-code map, the borrow-flow reducer, the §9 intent check, loan-transaction builders | the generated clients, kit's **pure** helpers (addresses, codecs, PDAs, message builders), zod. **Never** React, TanStack, adapters, network, DOM, storage |
-| adapters | `web/src/adapters/` | one module per external system: `gateway.ts`, `relay.ts`, `rpc.ts`, `wallet-demo.ts`, `confirm.ts`, `storage.ts` (`wallet-standard.ts` later). Each implements a **port** (a `type` in `domain/ports.ts`) | domain, kit, browser APIs |
-| app | `web/src/app/` | one hook per use case (`use-borrow-flow.ts`, `use-credential.ts`, `use-loan.ts`, `use-status.ts`), TanStack Query keys, the `config.ts` env parse, router search-param schemas | domain, adapters (through ports), React, TanStack |
+| adapters | `web/src/adapters/` | one module per external system: `gateway.ts`, `relay.ts`, `rpc.ts`, `wallet-demo.ts`, `confirm.ts`, `storage.ts`, `verifier-sources.ts` (bundled archived documents via `import.meta.glob`, compose at a tag from GitHub), `verifier-chain.ts` (the verifier's `ChainReader` over `ChainPort.rawAccounts`) (`wallet-standard.ts` later). Each implements a **port** (a `type` in `domain/ports.ts`) | domain, kit, browser APIs |
+| app | `web/src/app/` | one hook per use case (`use-borrow-flow.ts`, `use-credential.ts`, `use-loan.ts`, `use-book.ts`, `use-verification.ts`, `use-builds.ts`, `use-status.ts`), TanStack Query keys, the `config.ts` env parse, router search-param schemas | domain, adapters (through ports), React, TanStack |
 | pages | `web/src/pages/` + `routes/` | composition only: call hooks, map domain values to `@tio/ui` props, render | app, `@tio/ui`, domain types |
 | ui | `packages/ui` | primitives + patterns, props in / events out (package rules below) | React, Radix, Tailwind. **Nothing** from `web/`, Solana or `@tio/*` clients |
 
@@ -291,8 +291,9 @@ pages, it is server state or URL state.
 - On-chain integers are `bigint` end to end; format for display with
   `domain/amount.ts`, never `Number()` or `toFixed`.
 - Addresses are kit `Address`, bytes `Uint8Array`, encodings via kit's codecs
-  (`getBase58Decoder`, `getBase64Encoder`, `getBase16Codec`): `@tio/encoding` uses Node's
-  `Buffer` and doesn't run in the browser.
+  (`getBase58Decoder`, `getBase64Encoder`, `getBase16Codec`). `@tio/encoding` is browser-safe
+  too (the verifier runs on it in the page); `web/` keeps kit's codecs so one module owns
+  each encoding, and never adds a third.
 - No `switch` statements: the lint config has both `switch-exhaustiveness-check` and
   `consistent-return`, and a switch trips one or the other. Use a `Record` lookup (a missing
   key is a compile error) or a narrowing `if` chain.
@@ -376,7 +377,9 @@ yet; the rules below describe the target.
   browser never asks the relayer to build or choose instructions.
 - External links to explorers use `rel="noopener noreferrer"`.
 - `vercel.json` sets `Content-Security-Policy` (self + gateway + RPC origins
-  + fonts), `X-Content-Type-Options`, `Referrer-Policy`.
+  + `raw.githubusercontent.com` for the verify page's compose file + fonts),
+  `X-Content-Type-Options`, `Referrer-Policy`. A new outside origin is a CSP change
+  in the same PR.
 
 #### Routing and loading
 - TanStack Router, code-based routes, one `lazyRouteComponent` per page.

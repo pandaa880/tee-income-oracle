@@ -4,6 +4,10 @@ import type { EnclaveEntry } from '@tio/oracle-client';
 import type { StoredAttestation } from '@tio/oracle-client/attest';
 import type { Loan, Pool } from '@tio/demo-pool-client';
 import type { Token } from '@solana-program/token';
+import type { VerifierErrorCode } from '@tio/verifier/errors';
+
+/** The verifier's failure codes, re-exported so the layers above name one module for them. */
+export type { VerifierErrorCode };
 
 /** Gateway error codes of FORMATS §16 that carry nothing beyond a message. */
 export type GatewayCode =
@@ -56,7 +60,9 @@ export type AppError =
       message?: string;
     }
   | { code: 'invalid_amount'; reason: AmountProblem }
-  | { code: 'upstream_error'; upstreamCode: string; stage: string; message?: string };
+  | { code: 'upstream_error'; upstreamCode: string; stage: string; message?: string }
+  /** The verifier could not run to a verdict (no attestation, no entry, a source it could not read). */
+  | { code: 'verify_failed'; reason: VerifierErrorCode };
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: AppError };
 
@@ -96,6 +102,9 @@ export type SignatureStatus = {
 };
 
 export type LatestBlockhash = { blockhash: Blockhash; lastValidBlockHeight: bigint };
+
+/** An account as the chain holds it: owner and bytes, judged by whoever asked for it. */
+export type RawAccount = { owner: Address; data: Uint8Array };
 
 /** An account read from chain, decoded by owner and discriminator. */
 export type ChainAccount =

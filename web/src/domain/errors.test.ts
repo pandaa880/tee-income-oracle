@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { messageFor, toAppError } from './errors.ts';
-import type { AppError } from './types.ts';
+import type { AppError, VerifierErrorCode } from './types.ts';
 
 // Every code of FORMATS §16 plus the client-side ones (plan: AppError union).
 const SIMPLE_CODES = [
@@ -147,7 +147,118 @@ describe('messageFor', () => {
   });
 });
 
+// Typed as a record, so adding a code to the verifier fails the typecheck until it is listed here.
+const VERIFIER_REASONS: Record<VerifierErrorCode, true> = {
+  cose_malformed: true,
+  cose_wrong_alg: true,
+  cose_bad_signature_length: true,
+  cose_signature_invalid: true,
+  document_malformed: true,
+  cert_malformed: true,
+  root_not_pinned: true,
+  chain_wrong_algorithm: true,
+  chain_not_ca: true,
+  chain_leaf_is_ca: true,
+  chain_key_usage: true,
+  chain_pathlen: true,
+  chain_issuer_mismatch: true,
+  chain_signature_invalid: true,
+  chain_not_yet_valid: true,
+  chain_expired: true,
+  attestation_missing: true,
+  attestation_malformed: true,
+  entry_missing: true,
+  entry_malformed: true,
+  deployment_malformed: true,
+  hex_malformed: true,
+  fetch_failed: true,
+  file_unreadable: true,
+};
+const REASONS = Object.keys(VERIFIER_REASONS) as VerifierErrorCode[];
+const verifyMessage = (reason: VerifierErrorCode) => messageFor({ code: 'verify_failed', reason });
+const NAMED = [
+  'attestation_missing',
+  'attestation_malformed',
+  'entry_missing',
+  'entry_malformed',
+  'deployment_malformed',
+  'fetch_failed',
+  'hex_malformed',
+  'file_unreadable',
+] as const;
+const GENERIC = verifyMessage('cose_malformed');
+
+describe('messageFor verify_failed', () => {
+  it.each(REASONS)('gives the reason %s a title, a detail and an action', (reason) => {
+    const message = verifyMessage(reason);
+    expect(message.title.trim().length).toBeGreaterThan(0);
+    expect(message.detail.trim().length).toBeGreaterThan(0);
+    expect(['retry', 'restart', 'reattest', 'none']).toContain(message.action);
+  });
+
+  it('tells a wallet without an attestation that only borrowers have a tier, with no action', () => {
+    const message = verifyMessage('attestation_missing');
+    expect(message.title).toBe('No tier for this wallet');
+    expect(message.detail).toMatch(/borrow/i);
+    expect(message.action).toBe('none');
+  });
+
+  it.each(['attestation_malformed', 'entry_malformed'] as const)(
+    'says %s is a record the oracle did not write, with no action',
+    (reason) => {
+      const message = verifyMessage(reason);
+      expect(message.title).toMatch(/not written by the oracle/i);
+      expect(message.action).toBe('none');
+    },
+  );
+
+  it('names a missing registry entry', () => {
+    expect(verifyMessage('entry_missing').title).toBe('Enclave entry missing');
+  });
+
+  it('says the page has no archive for a build the deployment file lacks', () => {
+    expect(verifyMessage('deployment_malformed').title).toBe('No archive for this build');
+  });
+
+  it('says GitHub could not be reached and offers Retry', () => {
+    const message = verifyMessage('fetch_failed');
+    expect(message.title).toBe('GitHub could not be reached');
+    expect(message.action).toBe('retry');
+  });
+
+  it('says the archived document is unreadable for hex_malformed', () => {
+    expect(verifyMessage('hex_malformed').title).toBe('Archived document unreadable');
+  });
+
+  it('tells a stale tab to reload when the archived document chunk did not load', () => {
+    const message = verifyMessage('file_unreadable');
+    expect(message.title).toBe('Archived document not loaded');
+    expect(message.detail).toMatch(/reload/i);
+    expect(message.action).toBe('none');
+  });
+
+  it('gives every other reason the generic "Verification could not run" with Retry', () => {
+    const others = REASONS.filter((r) => !(NAMED as readonly string[]).includes(r));
+    expect(others.length).toBeGreaterThan(10);
+    for (const reason of others) {
+      expect(verifyMessage(reason)).toEqual(GENERIC);
+    }
+    expect(GENERIC.title).toBe('Verification could not run');
+    expect(GENERIC.action).toBe('retry');
+  });
+
+  it('gives the named reasons texts that differ from each other and from the generic one', () => {
+    const texts = [...NAMED.map((r) => JSON.stringify(verifyMessage(r))), JSON.stringify(GENERIC)];
+    expect(new Set(texts).size).toBe(NAMED.length + 1);
+  });
+});
+
 describe('toAppError', () => {
+  it('keeps a verify_failed error intact', () => {
+    const error: AppError = { code: 'verify_failed', reason: 'entry_missing' };
+    expect(toAppError(error)).toEqual({ code: 'verify_failed', reason: 'entry_missing' });
+  });
+
   it('keeps a real AppError', () => {
     expect(toAppError({ code: 'loan_exists' })).toEqual({ code: 'loan_exists' });
     expect(toAppError({ code: 'bad_transaction', rule: 3 })).toEqual({

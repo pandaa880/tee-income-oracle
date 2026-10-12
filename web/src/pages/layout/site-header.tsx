@@ -36,9 +36,14 @@ export function SiteHeader() {
           </Link>
         )}
         {features.verify && (
-          <a href="/verify" className={NAV_LINK}>
+          <Link
+            to="/verify"
+            className={NAV_LINK}
+            activeProps={ACTIVE}
+            activeOptions={{ includeSearch: false }}
+          >
             Verify
-          </a>
+          </Link>
         )}
       </nav>
       <div className="ml-auto flex items-center gap-4">

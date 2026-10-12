@@ -6,6 +6,7 @@ import {
   formatTokens,
   formatUnixDate,
   shortAddress,
+  shortEthAddress,
   shortHex,
 } from './format.ts';
 
@@ -18,6 +19,12 @@ describe('shortAddress', () => {
 describe('shortHex', () => {
   it('keeps the first eight and last six characters', () => {
     expect(shortHex('81112a23aabbccddeeff00112233445566778899932e1c')).toBe('81112a23…932e1c');
+  });
+});
+
+describe('shortEthAddress', () => {
+  it('keeps the 0x and first four hex, then the last four', () => {
+    expect(shortEthAddress('0xb6dda6eed87322334ba37809bd451a852ae6574c')).toBe('0xb6dd…574c');
   });
 });
 

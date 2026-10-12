@@ -540,6 +540,111 @@ describe('poolLoans', () => {
   });
 });
 
+describe('rawAccounts', () => {
+  const entryData = entryBytes({ measurementId: 3 });
+
+  it('returns the owner and the undecoded bytes of each account, in request order', async () => {
+    const store = new Map<string, FakeAccount>([
+      [OTHER, { owner: ORACLE_PROGRAM_ID, data: entryData }],
+      [ADMIN, { owner: SAS_PROGRAM_ID, data: new Uint8Array([1, 2, 3]) }],
+    ]);
+    stubFetch(rpcHandler(store));
+    const result = await createChain(RPC_URL).rawAccounts([ADMIN, OTHER], signal());
+    if (!result.ok) throw new Error('expected ok');
+    const [first, second] = result.value;
+    expect(first?.owner).toBe(SAS_PROGRAM_ID);
+    expect(Array.from(first?.data ?? [])).toEqual([1, 2, 3]);
+    expect(second?.owner).toBe(ORACLE_PROGRAM_ID);
+    expect(Array.from(second?.data ?? [])).toEqual(Array.from(entryData));
+  });
+
+  it('returns null for an account that does not exist', async () => {
+    stubFetch(rpcHandler(new Map()));
+    expect(await createChain(RPC_URL).rawAccounts([ADMIN, OTHER], signal())).toEqual({
+      ok: true,
+      value: [null, null],
+    });
+  });
+
+  it('does not judge the bytes: a malformed account of an unknown owner is returned as is', async () => {
+    stubFetch(rpcHandler(new Map([[OTHER, { owner: ADMIN, data: new Uint8Array([9]) }]])));
+    const result = await createChain(RPC_URL).rawAccounts([OTHER], signal());
+    expect(result).toMatchObject({ ok: true, value: [{ owner: ADMIN }] });
+  });
+
+  it('asks getMultipleAccounts for base64 data', async () => {
+    const fetchMock = stubFetch(rpcHandler(new Map()));
+    await createChain(RPC_URL).rawAccounts([OTHER], signal());
+    const body = JSON.parse(bodyOf(fetchMock.mock.calls[0]?.[1])) as {
+      method: string;
+      params: [string[], { encoding: string }];
+    };
+    expect(body.method).toBe('getMultipleAccounts');
+    expect(body.params[0]).toEqual([OTHER]);
+    expect(body.params[1].encoding).toBe('base64');
+  });
+
+  it('is a protocol_error when the reply has a different number of accounts than keys', async () => {
+    stubFetch(lengthOff(-1));
+    expect(await createChain(RPC_URL).rawAccounts(await many(3), signal())).toMatchObject({
+      ok: false,
+      error: { code: 'protocol_error' },
+    });
+  });
+
+  it('splits 150 addresses into calls of 100 and 50, in order', async () => {
+    const addresses = await many(150);
+    const fetchMock = stubFetch(rpcHandler(new Map()));
+    const result = await createChain(RPC_URL).rawAccounts(addresses, signal());
+    expect(result.ok && result.value).toHaveLength(150);
+    const sent = fetchMock.mock.calls.map(([, init]) => keysOf(init));
+    expect(sent.map((keys) => keys.length)).toEqual([100, 50]);
+    expect(sent.flat()).toEqual(addresses);
+  });
+
+  it('backs off a 429 and gives rpc_busy after three tries', async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch(async () => new Response('', { status: 429 }));
+    const pending = createChain(RPC_URL).rawAccounts([OTHER], signal());
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(await pending).toMatchObject({ ok: false, error: { code: 'rpc_busy' } });
+  });
+
+  it('succeeds when a retry after a 429 gets through', async () => {
+    vi.useFakeTimers();
+    const handler = rpcHandler(new Map());
+    let calls = 0;
+    stubFetch(async (input, init) =>
+      ++calls === 1 ? new Response('', { status: 429 }) : handler(input, init),
+    );
+    const pending = createChain(RPC_URL).rawAccounts([OTHER], signal());
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(await pending).toEqual({ ok: true, value: [null] });
+  });
+
+  it('is a network error for a server error', async () => {
+    stubFetch(async () => new Response('boom', { status: 500 }));
+    expect(await createChain(RPC_URL).rawAccounts([OTHER], signal())).toMatchObject({
+      ok: false,
+      error: { code: 'network' },
+    });
+  });
+
+  it('is cancelled when the signal is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    stubFetch(async (_, init) => {
+      if (init?.signal?.aborted === true) throw new DOMException('aborted', 'AbortError');
+      return rpcHandler(new Map())(_, init);
+    });
+    expect(await createChain(RPC_URL).rawAccounts([OTHER], controller.signal)).toMatchObject({
+      ok: false,
+      error: { code: 'cancelled' },
+    });
+  });
+});
+
 const statusReply = (value: unknown) =>
   stubFetch(async (_, init) => {
     const { id } = JSON.parse(bodyOf(init)) as { id: unknown };

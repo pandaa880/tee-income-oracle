@@ -19,6 +19,11 @@ export function shortHex(hex: string): string {
   return `${hex.slice(0, 8)}…${hex.slice(-6)}`;
 }
 
+/** "0xb6dd…574c" for a `0x` + 40 hex address. */
+export function shortEthAddress(address: string): string {
+  return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
 /** `formatAmount` with thousands separators: "5,000", "2,500.5". */
 export function formatTokens(value: bigint, decimals = 6): string {
   const [whole = '', fraction] = formatAmount(value, decimals).split('.');

@@ -13,6 +13,7 @@
     "./report": "./src/report.ts",
     "./sources": "./src/sources.ts",
     "./deployment": "./src/deployment.ts",
+    "./errors": "./src/errors.ts",
     "./eth-address": "./src/eth-address.ts"
   },
   "scripts": {

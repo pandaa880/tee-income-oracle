@@ -70,7 +70,18 @@ everything else it derives from public data. To cross-check with Marlin's tool:
 `oyster-cvm verify --attestation-hex-file deployments/devnet/attestation-<id>.hex --image-id <image id> --arch arm64`
 (what `ops` runs at every rotation, `docs/DEPLOY.md`).
 
-## Library
+## In the browser
 
-The same checks run in the browser (the verify page) through `@tio/verifier`;
-`verifier/README.md` lists the entry points.
+The live app has the same check as a page: `/verify?wallet=<borrower wallet>` on
+https://tee-income-oracle-web.vercel.app/. Paste a wallet and the browser runs
+`@tio/verifier` itself: it reads the attestation and the registry entry from the
+public devnet RPC, takes the archived document from a copy bundled with the page
+(the live enclave serves it over plain HTTP, which an HTTPS page cannot fetch; the
+document is signed by AWS and its hash is on chain, so who carries it does not
+matter), and fetches `enclave/docker-compose.yml` at the build's release tag from
+the public repository. The page shows the attestation facts, every registered
+build with its chain state, the seven lines with the library's detail, the verdict,
+and links to the release, the archived file and the registry entry. Nothing goes
+through our gateway. The CLI above does the same from a clone.
+
+`verifier/README.md` lists the library's entry points.

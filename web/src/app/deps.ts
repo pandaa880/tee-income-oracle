@@ -3,12 +3,14 @@ import { createChain } from '../adapters/rpc.ts';
 import { createGateway } from '../adapters/gateway.ts';
 import { createRelay } from '../adapters/relay.ts';
 import { createStorage } from '../adapters/storage.ts';
+import { createSources } from '../adapters/verifier-sources.ts';
 import { demoWallet } from '../adapters/wallet-demo.ts';
 import type {
   BorrowerSigner,
   ChainPort,
   GatewayPort,
   RelayPort,
+  SourcesPort,
   StoragePort,
 } from '../domain/ports.ts';
 import type { Config } from './config.ts';
@@ -17,6 +19,7 @@ export type Deps = {
   gateway: GatewayPort;
   relay: RelayPort;
   chain: ChainPort;
+  sources: SourcesPort;
   storage: StoragePort;
   signer: BorrowerSigner;
   config: Config;
@@ -35,6 +38,7 @@ export async function initDeps(config: Config): Promise<Deps> {
     gateway: createGateway(config.gatewayUrl),
     relay: createRelay(config.gatewayUrl),
     chain: createChain(config.rpcUrl),
+    sources: createSources(),
     storage,
     signer: await demoWallet(storage),
     config,

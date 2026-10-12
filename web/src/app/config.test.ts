@@ -12,6 +12,7 @@ const devnet = JSON.parse(
   sas_signer: string;
   oracle_program: string;
   pools: { address: string; pool_id: number }[];
+  enclaves: { measurement_id: number }[];
 };
 
 const GOOD = {
@@ -42,8 +43,16 @@ describe('loadConfig', () => {
     );
   });
 
-  it('switches the loan book on and keeps the verify page off', () => {
-    expect(loadConfig(GOOD).features).toEqual({ verify: false, book: true });
+  it('switches both the loan book and the verify page on', () => {
+    expect(loadConfig(GOOD).features).toEqual({ verify: true, book: true });
+  });
+
+  it('parses the deployment file for the verifier too (program ids checked, enclave records kept)', () => {
+    const { verifier } = loadConfig(GOOD);
+    expect(verifier.oracleProgram).toBe(devnet.oracle_program);
+    expect(verifier.enclaves.map((e) => e.measurementId)).toEqual(
+      devnet.enclaves.map((e) => e.measurement_id),
+    );
   });
 
   it('allows plain http only for localhost', () => {
