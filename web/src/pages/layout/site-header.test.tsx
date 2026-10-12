@@ -32,6 +32,11 @@ describe('SiteHeader', () => {
     expect(screen.getByRole('button', { name: /theme/i })).toBeInTheDocument();
   });
 
+  it('marks DEVNET in the caution tone, as a warning the network is a test one', async () => {
+    await renderHeader();
+    expect(await screen.findByText('DEVNET')).toHaveAttribute('data-tone', 'caution');
+  });
+
   it('hides Loan book and Verify while their flags are off', async () => {
     await renderHeader();
     await screen.findByRole('banner');

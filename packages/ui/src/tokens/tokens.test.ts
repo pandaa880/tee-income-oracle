@@ -62,9 +62,14 @@ const TEXT_PAIRS: [string, string][] = [
   ['--foreground', '--background'],
   ['--muted-foreground', '--background'],
   ['--foreground', '--card'],
+  ['--muted-foreground', '--muted'],
   ['--primary-foreground', '--primary'],
 ];
-const TONE_PAIRS: [string, string][] = TONES.map((t) => [`--tone-${t}`, '--card']);
+/** Tones are text on cards and on the muted band (the status strip's state word). */
+const TONE_PAIRS: [string, string][] = TONES.flatMap((t): [string, string][] => [
+  [`--tone-${t}`, '--card'],
+  [`--tone-${t}`, '--muted'],
+]);
 
 describe.each(Object.entries(themes))('contrast (%s)', (_name, vars) => {
   // Plan allows 3:1 for display sizes; the tokens are documented >= 5.2:1, so hold all to 4.5.

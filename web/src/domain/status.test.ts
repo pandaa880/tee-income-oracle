@@ -76,8 +76,8 @@ describe('serviceStatus', () => {
 describe('statusLabel', () => {
   it('shows the live strip with the enclave build number and no banner', () => {
     const label = statusLabel({ state: 'live', reason: null, measurementId: 3 });
-    expect(label.strip).toContain('LIVE ON DEVNET');
-    expect(label.strip).toContain('ENCLAVE BUILD #3');
+    expect(label.state).toBe('LIVE ON DEVNET');
+    expect(label.facts).toEqual(['ENCLAVE BUILD #3 · REGISTERED', 'GATEWAY UP']);
     expect(label.banner).toBeNull();
   });
 
@@ -97,7 +97,8 @@ describe('statusLabel', () => {
 
   it('marks a down service in the strip', () => {
     const label = statusLabel({ state: 'down', reason: 'enclave_revoked', measurementId: 0 });
-    expect(label.strip).toContain('DOWN');
+    expect(label.state).toBe('DOWN ON DEVNET');
+    expect(label.facts).toEqual(['ENCLAVE BUILD']);
   });
 });
 
@@ -122,12 +123,28 @@ describe('registeredBuild (only a registry-confirmed build gets a number)', () =
 describe('statusLabel extras', () => {
   it('names the pools reading the oracle when live', () => {
     const up = { state: 'live', reason: null, measurementId: 1 } as const;
-    expect(statusLabel(up, 2).strip).toContain('2 POOLS READING THE ORACLE');
+    expect(statusLabel(up, 2).facts.at(-1)).toBe('2 POOLS READING THE ORACLE');
   });
 
   it('never numbers a build the registry did not confirm', () => {
     const revoked = { state: 'down', reason: 'enclave_revoked', measurementId: 1 } as const;
-    expect(statusLabel(revoked).strip).not.toContain('#1');
+    expect(statusLabel(revoked).facts.join(' ')).not.toContain('#1');
+  });
+
+  it('keeps a degraded but confirmed build numbered, without REGISTERED or GATEWAY UP', () => {
+    const slow = { state: 'degraded', reason: 'health_check_failed', measurementId: 1 } as const;
+    expect(statusLabel(slow, 2)).toMatchObject({
+      state: 'DEGRADED ON DEVNET',
+      facts: ['ENCLAVE BUILD #1'],
+    });
+  });
+
+  it.each([
+    ['live', null, 'positive'],
+    ['degraded', 'health_check_failed', 'caution'],
+    ['down', 'enclave_revoked', 'negative'],
+  ] as const)('tones the %s (%s) state word %s', (state, reason, tone) => {
+    expect(statusLabel({ state, reason, measurementId: 1 }).stateTone).toBe(tone);
   });
 
   it('colours a down banner negative and a degraded one caution', () => {
