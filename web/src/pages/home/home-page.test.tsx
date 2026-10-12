@@ -308,7 +308,10 @@ describe('Doors', () => {
 
   it('links the lender door to the loan book when the book flag is on', async () => {
     await renderDoors({ book: true, verify: false });
-    expect(lenderDoor().getByRole('link', { name: 'See the loan book' })).toBeInTheDocument();
+    expect(lenderDoor().getByRole('link', { name: 'See the loan book' })).toHaveAttribute(
+      'href',
+      '/book?pool=0',
+    );
     expect(lenderDoor().queryByText('NEXT')).not.toBeInTheDocument();
   });
 });

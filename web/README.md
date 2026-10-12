@@ -5,8 +5,10 @@ Vite + React single-page app, built on `@tio/ui` (`packages/ui`). Three surfaces
 - **Borrower flow** — connect wallet → consent (simulated AA consent UI,
   disclosed as simulated, styled to match the real ReBIT/Sahamati flow) →
   processing → tier result → loan offer → confirmation with explorer link.
-- **Loan book** — incoming attestations, loans issued, pool stats.
-  Reads the chain via RPC.
+- **Loan book** — the view a credit vehicle gets of the loans it funds, per pool: the
+  funder's policy (hash, published-default marker, tier limits, freshness rules, approved
+  enclave builds), principal outstanding, utilization, open loans, vault, the tier mix, and
+  every open loan with the health of the credential behind it. Read-only, from chain.
 - **Public verification page** — attestation, timestamp, enclave image id,
   live PASS/FAIL from `verifier/`, explorer link. The judge/regulator-facing proof
   surface.
@@ -18,19 +20,24 @@ All three are untrusted clients — no privileged logic lives here.
 | Route | Page |
 |---|---|
 | `/` | Landing: the receipts thesis with an example receipt, proof bar, what a funder can check on every loan, how it works (data-path schematic), borrower and lender doors, the pilot ask, live status strip |
-| `/borrow` | Borrower flow: demo wallet → bank account (4 sandbox personas) → consent (signs the exact §9 intent, 10-minute countdown) → live stages → result or REJECT |
+| `/borrow[?pool=0\|1]` | Borrower flow: demo wallet → bank account (4 sandbox personas) → consent (signs the exact §9 intent, 10-minute countdown) → live stages → result or REJECT. `?pool=` (from the loan book) is where "Borrow now" goes; default pool 0 |
 | `/loan?pool=0\|1` | Loan screen, one tab per pool: borrow up to `min(tier limit, vault)`, the open loan, repay. Reads only the chain, so a reload or a returning wallet lands in the right state |
+| `/book?pool=0\|1` | Loan book, one tab per pool: policy card, KPIs, tier mix, every open loan (tier at borrow, amount, time out, tier age, build, credential badge, explorer links), re-read every 30 s (a failed re-read keeps the last book and says when it was read). A badge judges the borrower's current attestation by the pool's own borrow checks (fresh, stale, build retired, old policy, …) |
 
-The borrow and loan pages load lazily. `app/config.ts` `features` gates what isn't shipped yet:
-`verify` (5b) adds the Verify nav item and "Anyone can check it" links, `book` (5c) adds the
-Loan book nav item and the lender door's link; while off, they are hidden and the lender door
-shows a NEXT badge.
+The borrow, loan and book pages load lazily. `app/config.ts` `features` gates what isn't
+shipped yet: `verify` (off) adds the Verify nav item and "Anyone can check it" links; `book`
+(on) adds the Loan book nav item and the lender door's link (while off, they are hidden and
+the lender door shows a NEXT badge).
 
 What the pages trust: a tier is shown only once a chain read holds exactly the payload the
 gateway reported (until then the page says it is reading the tier back), and its tier, dates,
 build and pool limits come from that read. "Registered on Solana" appears only when the
 registry entry was read and matches. A dropped stream after the intent was signed polls the
-chain for the attestation; a failure before that is a plain error.
+chain for the attestation; a failure before that is a plain error. The loan book trusts the
+RPC no more than that: every `getProgramAccounts` row is re-checked (owner, size,
+discriminator, pool, the borrower's Loan PDA, no duplicates), a batched read must return one
+account per key, an attestation must sit at its borrower's PDA, and one bad row fails the whole
+read rather than showing a partial book. A failed background re-read keeps the last good book.
 
 ## Layout
 
@@ -39,10 +46,10 @@ Four layers, dependencies pointing inward (`docs/CODING-GUIDELINES.md` §3; enfo
 
 | Folder | What |
 |---|---|
-| `src/domain/` | Pure rules: credential status (the pool's borrow checks, in order), the §9 intent check, loan-transaction builders, the flow reducer, amounts, error messages, tones |
-| `src/adapters/` | One module per outside system: gateway (live SSE), relay, Solana RPC (429 backoff), confirmation polling, storage, the demo wallet |
-| `src/app/` | Config, deps, one hook per use case (`use-borrow-flow`, `use-credential`, `use-pool`, `use-loan`, `use-status`, `use-countdown`) |
-| `src/pages/`, `src/routes/` | Composition only: `pages/layout`, `pages/home`, `pages/borrow`, `pages/loan` |
+| `src/domain/` | Pure rules: credential status (the pool's borrow checks, in order), the loan book (rows, KPIs, tier mix), the §9 intent check, loan-transaction builders, the flow reducer, amounts, error messages, tones |
+| `src/adapters/` | One module per outside system: gateway (live SSE), relay, Solana RPC (429 backoff, `getMultipleAccounts` in chunks of 100, `getProgramAccounts` for a pool's Loans), confirmation polling, storage, the demo wallet |
+| `src/app/` | Config, deps, one hook per use case (`use-borrow-flow`, `use-credential`, `use-pool`, `use-loan`, `use-book`, `use-status`, `use-countdown`) |
+| `src/pages/`, `src/routes/` | Composition only: `pages/layout`, `pages/home`, `pages/borrow`, `pages/loan`, `pages/book` |
 
 Two tests (`domain/loan-tx.test.ts`, `app/use-loan.test.tsx`) import `gateway/src/loan-relay.ts`
 directly: the relayer's own shape check is the oracle for the transactions the browser builds,

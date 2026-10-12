@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { credentialLabel, credentialMessage, needsReattest } from './credential-copy.ts';
+import {
+  bookHealthLabel,
+  credentialLabel,
+  credentialMessage,
+  needsReattest,
+} from './credential-copy.ts';
 import type { CredentialStatus } from './credential.ts';
 
 const LABELS: Record<CredentialStatus, string> = {
@@ -33,6 +38,26 @@ describe('credentialMessage', () => {
   it('gives each status its own title', () => {
     const titles = STATUSES.map((s) => credentialMessage(s).title);
     expect(new Set(titles).size).toBe(STATUSES.length);
+  });
+});
+
+describe('bookHealthLabel', () => {
+  const BOOK_LABELS: Record<CredentialStatus, string> = {
+    valid: 'fresh',
+    none: 'no tier',
+    stale: 'stale · re-attest',
+    expired: 'expired · re-attest',
+    foreign_signer: 'foreign signer',
+    enclave_revoked: 'build retired',
+    not_approved: 'build not approved',
+    policy_mismatch: 'old policy',
+    tier_not_accepted: 'tier not accepted',
+    window_too_old: 'statement too old',
+    window_too_short: 'statement too short',
+  };
+
+  it.each(STATUSES)('gives %s the copy-deck chip text', (status) => {
+    expect(bookHealthLabel(status)).toBe(BOOK_LABELS[status]);
   });
 });
 

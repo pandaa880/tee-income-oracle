@@ -4,7 +4,11 @@ import { ThemeToggle } from '@tio/ui/theme-toggle';
 import { useConfig } from '../../app/use-config.ts';
 import { WalletChip } from './wallet-chip.tsx';
 
-const NAV_LINK = 'inline-flex min-h-10 items-center text-sm underline-offset-4 hover:underline';
+const NAV_LINK =
+  'inline-flex min-h-10 items-center text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline';
+
+/** The page you're on reads in ink, underlined (mockups: the nav item of the current board). */
+const ACTIVE = { className: 'text-foreground underline', 'aria-current': 'page' } as const;
 
 /** Brand, nav (gated items appear with their PR), network badge, wallet chip on the flow pages. */
 export function SiteHeader() {
@@ -17,13 +21,19 @@ export function SiteHeader() {
         TEE Income Oracle
       </Link>
       <nav aria-label="Main" className="flex items-center gap-4">
-        <Link to="/borrow" className={NAV_LINK}>
+        <Link to="/borrow" className={NAV_LINK} activeProps={ACTIVE}>
           Borrow
         </Link>
         {features.book && (
-          <a href="/book" className={NAV_LINK}>
+          <Link
+            to="/book"
+            search={{ pool: 0 }}
+            className={NAV_LINK}
+            activeProps={ACTIVE}
+            activeOptions={{ includeSearch: false }}
+          >
             Loan book
-          </a>
+          </Link>
         )}
         {features.verify && (
           <a href="/verify" className={NAV_LINK}>

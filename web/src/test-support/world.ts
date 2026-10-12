@@ -25,6 +25,22 @@ import {
   tokenAccount,
 } from './fixtures.ts';
 
+/** One open loan of another borrower, for the loan book. Each gets its own fresh key. */
+export type BookLoanOptions = {
+  pool?: 0 | 1;
+  amount?: bigint;
+  /** The Loan's tier byte (default 1). */
+  tier?: number;
+  /** Default: one hour ago, a minute earlier per entry, so entries list newest first in order. */
+  borrowedAt?: bigint;
+  /** The Loan's `attestation_issued_at`; default = the attestation's `issuedAt` (not re-attested). */
+  loanIssuedAt?: bigint;
+  /** Default: a live, fresh attestation. `false` = the borrower has none. */
+  attestation?: false | { payload?: Partial<PayloadFields>; expiry?: bigint; signer?: Address };
+};
+
+export type BookLoan = { borrower: Address; loanAddress: Address; attestationAddress: Address };
+
 export type WorldOptions = {
   /** Present by default (tier A, fresh). `false` = the wallet has no attestation. */
   attestation?: false | { payload?: Partial<PayloadFields>; expiry?: bigint };
@@ -36,6 +52,10 @@ export type WorldOptions = {
   /** An open Loan on pool 0 with this principal. */
   loan?: bigint;
   revokedAt?: bigint;
+  /** Extra registry entries by measurement id (id 0 is always there; see `revokedAt`). */
+  entries?: Record<number, { revokedAt?: bigint }>;
+  /** Open loans of other borrowers, readable through `poolLoans`. */
+  bookLoans?: BookLoanOptions[];
   gateway?: Partial<GatewayPort>;
   features?: Config['features'];
   overrides?: Partial<Deps>;
@@ -62,6 +82,13 @@ export async function world(options: WorldOptions = {}) {
     kind: 'enclave_entry',
     entry: entry({ revokedAt: options.revokedAt ?? 0n }),
   });
+  for (const [id, given] of Object.entries(options.entries ?? {})) {
+    const measurementId = Number(id);
+    store.set((await findEnclaveEntryPda({ measurementId }))[0], {
+      kind: 'enclave_entry',
+      entry: entry({ measurementId, ...given }),
+    });
+  }
   if (options.attestation !== false) {
     const given = options.attestation ?? {};
     const bytes = sasAccountBytes({
@@ -82,6 +109,7 @@ export async function world(options: WorldOptions = {}) {
       loan: getLoanDecoder().decode(loanBytes(wallet, options.loan)),
     });
   }
+  const bookLoans = await addBookLoans(store, options.bookLoans ?? []);
   const chain = fakeChain(store);
   const config: Config = { ...CONFIG, features: options.features ?? CONFIG.features };
   const deps = fakeDeps(
@@ -97,7 +125,48 @@ export async function world(options: WorldOptions = {}) {
       ...options.overrides,
     },
   );
-  return { deps, wallet, store, chain, loanAddress, key };
+  return { deps, wallet, store, chain, loanAddress, key, bookLoans };
+}
+
+async function addBookLoans(
+  store: Map<Address, ChainAccount>,
+  loans: readonly BookLoanOptions[],
+): Promise<BookLoan[]> {
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const out: BookLoan[] = [];
+  for (const [index, given] of loans.entries()) {
+    const { address: borrower } = await generateKeyPairSigner();
+    const poolAddress = given.pool === 1 ? POOL_1 : POOL_0;
+    const attestation = given.attestation === false ? undefined : (given.attestation ?? {});
+    const live = liveAttestation(attestation?.payload);
+    const [loanAddress] = await findLoanPda({ pool: poolAddress, borrower });
+    const address = await attestationAddress(CREDENTIAL, SCHEMA, borrower);
+    if (attestation !== undefined) {
+      const bytes = sasAccountBytes({
+        wallet: borrower,
+        signer: attestation.signer ?? SAS_SIGNER,
+        payload: payloadBytes(live.payload),
+        expiry: attestation.expiry ?? live.expiry,
+      });
+      store.set(address, {
+        kind: 'attestation',
+        attestation: parseSasAttestation(SAS_PROGRAM_ID, bytes),
+      });
+    }
+    store.set(loanAddress, {
+      kind: 'loan',
+      loan: getLoanDecoder().decode(
+        loanBytes(borrower, given.amount ?? 1_000_000_000n, {
+          pool: poolAddress,
+          tier: given.tier ?? 1,
+          borrowedAt: given.borrowedAt ?? now - 3600n - BigInt(index) * 60n,
+          attestationIssuedAt: given.loanIssuedAt ?? live.payload.issuedAt,
+        }),
+      ),
+    });
+    out.push({ borrower, loanAddress, attestationAddress: address });
+  }
+  return out;
 }
 
 /** Attestation options for a record that is fresh relative to the real clock (page tests). */

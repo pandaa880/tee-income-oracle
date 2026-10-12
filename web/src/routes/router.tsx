@@ -15,6 +15,14 @@ export const poolSearchSchema = z.object({
   pool: z.union([z.literal(0), z.literal(1)]).catch(0),
 });
 
+/** `?pool=0|1` the borrower came from (the book or a loan tab); absent or invalid = none. */
+export const borrowSearchSchema = z.object({
+  pool: z
+    .union([z.literal(0), z.literal(1)])
+    .optional()
+    .catch(undefined),
+});
+
 const rootRoute = createRootRoute({ component: SiteLayout });
 
 const homeRoute = createRoute({
@@ -26,6 +34,7 @@ const homeRoute = createRoute({
 const borrowRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/borrow',
+  validateSearch: borrowSearchSchema,
   component: lazyRouteComponent(() => import('../pages/borrow/borrow-page.tsx'), 'BorrowPage'),
 });
 
@@ -36,7 +45,14 @@ const loanRoute = createRoute({
   component: lazyRouteComponent(() => import('../pages/loan/loan-page.tsx'), 'LoanPage'),
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, borrowRoute, loanRoute]);
+const bookRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/book',
+  validateSearch: poolSearchSchema,
+  component: lazyRouteComponent(() => import('../pages/book/book-page.tsx'), 'BookPage'),
+});
+
+const routeTree = rootRoute.addChildren([homeRoute, borrowRoute, loanRoute, bookRoute]);
 
 export function createAppRouter(options: { history?: RouterHistory } = {}) {
   return createRouter({ routeTree, ...(options.history ? { history: options.history } : {}) });

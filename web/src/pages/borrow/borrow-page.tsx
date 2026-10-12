@@ -1,5 +1,6 @@
 // The borrower flow: wallet → bank account → consent → processing → result. Hooks decide, this
 // page composes. The flow state is corrected by the chain (a tier already there skips the flow).
+import { getRouteApi } from '@tanstack/react-router';
 import { Skeleton } from '@tio/ui/skeleton';
 import { useState } from 'react';
 import { useBorrowFlow } from '../../app/use-borrow-flow.ts';
@@ -40,7 +41,10 @@ function Checking() {
   );
 }
 
+const route = getRouteApi('/borrow');
+
 export function BorrowPage() {
+  const { pool: fromPool } = route.useSearch();
   const { address: wallet } = useWallet();
   const { deployment, cluster, features } = useConfig();
   const status = useStatus();
@@ -145,6 +149,7 @@ export function BorrowPage() {
           matchesPersona={matchesExpected(chosen, view.tier)}
           cluster={cluster}
           verifyHref={verifyHref}
+          loanPool={fromPool ?? 0}
           onReset={attestAgain}
         />
       )}

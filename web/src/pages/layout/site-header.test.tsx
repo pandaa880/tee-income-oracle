@@ -45,6 +45,14 @@ describe('SiteHeader', () => {
     expect(screen.queryByRole('link', { name: /verify/i })).not.toBeInTheDocument();
   });
 
+  it('links Loan book to pool 0 of the book page when the book flag is on', async () => {
+    await renderHeader({ book: true, verify: false });
+    expect(await screen.findByRole('link', { name: /loan book/i })).toHaveAttribute(
+      'href',
+      '/book?pool=0',
+    );
+  });
+
   it('shows Verify when the verify flag is on, and not Loan book', async () => {
     await renderHeader({ book: false, verify: true });
     expect(await screen.findByRole('link', { name: /verify/i })).toBeInTheDocument();

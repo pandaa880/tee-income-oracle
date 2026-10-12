@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StoredAttestation } from '@tio/oracle-client/attest';
 import { parseSasAttestation, SAS_PROGRAM_ID } from '@tio/oracle-client/attest';
-import { readCredential, readCredentialRecord, tierLimit } from './credential.ts';
+import { approvedIds, readCredential, readCredentialRecord, tierLimit } from './credential.ts';
 import {
   ADMIN,
   entry,
@@ -260,5 +260,30 @@ describe('readCredentialRecord', () => {
   it('agrees with readCredential on the status', () => {
     const stale = aged(MAX_AGE + 1n);
     expect(readCredentialRecord(stale).status).toBe(readCredential(stale));
+  });
+});
+
+const bitmap = (...ids: number[]): Uint8Array => {
+  const out = new Uint8Array(32);
+  for (const id of ids) out[Math.floor(id / 8)] = (out[Math.floor(id / 8)] ?? 0) | (1 << (id % 8));
+  return out;
+};
+
+describe('approvedIds', () => {
+  it('lists the ids whose bit is set, ascending', () => {
+    expect(approvedIds(bitmap(255, 9, 0, 1))).toEqual([0, 1, 9, 255]);
+  });
+
+  it('is empty for an empty or all-zero bitmap', () => {
+    expect(approvedIds(new Uint8Array(0))).toEqual([]);
+    expect(approvedIds(new Uint8Array(32))).toEqual([]);
+  });
+
+  it('reads bit id % 8 of byte id / 8, like the program', () => {
+    expect(approvedIds(Uint8Array.of(0b0000_0101, 0b1000_0000))).toEqual([0, 2, 15]);
+  });
+
+  it('accepts a plain number array, as the generated Pool type has', () => {
+    expect(approvedIds([0b11])).toEqual([0, 1]);
   });
 });

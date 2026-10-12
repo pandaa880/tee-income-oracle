@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatAge,
   formatCountdown,
+  formatPercent,
   formatTokens,
   formatUnixDate,
   shortAddress,
@@ -69,5 +70,19 @@ describe('formatUnixDate', () => {
 
   it('is deterministic', () => {
     expect(formatUnixDate(1_790_500_000n)).toBe(formatUnixDate(1_790_500_000n));
+  });
+});
+
+describe('formatPercent', () => {
+  it.each([
+    [0, '0.0%'],
+    [2500, '25.0%'],
+    [1234, '12.3%'],
+    [3875, '38.7%'],
+    [5, '0.0%'],
+    [10, '0.1%'],
+    [10_000, '100.0%'],
+  ])('%i bps -> %s (floored to one decimal)', (bps, text) => {
+    expect(formatPercent(bps)).toBe(text);
   });
 });
