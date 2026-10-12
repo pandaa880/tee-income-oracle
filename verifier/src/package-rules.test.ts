@@ -48,4 +48,12 @@ describe('library sources', () => {
     );
     expect(offenders).toEqual([]);
   });
+
+  it('do_not_use_buffer', () => {
+    // `Buffer` is a Node global; a browser has none (browser-runtime.test.ts proves the runtime side).
+    const offenders = libraryFiles().filter((file) =>
+      /\bBuffer\b/.test(readFileSync(`${SRC}${file}`, 'utf8')),
+    );
+    expect(offenders).toEqual([]);
+  });
 });

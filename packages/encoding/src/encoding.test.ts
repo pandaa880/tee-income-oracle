@@ -148,3 +148,11 @@ describe('pemToDer / derToSingleLinePem', () => {
     expect(pemToDer(derToSingleLinePem(der))).toEqual(der);
   });
 });
+
+describe('package rule', () => {
+  it('uses no Node global, so the verifier can import it in a browser', () => {
+    const source = readFileSync(new URL('./encoding.ts', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/\bBuffer\b/);
+    expect(source).not.toMatch(/from\s+['"]node:/);
+  });
+});

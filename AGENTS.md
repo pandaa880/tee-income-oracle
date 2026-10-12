@@ -54,7 +54,8 @@ programs/oracle/      Anchor. Enclave registry (image id → attester), verifies
                       tests/ = TS program tests (vitest on embedded surfpool).
 clients/ts/oracle/    Codama-generated kit client for the oracle (from the IDL; committed).
 packages/encoding/    `@tio/encoding`: the one TS module for hex / base64 / base64url (strict,
-                      canonical decoders). sandbox-bank, gateway and ops use it.
+                      canonical decoders; no Node globals, so it runs in a browser).
+                      sandbox-bank, gateway, ops and the verifier use it.
 packages/ui/          `@tio/ui`: standalone React UI package for web (design tokens light/dark,
                       shadcn/Radix primitives, ledger patterns). No Solana, no web imports.
 programs/demo-pool/   Anchor. Reads + checks the SAS attestation, lends testnet tokens.
