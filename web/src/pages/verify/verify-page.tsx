@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import { queryKeys } from '../../app/query-keys.ts';
 import { useConfig } from '../../app/use-config.ts';
+import { exampleWallets } from '../../domain/example-wallets.ts';
 import { parseWalletInput } from '../../domain/verify-view.ts';
 import { BuildsAside } from './builds-aside.tsx';
 import { VerificationResult } from './verification-result.tsx';
@@ -38,7 +39,13 @@ export function VerifyPage() {
         </p>
       </div>
       {/* Keyed on the search param, so a new URL resets what the box shows. */}
-      <WalletForm key={typed ?? ''} initial={typed ?? ''} invalid={invalid} onRepeat={repeat} />
+      <WalletForm
+        key={typed ?? ''}
+        initial={typed ?? ''}
+        invalid={invalid}
+        onRepeat={repeat}
+        examples={exampleWallets(cluster)}
+      />
       {wallet === null ? (
         <div className="flex flex-wrap items-start gap-6">
           <BuildsAside />

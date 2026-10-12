@@ -2,6 +2,8 @@ import { useNavigate } from '@tanstack/react-router';
 import { Button } from '@tio/ui/button';
 import { Input, Label } from '@tio/ui/input';
 import { type FormEvent, useState } from 'react';
+import type { ExampleWallet } from '../../domain/example-wallets.ts';
+import { ExampleChips } from './example-chips.tsx';
 
 export type WalletFormProps = {
   /** What `?wallet=` holds, shown back in the box. */
@@ -10,12 +12,14 @@ export type WalletFormProps = {
   invalid: boolean;
   /** Check pressed with the wallet already in the URL: the page runs the check again. */
   onRepeat: () => void;
+  /** One-click wallets for a reader who has none (empty on a cluster without examples). */
+  examples: readonly ExampleWallet[];
 };
 
 const ERROR_ID = 'verify-wallet-error';
 
 /** The wallet box and its Check button; submitting puts the text in the URL, nothing more. */
-export function WalletForm({ initial, invalid, onRepeat }: WalletFormProps) {
+export function WalletForm({ initial, invalid, onRepeat, examples }: WalletFormProps) {
   const navigate = useNavigate();
   const [text, setText] = useState(initial);
 
@@ -57,6 +61,7 @@ export function WalletForm({ initial, invalid, onRepeat }: WalletFormProps) {
           Not a Solana address
         </p>
       )}
+      <ExampleChips examples={examples} />
     </section>
   );
 }

@@ -27,6 +27,17 @@ pnpm install
 pnpm --filter @tio/verifier verify -- <borrower wallet> --cluster devnet
 ```
 
+No wallet at hand? Two devnet test borrowers from our own runs (verdicts as run on
+2026-10-13; a PASS holds only while the build that attested the wallet is active, a
+retired build fails for good):
+
+```sh
+# tier A, attested by build #1: VERDICT PASS, exit 0
+pnpm --filter @tio/verifier verify -- 8Z6Fa1j6WChXyAgxu6bCyPPUVi9mnuPgWTxM7W8cngAp --cluster devnet
+# attested by build #0, retired at an enclave restart: "Entry is active" FAIL, exit 1
+pnpm --filter @tio/verifier verify -- 9BhCFK5bmPCswYp13r84tBduvZzeEuRa9Wh4kCy9LpPS --cluster devnet
+```
+
 Output: the attestation facts (address, tier, dates, which enclave build signed
 it), then seven `PASS` / `FAIL` lines, then `VERDICT PASS` or `VERDICT FAIL`.
 Exit code 0 only on PASS. The command reads only public data: the Solana RPC,
@@ -83,5 +94,14 @@ the public repository. The page shows the attestation facts, every registered
 build with its chain state, the seven lines with the library's detail, the verdict,
 and links to the release, the archived file and the registry entry. Nothing goes
 through our gateway. The CLI above does the same from a clone.
+
+Without a wallet, click one of the example borrowers under the box (the two above
+and a tier-C one). Try it:
+https://tee-income-oracle-web.vercel.app/verify?wallet=8Z6Fa1j6WChXyAgxu6bCyPPUVi9mnuPgWTxM7W8cngAp
+
+The "Enclave source: release vX.Y.Z" link under the checks is the **enclave
+build's** release tag (the compose file at that tag produced the running image),
+not the app's version in the footer. The two diverge until a new enclave build is
+registered.
 
 `verifier/README.md` lists the library's entry points.
