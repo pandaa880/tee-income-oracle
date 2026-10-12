@@ -54,12 +54,14 @@ type Cli = { code: number; stdout: string; stderr: string };
 async function cli(
   walletAddress: Address,
   extra: string[] = [],
-  options: { deployment?: string; compose?: boolean } = {},
+  options: { deployment?: string; compose?: boolean; pnpmDashes?: boolean } = {},
 ): Promise<Cli> {
   const args = [
     '--import',
     'tsx',
     'src/cli.ts',
+    // `pnpm --filter @tio/verifier verify -- …` forwards the `--` to the script.
+    ...(options.pnpmDashes === true ? ['--'] : []),
     walletAddress,
     '--cluster',
     'localnet',
@@ -214,6 +216,13 @@ describe('tio-verify CLI against the surfnet', () => {
     const result = await cli(wallet, [], { deployment: path, compose: false });
     expect(result.stderr).toContain('error: file_unreadable:');
     expect(result.code).toBe(2);
+  });
+
+  it('accepts_the_leading_double_dash_that_pnpm_forwards', async () => {
+    const result = await cli(wallet, ['--doc', docPath], { pnpmDashes: true });
+    expect(result.stderr).toBe('');
+    expect(linesStartingWith(result.stdout, 'PASS')).toHaveLength(7);
+    expect(result.code).toBe(0);
   });
 
   it('exits_2_with_a_usage_error_for_an_unknown_option', async () => {

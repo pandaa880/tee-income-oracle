@@ -48,10 +48,15 @@ const ARG_OPTIONS = {
   compose: { type: 'string' },
 } as const;
 
-/** `parseArgs` failures (unknown option, missing value) are usage errors, not crashes. */
+/**
+ * `parseArgs` failures (unknown option, missing value) are usage errors, not
+ * crashes. `pnpm … verify -- <args>` forwards the `--` itself, so a leading one
+ * is dropped (otherwise every option after it would count as a positional).
+ */
 function parsedArgs(argv: string[]) {
+  const args = argv[0] === '--' ? argv.slice(1) : argv;
   try {
-    return parseArgs({ args: argv, allowPositionals: true, options: ARG_OPTIONS });
+    return parseArgs({ args, allowPositionals: true, options: ARG_OPTIONS });
   } catch (error) {
     throw new UsageError(error instanceof Error ? error.message : 'invalid arguments');
   }
