@@ -7,10 +7,11 @@ import { ErrorCard } from '../borrow/error-card.tsx';
 import { BookKpis } from './book-kpis.tsx';
 import { LoanTable } from './loan-table.tsx';
 import { OutcomesRoadmap } from './outcomes-roadmap.tsx';
+import { RefreshFailed } from './refresh-failed.tsx';
 import { PolicyCard } from './policy-card.tsx';
 import { TierMix } from './tier-mix.tsx';
 
-export type BookPanelProps = { pool: Address };
+export type BookPanelProps = { pool: Address; poolId: 0 | 1 };
 
 function Loading() {
   return (
@@ -23,10 +24,11 @@ function Loading() {
 }
 
 /**
- * One pool's book. A failed background refresh keeps the last good book on screen; only a
- * first read that fails shows the error card.
+ * One pool's book. A failed background refresh keeps the last good book on screen with a
+ * warning that says when it was read (its badges were judged then: a credential can expire while
+ * the RPC is down); only a first read that fails shows the error card.
  */
-export function BookPanel({ pool }: BookPanelProps) {
+export function BookPanel({ pool, poolId }: BookPanelProps) {
   const { cluster } = useConfig();
   const navigate = useNavigate();
   const book = useBook(pool);
@@ -48,11 +50,14 @@ export function BookPanel({ pool }: BookPanelProps) {
   const { policy, kpis, tierMix, rows } = book.data;
   return (
     <div className="flex flex-col gap-6">
+      {book.error !== null && (
+        <RefreshFailed error={book.error} readAt={book.dataUpdatedAt} onRetry={retry} />
+      )}
       <PolicyCard policy={policy} cluster={cluster} />
       <BookKpis kpis={kpis} />
       <TierMix mix={tierMix} />
       <OutcomesRoadmap />
-      <LoanTable rows={rows} cluster={cluster} />
+      <LoanTable rows={rows} cluster={cluster} poolId={poolId} />
     </div>
   );
 }

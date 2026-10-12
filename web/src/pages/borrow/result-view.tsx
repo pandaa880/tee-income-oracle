@@ -26,6 +26,8 @@ export type ResultViewProps = {
   matchesPersona: boolean | null;
   cluster: string;
   verifyHref: string | null;
+  /** The pool "Borrow now" opens: the one the flow was started for, else pool 0. */
+  loanPool: 0 | 1;
   onReset: () => void;
 };
 
@@ -90,7 +92,7 @@ function StoredBytes({ record }: { record: ChainRecord }) {
 }
 
 export function ResultView(props: ResultViewProps) {
-  const { result, pools, matchesPersona, cluster, verifyHref, onReset } = props;
+  const { result, pools, matchesPersona, cluster, verifyHref, loanPool, onReset } = props;
   const { tier, attestation, tx, record, source } = result;
   return (
     <div className="grid grid-cols-1 gap-8 md:grid-cols-[auto_1fr] md:items-start">
@@ -140,7 +142,7 @@ export function ResultView(props: ResultViewProps) {
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <Button asChild>
-            <Link to="/loan" search={{ pool: 0 }}>
+            <Link to="/loan" search={{ pool: loanPool }}>
               Borrow now
             </Link>
           </Button>

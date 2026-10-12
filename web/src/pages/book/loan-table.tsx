@@ -13,7 +13,8 @@ import { formatAge, formatTokens, shortAddress } from '../../domain/format.ts';
 import { tierTone } from '../../domain/tier-tone.ts';
 import { ExternalLink } from '../layout/external-link.tsx';
 
-export type LoanTableProps = { rows: readonly BookRow[]; cluster: string };
+/** `poolId` is the book's pool, so "Borrow from this pool" can carry it through the flow. */
+export type LoanTableProps = { rows: readonly BookRow[]; cluster: string; poolId: 0 | 1 };
 
 const COLUMNS = ['Borrower', 'Tier', 'Amount', 'Out', 'Tier age', 'Build', 'Credential', 'Links'];
 
@@ -91,7 +92,7 @@ function LoanRow({ row, cluster }: { row: BookRow; cluster: string }) {
 }
 
 /** Every open loan of the pool, newest first; an empty pool offers the way to make one. */
-export function LoanTable({ rows, cluster }: LoanTableProps) {
+export function LoanTable({ rows, cluster, poolId }: LoanTableProps) {
   const titleId = useId();
   return (
     <section
@@ -105,7 +106,9 @@ export function LoanTable({ rows, cluster }: LoanTableProps) {
         <div className="flex flex-col items-start gap-3 px-6 pb-4">
           <p className="text-muted-foreground">No open loans in this pool yet.</p>
           <Button asChild variant="outline">
-            <Link to="/borrow">Borrow from this pool</Link>
+            <Link to="/borrow" search={{ pool: poolId }}>
+              Borrow from this pool
+            </Link>
           </Button>
         </div>
       ) : (

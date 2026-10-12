@@ -14,7 +14,8 @@ import {
   shortAddress,
   shortHex,
 } from '../../domain/format.ts';
-import { fail } from '../../test-support/fakes.ts';
+import { formatUnixDateTime } from '../../domain/format.ts';
+import { fail, ok } from '../../test-support/fakes.ts';
 import { renderApp } from '../../test-support/render.tsx';
 import { world, type WorldOptions } from '../../test-support/world.ts';
 
@@ -338,7 +339,7 @@ describe('BookPage empty pool', () => {
     expect(screen.getByText('No open loans')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Borrow from this pool' })).toHaveAttribute(
       'href',
-      '/borrow',
+      '/borrow?pool=0',
     );
     expect(kpiOf('Open loans')).toHaveTextContent('0');
   });
@@ -396,6 +397,44 @@ describe('BookPage review fixes', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('says a re-read failed, and when the book on screen was read, next to the cached table', async () => {
+    const w = await prepare();
+    const { queryClient } = await renderApp('/book?pool=0');
+    await screen.findByRole('table');
+    const readAt = queryClient.getQueryCache().findAll({ queryKey: ['book'] })[0]
+      ?.state.dataUpdatedAt;
+    if (readAt === undefined) throw new Error('no book read');
+    vi.mocked(w.chain.poolLoans).mockResolvedValue(fail({ code: 'rpc_busy' }));
+    await act(async () => {
+      await queryClient.refetchQueries();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    const banner = screen.getByRole('status', { name: /couldn.t refresh the book/i });
+    expect(banner).toHaveTextContent(/network busy/i);
+    expect(banner).toHaveTextContent(formatUnixDateTime(BigInt(Math.floor(readAt / 1000))));
+    expect(banner).toHaveTextContent(/badges were judged then/i);
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  it('clears the refresh warning once Try again reads the book', async () => {
+    const w = await prepare();
+    const { queryClient } = await renderApp('/book?pool=0');
+    await screen.findByRole('table');
+    const real = vi.mocked(w.chain.poolLoans).getMockImplementation();
+    vi.mocked(w.chain.poolLoans).mockResolvedValueOnce(fail({ code: 'rpc_busy' }));
+    await act(async () => {
+      await queryClient.refetchQueries();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    const banner = screen.getByRole('status', { name: /couldn.t refresh the book/i });
+    if (real === undefined) vi.mocked(w.chain.poolLoans).mockResolvedValue(ok([]));
+    fireEvent.click(within(banner).getByRole('button', { name: /try again/i }));
+    await vi.waitFor(() =>
+      expect(screen.queryByRole('status', { name: /couldn.t refresh the book/i })).toBeNull(),
+    );
+    expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
   it('says when the pool pins a policy other than the published default', async () => {
     await open();
     expect(await screen.findByText('not the published default')).toBeInTheDocument();
@@ -451,5 +490,13 @@ describe('BookPage review fixes', () => {
     const stale = within(rowOf(borrowerAt(w.bookLoans, 1)));
     expect(stale.getByText('B')).toHaveClass(TONE_TEXT.info);
     expect(stale.getByText('stale · re-attest')).toHaveClass(TONE_TINT.caution);
+  });
+
+  it('keeps the selected pool when an empty book offers to borrow', async () => {
+    await open({ bookLoans: [] }, '/book?pool=1');
+    expect(await screen.findByRole('link', { name: 'Borrow from this pool' })).toHaveAttribute(
+      'href',
+      '/borrow?pool=1',
+    );
   });
 });

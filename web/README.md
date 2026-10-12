@@ -20,9 +20,9 @@ All three are untrusted clients — no privileged logic lives here.
 | Route | Page |
 |---|---|
 | `/` | Landing: the receipts thesis with an example receipt, proof bar, what a funder can check on every loan, how it works (data-path schematic), borrower and lender doors, the pilot ask, live status strip |
-| `/borrow` | Borrower flow: demo wallet → bank account (4 sandbox personas) → consent (signs the exact §9 intent, 10-minute countdown) → live stages → result or REJECT |
+| `/borrow[?pool=0\|1]` | Borrower flow: demo wallet → bank account (4 sandbox personas) → consent (signs the exact §9 intent, 10-minute countdown) → live stages → result or REJECT. `?pool=` (from the loan book) is where "Borrow now" goes; default pool 0 |
 | `/loan?pool=0\|1` | Loan screen, one tab per pool: borrow up to `min(tier limit, vault)`, the open loan, repay. Reads only the chain, so a reload or a returning wallet lands in the right state |
-| `/book?pool=0\|1` | Loan book, one tab per pool: policy card, KPIs, tier mix, every open loan (tier at borrow, amount, time out, tier age, build, credential badge, explorer links), re-read every 30 s. A badge judges the borrower's current attestation by the pool's own borrow checks (fresh, stale, build retired, old policy, …) |
+| `/book?pool=0\|1` | Loan book, one tab per pool: policy card, KPIs, tier mix, every open loan (tier at borrow, amount, time out, tier age, build, credential badge, explorer links), re-read every 30 s (a failed re-read keeps the last book and says when it was read). A badge judges the borrower's current attestation by the pool's own borrow checks (fresh, stale, build retired, old policy, …) |
 
 The borrow, loan and book pages load lazily. `app/config.ts` `features` gates what isn't
 shipped yet: `verify` (off) adds the Verify nav item and "Anyone can check it" links; `book`

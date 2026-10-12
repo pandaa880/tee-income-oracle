@@ -59,7 +59,8 @@ export function BookPage() {
             className="flex flex-col gap-6 pt-2"
           >
             <RoleStrip />
-            <BookPanel pool={pool.address} />
+            {/* Only the selected tab's content mounts, so `selected` is this pool's id. */}
+            <BookPanel pool={pool.address} poolId={selected} />
           </TabsContent>
         ))}
       </Tabs>

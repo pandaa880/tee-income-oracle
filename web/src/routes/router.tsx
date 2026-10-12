@@ -15,6 +15,14 @@ export const poolSearchSchema = z.object({
   pool: z.union([z.literal(0), z.literal(1)]).catch(0),
 });
 
+/** `?pool=0|1` the borrower came from (the book or a loan tab); absent or invalid = none. */
+export const borrowSearchSchema = z.object({
+  pool: z
+    .union([z.literal(0), z.literal(1)])
+    .optional()
+    .catch(undefined),
+});
+
 const rootRoute = createRootRoute({ component: SiteLayout });
 
 const homeRoute = createRoute({
@@ -26,6 +34,7 @@ const homeRoute = createRoute({
 const borrowRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/borrow',
+  validateSearch: borrowSearchSchema,
   component: lazyRouteComponent(() => import('../pages/borrow/borrow-page.tsx'), 'BorrowPage'),
 });
 
