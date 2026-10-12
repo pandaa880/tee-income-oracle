@@ -86,8 +86,10 @@ develop  ──●──●──●──R────●──●──●─�
 
 ### Versioning and releases
 - **One version for the whole repo**, SemVer `vMAJOR.MINOR.PATCH`, `0.x`
-  until production. Pre-1.0, `feat` and breaking changes bump MINOR; `fix`
-  bumps PATCH. `docs`/`test`/`chore`/`ci`/`refactor`/`perf` don't cause a release.
+  until production. Pre-1.0, breaking changes (`feat!:`) bump MINOR; `feat` and
+  `fix` bump PATCH (release-please `bump-minor-pre-major` +
+  `bump-patch-for-minor-pre-major`). `docs`/`test`/`chore`/`ci`/`refactor`/`perf`
+  don't cause a release.
 - **The repo version is the git tag** (`vX.Y.Z`), recorded in
   `.release-please-manifest.json` and `CHANGELOG.md`. The `version` fields in
   crate `Cargo.toml`s and `package.json`s are internal and are **not** bumped
