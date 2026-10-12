@@ -1,6 +1,7 @@
 import { getBase16Codec } from '@solana/kit';
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { findEnclaveEntryPda } from '@tio/oracle-client';
+import { TONE_TEXT, TONE_TINT } from '@tio/ui/tokens';
 import { describe, expect, it, vi } from 'vitest';
 import { POLICY_URL, PUBLISHED_POLICY_HASH } from '../../app/release.ts';
 import type { Deps } from '../../app/deps.ts';
@@ -76,13 +77,22 @@ async function open(options: WorldOptions = {}, path = '/book?pool=0') {
 const heading = (name: string) => screen.findByRole('heading', { name });
 
 /** The nearest ancestor of a label that also holds its value (a KPI or ledger cell). */
-function cellOf(label: string | RegExp): HTMLElement {
-  const own = screen.getByText(label);
+function cellOf(label: string | RegExp, scope: HTMLElement = document.body): HTMLElement {
+  const own = within(scope).getByText(label);
   for (let el = own.parentElement; el !== null; el = el.parentElement) {
     if ((el.textContent ?? '').length > (own.textContent ?? '').length) return el;
   }
   throw new Error('label has no value next to it');
 }
+
+/** A KPI card by its label, inside the "Key figures" region. */
+const kpiOf = (label: string) => cellOf(label, screen.getByRole('region', { name: 'Key figures' }));
+
+/** The tier-mix legend entry "A 3 · 2,375" (letter, count, principal). */
+const legend = (tier: string, count: number, principal: string) =>
+  screen.getByText(
+    (_, el) => el?.tagName === 'LI' && el.textContent === `${tier} ${count} · ${principal}`,
+  );
 
 function rowOf(borrower: string): HTMLElement {
   const row = screen
@@ -183,27 +193,27 @@ describe('BookPage KPIs and tier mix', () => {
     await open();
     await heading('Pool 0 · loan book');
     await screen.findByText('Principal outstanding');
-    expect(cellOf('Principal outstanding')).toHaveTextContent(formatTokens(3_875_000_000n));
-    expect(cellOf('Utilization')).toHaveTextContent(formatPercent(3875));
-    expect(cellOf('Utilization')).toHaveTextContent('38.7%');
+    expect(kpiOf('Principal outstanding')).toHaveTextContent(formatTokens(3_875_000_000n));
+    expect(kpiOf('Utilization')).toHaveTextContent(formatPercent(3875));
+    expect(kpiOf('Utilization')).toHaveTextContent('38.7%');
     expect(screen.getByText('outstanding ÷ (outstanding + vault)')).toBeInTheDocument();
-    expect(cellOf('Open loans')).toHaveTextContent('5');
-    expect(cellOf('In vault')).toHaveTextContent(formatTokens(6_125_000_000n));
+    expect(kpiOf('Open loans')).toHaveTextContent('5');
+    expect(kpiOf('In vault')).toHaveTextContent(formatTokens(6_125_000_000n));
   });
 
   it('shows the count and principal of each tier at borrow', async () => {
     await open();
     await heading('Pool 0 · loan book');
     expect(await screen.findByText('Tier mix by principal')).toBeInTheDocument();
-    expect(screen.getByText(/A\s*·\s*3\s*·\s*2,375/)).toBeInTheDocument();
-    expect(screen.getByText(/B\s*·\s*1\s*·\s*1,000/)).toBeInTheDocument();
-    expect(screen.getByText(/C\s*·\s*1\s*·\s*500/)).toBeInTheDocument();
+    expect(legend('A', 3, '2,375')).toBeInTheDocument();
+    expect(legend('B', 1, '1,000')).toBeInTheDocument();
+    expect(legend('C', 1, '500')).toBeInTheDocument();
   });
 
   it('shows a dash for utilization when nothing is outstanding and the vault is empty', async () => {
     await open({ bookLoans: [], vault: { 0: 0n } });
     await screen.findByText('Utilization');
-    expect(cellOf('Utilization')).toHaveTextContent('—');
+    expect(kpiOf('Utilization')).toHaveTextContent('—');
   });
 });
 
@@ -263,12 +273,7 @@ describe('BookPage loans table', () => {
   it('spells the four badges out', async () => {
     await open();
     await screen.findByRole('table');
-    for (const label of [
-      'FRESH',
-      'STALE · RE-ATTEST',
-      'BUILD RETIRED · RE-ATTEST',
-      'OLD POLICY · RE-ATTEST',
-    ]) {
+    for (const label of ['fresh', 'stale · re-attest', 'build retired', 'old policy']) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
   });
@@ -317,11 +322,11 @@ describe('BookPage loans table', () => {
     }
   });
 
-  it('shows dashes and NO TIER for a borrower without an attestation', async () => {
+  it('shows dashes and "no tier" for a borrower without an attestation', async () => {
     const w = await open({ bookLoans: [{ attestation: false }] });
     await screen.findByRole('table');
     const row = within(rowOf(borrowerAt(w.bookLoans, 0)));
-    expect(row.getByText('NO TIER')).toBeInTheDocument();
+    expect(row.getByText('no tier')).toBeInTheDocument();
     expect(row.getAllByText('—')).toHaveLength(2);
   });
 });
@@ -335,13 +340,13 @@ describe('BookPage empty pool', () => {
       'href',
       '/borrow',
     );
-    expect(cellOf('Open loans')).toHaveTextContent('0');
+    expect(kpiOf('Open loans')).toHaveTextContent('0');
   });
 
   it('shows 0.0% utilization for an empty book with money in the vault', async () => {
     await open({ bookLoans: [] });
     await screen.findByText('Utilization');
-    expect(cellOf('Utilization')).toHaveTextContent('0.0%');
+    expect(kpiOf('Utilization')).toHaveTextContent('0.0%');
   });
 });
 
@@ -407,27 +412,44 @@ describe('BookPage review fixes', () => {
     const w = await open();
     const first = w.bookLoans[0];
     if (first === undefined) throw new Error('no loan');
-    expect(await screen.findByRole('table', { name: 'Loans in this pool' })).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: 'Open loans' })).toBeInTheDocument();
     const short = shortAddress(first.borrower);
     expect(screen.getByRole('link', { name: `Loan of ${short}` })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: `Attestation of ${short}` })).toBeInTheDocument();
   });
 
-  it('titles each section with an h2 under the page h1', async () => {
+  it('titles each section with an h2 under the page h1, and names the policy and KPI regions', async () => {
     await open();
-    for (const name of [
-      /Policy \(the funder['’]s rules\)/,
-      'Tier mix by principal',
-      'Loans in this pool',
-      'Outcomes per tier',
-    ]) {
+    for (const name of ['Tier mix by principal', 'Open loans', 'Outcomes per tier']) {
       expect(await screen.findByRole('heading', { level: 2, name })).toBeInTheDocument();
     }
+    expect(screen.getByRole('region', { name: 'Pool policy' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Key figures' })).toBeInTheDocument();
   });
 
   it('reads the tier mix bar out with the same percent format as the KPIs', async () => {
     await open();
     // Tier A: 2,375 of 3,875 = 6129 bps → "61.2%" (formatPercent floors to one decimal).
     expect(await screen.findByRole('img', { name: /tier A 61\.2%,/ })).toBeInTheDocument();
+  });
+
+  it('marks Loan book as the current page in the nav', async () => {
+    await open({}, '/book?pool=1');
+    expect(await screen.findByRole('link', { name: 'Loan book' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('link', { name: 'Borrow' })).not.toHaveAttribute('aria-current');
+  });
+
+  it('colours the tier letter and fills the credential chip with its tone', async () => {
+    const w = await open();
+    await screen.findByRole('table');
+    const fresh = within(rowOf(borrowerAt(w.bookLoans, 0)));
+    expect(fresh.getByText('A')).toHaveClass(TONE_TEXT.positive);
+    expect(fresh.getByText('fresh')).toHaveClass(TONE_TINT.positive);
+    const stale = within(rowOf(borrowerAt(w.bookLoans, 1)));
+    expect(stale.getByText('B')).toHaveClass(TONE_TEXT.info);
+    expect(stale.getByText('stale · re-attest')).toHaveClass(TONE_TINT.caution);
   });
 });

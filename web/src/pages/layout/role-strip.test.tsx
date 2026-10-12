@@ -17,4 +17,11 @@ describe('RoleStrip', () => {
       screen.getByText('DEMO POOL = NBFC + CREDIT VEHICLE IN ONE PROGRAM'),
     ).toBeInTheDocument();
   });
+
+  it('names what each party is above its label', () => {
+    render(<RoleStrip />);
+    for (const kicker of ['Capital', 'On-chain reader', 'Regulated lender', 'Data subject']) {
+      expect(screen.getByText(kicker)).toBeInTheDocument();
+    }
+  });
 });

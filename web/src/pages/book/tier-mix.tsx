@@ -18,8 +18,11 @@ export function TierMix({ mix }: TierMixProps) {
     ', ',
   );
   return (
-    <section aria-labelledby={titleId} className="flex flex-col gap-3">
-      <h2 id={titleId} className="font-display text-xl leading-tight">
+    <section
+      aria-labelledby={titleId}
+      className="flex flex-col gap-3 rounded-md border border-border bg-card px-6 py-5"
+    >
+      <h2 id={titleId} className="font-semibold">
         Tier mix by principal
       </h2>
       {shown.length === 0 ? (
@@ -28,7 +31,7 @@ export function TierMix({ mix }: TierMixProps) {
         <div
           role="img"
           aria-label={summary}
-          className="flex h-3 w-full gap-px overflow-hidden rounded-sm border border-border"
+          className="flex h-4 gap-0.5 overflow-hidden rounded-sm"
         >
           {shown.map((tier) => (
             // Width only (never colour) inline: the share is data; colour comes from the token.
@@ -40,17 +43,11 @@ export function TierMix({ mix }: TierMixProps) {
           ))}
         </div>
       )}
-      <ul className="flex flex-wrap gap-x-6 gap-y-1 font-mono text-sm">
+      <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
         {TIERS.map((tier) => (
-          <li key={tier} className="inline-flex items-center gap-2">
-            <span
-              aria-hidden="true"
-              className={cn(
-                'inline-block size-2.5 rounded-xs bg-current',
-                TONE_TEXT[tierTone(tier)],
-              )}
-            />
-            <span>{`${tier} · ${mix[tier].count} · ${formatTokens(mix[tier].principal)}`}</span>
+          <li key={tier}>
+            <strong className={TONE_TEXT[tierTone(tier)]}>{tier}</strong>
+            {` ${mix[tier].count} · ${formatTokens(mix[tier].principal)}`}
           </li>
         ))}
       </ul>

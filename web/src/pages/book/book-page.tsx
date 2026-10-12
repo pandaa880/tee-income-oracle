@@ -3,55 +3,61 @@
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@tio/ui/tabs';
 import { useConfig } from '../../app/use-config.ts';
-import { explorerAddressUrl } from '../../domain/explorer.ts';
 import { shortAddress } from '../../domain/format.ts';
-import { ExternalLink } from '../layout/external-link.tsx';
 import { RoleStrip } from '../layout/role-strip.tsx';
 import { BookPanel } from './book-panel.tsx';
 
 const route = getRouteApi('/book');
 
+/** Pool tabs as filled buttons (mockup board 10), not the ledger underline. */
+const TAB =
+  'mb-0 min-h-11 rounded-sm border border-border bg-card px-4 font-sans text-sm tracking-normal normal-case text-foreground data-[state=active]:border-primary data-[state=active]:bg-primary data-[state=active]:font-semibold data-[state=active]:text-primary-foreground';
+
 export function BookPage() {
   const { pool: selected } = route.useSearch();
   const navigate = useNavigate();
-  const { deployment, cluster } = useConfig();
+  const { deployment } = useConfig();
+  const current = deployment.pools.find((p) => p.poolId === selected) ?? deployment.pools[0];
 
   return (
-    <main className="mx-auto flex max-w-(--content-max) flex-col gap-8 px-4 py-12">
+    <main className="mx-auto flex max-w-(--content-max) flex-col gap-6 px-4 py-10">
       <Tabs
         value={String(selected)}
         onValueChange={(value) =>
           void navigate({ to: '/book', search: { pool: Number(value) === 1 ? 1 : 0 } })
         }
       >
-        <TabsList>
-          {deployment.pools.map((pool) => (
-            <TabsTrigger key={pool.address} value={String(pool.poolId)}>
-              {`Pool ${pool.poolId}`}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {deployment.pools.map((pool) => (
-          <TabsContent
-            key={pool.address}
-            value={String(pool.poolId)}
-            className="flex flex-col gap-6 pt-6"
-          >
-            <h1 className="font-display text-2xl leading-tight">{`Pool ${pool.poolId} · loan book`}</h1>
-            <p className="max-w-prose text-muted-foreground">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex max-w-3xl flex-col gap-1.5">
+            <TabsList aria-label="Pool" className="mb-2 flex-wrap gap-1.5 border-b-0">
+              {deployment.pools.map((pool) => (
+                <TabsTrigger key={pool.address} value={String(pool.poolId)} className={TAB}>
+                  {`Pool ${pool.poolId}`}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <h1 className="font-display text-3xl leading-[1.08] font-medium md:text-[2.75rem]">
+              {`Pool ${current?.poolId ?? selected} · loan book`}
+            </h1>
+            <p className="text-muted-foreground">
               The view a credit vehicle gets of the loans it funds through an NBFC: every loan
               carries a verifiable attestation — which policy, which enclave build, how fresh. In
               this demo the pool plays both parts: it lends directly, where in production a
               regulated NBFC originates and disburses. Read-only, straight from chain.
             </p>
-            <p className="flex flex-wrap gap-x-4 font-mono text-sm text-muted-foreground">
-              <ExternalLink href={explorerAddressUrl(cluster, pool.address)}>
-                {`pool ${shortAddress(pool.address)}`}
-              </ExternalLink>
-              <ExternalLink href={explorerAddressUrl(cluster, deployment.mint)}>
-                {`mint ${shortAddress(deployment.mint)}`}
-              </ExternalLink>
-            </p>
+          </div>
+          {current !== undefined && (
+            <span className="font-mono text-sm text-muted-foreground">
+              {`pool ${shortAddress(current.address)} · mint ${shortAddress(deployment.mint)}`}
+            </span>
+          )}
+        </div>
+        {deployment.pools.map((pool) => (
+          <TabsContent
+            key={pool.address}
+            value={String(pool.poolId)}
+            className="flex flex-col gap-6 pt-2"
+          >
             <RoleStrip />
             <BookPanel pool={pool.address} />
           </TabsContent>

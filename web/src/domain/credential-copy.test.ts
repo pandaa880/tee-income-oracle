@@ -43,20 +43,20 @@ describe('credentialMessage', () => {
 
 describe('bookHealthLabel', () => {
   const BOOK_LABELS: Record<CredentialStatus, string> = {
-    valid: 'FRESH',
-    none: 'NO TIER',
-    stale: 'STALE · RE-ATTEST',
-    expired: 'EXPIRED · RE-ATTEST',
-    foreign_signer: 'FOREIGN SIGNER · RE-ATTEST',
-    enclave_revoked: 'BUILD RETIRED · RE-ATTEST',
-    not_approved: 'NOT APPROVED · RE-ATTEST',
-    policy_mismatch: 'OLD POLICY · RE-ATTEST',
-    tier_not_accepted: 'NOT ACCEPTED',
-    window_too_old: 'STATEMENT TOO OLD · RE-ATTEST',
-    window_too_short: 'STATEMENT TOO SHORT · RE-ATTEST',
+    valid: 'fresh',
+    none: 'no tier',
+    stale: 'stale · re-attest',
+    expired: 'expired · re-attest',
+    foreign_signer: 'foreign signer',
+    enclave_revoked: 'build retired',
+    not_approved: 'build not approved',
+    policy_mismatch: 'old policy',
+    tier_not_accepted: 'tier not accepted',
+    window_too_old: 'statement too old',
+    window_too_short: 'statement too short',
   };
 
-  it.each(STATUSES)('%s', (status) => {
+  it.each(STATUSES)('gives %s the copy-deck chip text', (status) => {
     expect(bookHealthLabel(status)).toBe(BOOK_LABELS[status]);
   });
 });

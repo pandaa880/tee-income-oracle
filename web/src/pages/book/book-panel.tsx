@@ -51,13 +51,8 @@ export function BookPanel({ pool }: BookPanelProps) {
       <PolicyCard policy={policy} cluster={cluster} />
       <BookKpis kpis={kpis} />
       <TierMix mix={tierMix} />
-      <LoanTable rows={rows} cluster={cluster} />
-      <p className="max-w-prose text-sm text-muted-foreground">
-        An enclave restart retires its old build, so every credential it issued shows “build
-        retired” until the borrower re-attests — monitoring, not a bug. “Old policy” = issued under
-        rules this pool no longer accepts; new borrows need a fresh attestation.
-      </p>
       <OutcomesRoadmap />
+      <LoanTable rows={rows} cluster={cluster} />
     </div>
   );
 }
