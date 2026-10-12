@@ -682,11 +682,12 @@ each merges its own keys in and keeps the rest:
 | the nine above | `sas:setup` | SAS program, oracle program, credential, schema |
 | `demo_pool_program`, `mint` | `pool:setup` | base58; `mint` is classic SPL Token, 6 decimals, no freeze authority |
 | `pools` | `pool:setup` (adds its pool, keeps the others) | `[{ address, pool_id }]`, the pools `enclave:rotate` keeps approving |
-| `enclaves` | `enclave:rotate` | `[{ measurement_id, image_id, attester, attestation_file }]`: hex image id (§13 `measurement`), `0x` eth address, path of the archived document relative to the deployment file; one record per id |
+| `enclaves` | `enclave:rotate` | `[{ measurement_id, image_id, attester, attestation_file, release, endpoint }]`: hex image id (§13 `measurement`), `0x` eth address, path of the archived document relative to the deployment file, the git tag (`vX.Y.Z`) whose `enclave/docker-compose.yml` produced the image (the verifier recomputes PCR16 from it), the enclave's attestation server `http://<ip>:1301` (cross-check only; absent once the enclave is gone); one record per id |
 
 Archived attestation documents: `deployments/<cluster>/attestation-<id>.hex`,
 the exact hex returned by the enclave's Oyster attestation server (port 1301,
-`/attestation/hex`) and checked by `oyster-cvm verify`. `sha256` of the decoded
+`/attestation/hex`), checked by `oyster-cvm verify` at rotation and by
+`@tio/verifier` any time after (`docs/VERIFY.md`). `sha256` of the decoded
 bytes is the entry's `attestation_doc_hash` (§13), so anyone can re-verify the
 document behind a registry entry after the enclave is gone. Never edited or
 overwritten.

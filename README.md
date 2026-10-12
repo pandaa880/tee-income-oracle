@@ -172,7 +172,14 @@ borrow/repay transactions after an 11-rule shape check so the borrower pays no f
 test runs the real enclave container, bank and programs through it. The
 `ops` scripts set a cluster up (oracle config, SAS, demo pool) and register
 the running Oyster enclave from its verified attestation; they are tested on
-surfpool and run on devnet.
+surfpool and run on devnet. The `verifier` library and CLI check a wallet's
+tier end to end from public data: the SAS attestation (written by the
+oracle's signer), the registry entry it names, and the archived Nitro
+attestation document (COSE signature and certificate chain to the pinned AWS
+root, Marlin base-image PCRs, PCR16 recomputed from the compose file at the
+release tag, image id, attester key, document hash, entry active); it runs
+in Node and the browser and is tested against the real devnet documents and
+the real programs on surfpool ([`docs/VERIFY.md`](docs/VERIFY.md)).
 
 **On devnet now:** both programs, the enclave on Marlin Oyster (image id in
 [`deployments/devnet.json`](deployments/devnet.json), reproducible from the
@@ -185,6 +192,8 @@ borrower flow (demo wallet, consent, live stages, the tier read back from chain)
 and a loan page that borrows and repays on both pools through the sponsored relay.
 Everything the gateway reports is checked against chain before it is shown. The
 verify page is next.
+Any tier can be re-checked from a clone with
+`pnpm --filter @tio/verifier verify -- <wallet> --cluster devnet` ([`docs/VERIFY.md`](docs/VERIFY.md)).
 
 ## License
 Apache-2.0. See `LICENSE` and `NOTICE`.
