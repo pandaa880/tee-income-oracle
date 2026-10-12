@@ -38,7 +38,7 @@ describe('messageFor', () => {
     const message = messageFor({ code });
     expect(message.title.length).toBeGreaterThan(0);
     expect(message.detail.length).toBeGreaterThan(0);
-    expect(typeof message.retry).toBe('boolean');
+    expect(['retry', 'restart', 'reattest', 'none']).toContain(message.action);
   });
 
   it('gives different codes different titles or details', () => {
@@ -46,9 +46,9 @@ describe('messageFor', () => {
     expect(new Set(texts).size).toBe(SIMPLE_CODES.length);
   });
 
-  it('explains a policy mismatch (6008) as the lender changing its rules', () => {
+  it('explains a policy mismatch (6008) as the pool changing its criteria', () => {
     const message = messageFor({ code: 'simulation_failed', index: 1, custom: 6008 });
-    expect(`${message.title} ${message.detail}`).toMatch(/lender changed its rules/i);
+    expect(`${message.title} ${message.detail}`).toMatch(/pool changed its criteria/i);
     expect(`${message.title} ${message.detail}`).toMatch(/re-attest/i);
   });
 
@@ -73,7 +73,7 @@ describe('messageFor', () => {
   it('names the failed shape rule for bad_transaction', () => {
     const message = messageFor({ code: 'bad_transaction', rule: 7 });
     expect(`${message.title} ${message.detail}`).toContain('7');
-    expect(message.retry).toBe(false);
+    expect(message.action).toBe('retry');
   });
 
   it('gives an unknown upstream code the generic message, never the upstream text', () => {
@@ -83,7 +83,7 @@ describe('messageFor', () => {
       stage: 'enclave',
     });
     expect(message.title.length).toBeGreaterThan(0);
-    expect(message.retry).toBe(false);
+    expect(message.action).toBe('none');
   });
 
   it.each([
@@ -98,20 +98,48 @@ describe('messageFor', () => {
     expect(messageFor(error).detail.length).toBeGreaterThan(0);
   });
 
-  it('marks transient failures retryable and permanent ones not', () => {
-    for (const code of [
-      'network',
-      'rate_limited',
-      'rpc_busy',
-      'relay_in_flight',
-      'timeout',
-    ] as const) {
-      expect(messageFor({ code }).retry).toBe(true);
-    }
-    for (const code of ['sponsorship_exhausted', 'enclave_revoked', 'session_expired'] as const) {
-      expect(messageFor({ code }).retry).toBe(false);
-    }
-  });
+  it.each([
+    ...(['session_expired', 'session_not_found', 'enclave_rotated', 'cancelled'] as const).map(
+      (code) => [code, { code }, 'restart'] as const,
+    ),
+    ...([6005, 6008, 6009, 6012, 6014] as const).map(
+      (custom) =>
+        [`simulation ${custom}`, { code: 'simulation_failed', custom }, 'reattest'] as const,
+    ),
+    ['enclave_revoked', { code: 'enclave_revoked' }, 'reattest'],
+    ...(
+      [
+        'rate_limited',
+        'relay_in_flight',
+        'network',
+        'rpc_busy',
+        'timeout',
+        'signing_failed',
+        'tx_failed',
+      ] as const
+    ).map((code) => [code, { code }, 'retry'] as const),
+    ['bad_transaction', { code: 'bad_transaction', rule: 4 }, 'retry'],
+    ['invalid_amount', { code: 'invalid_amount', reason: 'empty' }, 'retry'],
+    ['simulation 6002', { code: 'simulation_failed', custom: 6002 }, 'retry'],
+    ['simulation 6007', { code: 'simulation_failed', custom: 6007 }, 'retry'],
+    ['sponsorship_exhausted', { code: 'sponsorship_exhausted' }, 'none'],
+    ['loan_exists', { code: 'loan_exists' }, 'none'],
+    ['simulation 6006', { code: 'simulation_failed', custom: 6006 }, 'none'],
+    ['simulation unknown', { code: 'simulation_failed', custom: 9999 }, 'none'],
+    ['upstream_error', { code: 'upstream_error', upstreamCode: 'x', stage: 'enclave' }, 'none'],
+  ] as readonly (readonly [string, AppError, string])[])(
+    'maps %s to the %s action',
+    (_, error, action) => {
+      expect(messageFor(error).action).toBe(action);
+    },
+  );
+
+  it.each([...SIMPLE_CODES, 'loan_exists', 'no_open_loan', 'signing_failed'] as const)(
+    'gives every gateway and client code (%s) an action',
+    (code) => {
+      expect(['retry', 'restart', 'reattest', 'none']).toContain(messageFor({ code }).action);
+    },
+  );
 
   it('never crashes on a value that is not really an AppError', () => {
     const stray = { code: 'not_a_code' } as unknown as AppError;

@@ -8,15 +8,33 @@ export type FlowState =
   | { step: 'persona'; wallet: Address }
   | { step: 'consent'; wallet: Address; persona: PersonaId; session: Session }
   | { step: 'processing'; wallet: Address; persona: PersonaId; session: Session; stages: Stage[] }
-  | { step: 'result'; wallet: Address; tier: Tier; attestation: Address; tx: string | null }
+  | {
+      step: 'result';
+      wallet: Address;
+      tier: Tier;
+      attestation: Address;
+      tx: string | null;
+      /** The §7 payload the gateway reported; the result page matches it against chain. */
+      payloadHex: string;
+    }
   | { step: 'rejected'; wallet: Address }
-  | { step: 'failed'; wallet: Address; error: AppError }
+  | {
+      step: 'failed';
+      wallet: Address;
+      error: AppError;
+      /**
+       * The signed intent reached the gateway before this failure. Only then can the attestation
+       * still land after a dropped connection, so only then is it worth watching the chain.
+       */
+      sent: boolean;
+    }
   | {
       step: 'loan';
       wallet: Address;
       tier: Tier;
       attestation: Address;
       tx: string | null;
+      payloadHex: string;
       loan: 'open' | 'repaid';
     };
 
@@ -45,11 +63,15 @@ const outOfOrder = (wallet: Address): FlowState => ({
   step: 'failed',
   wallet,
   error: { code: 'protocol_error' },
+  sent: true,
 });
 
 function onEvent(state: FlowState, event: FlowEvent): FlowState {
   if (state.step !== 'processing') return state;
-  if (event.kind === 'error') return { step: 'failed', wallet: state.wallet, error: event.error };
+  // Events come only from the `complete` stream, so the signed intent was already sent.
+  if (event.kind === 'error') {
+    return { step: 'failed', wallet: state.wallet, error: event.error, sent: true };
+  }
   const done = state.stages.length;
   if (event.kind === 'stage') {
     // Only the next stage is accepted: a duplicate, skipped or late stage is a broken stream.
@@ -61,8 +83,8 @@ function onEvent(state: FlowState, event: FlowEvent): FlowState {
   const expectedLast = result.tier === 'REJECT' ? 'evaluate' : 'submit';
   if (state.stages.at(-1) !== expectedLast) return outOfOrder(state.wallet);
   if (result.tier === 'REJECT') return { step: 'rejected', wallet: state.wallet };
-  const { tier, attestation, tx } = result;
-  return { step: 'result', wallet: state.wallet, tier, attestation, tx };
+  const { tier, attestation, tx, payloadHex } = result;
+  return { step: 'result', wallet: state.wallet, tier, attestation, tx, payloadHex };
 }
 
 function onConnect(state: FlowState, wallet: Address): FlowState {
@@ -94,7 +116,10 @@ export function flowReducer(state: FlowState, action: FlowAction): FlowState {
   if (action.type === 'failed') {
     const live =
       state.step === 'persona' || state.step === 'consent' || state.step === 'processing';
-    return live ? { step: 'failed', wallet: state.wallet, error: action.error } : state;
+    // A `failed` action is a failure before the intent was sent (session, policy read, signing).
+    return live
+      ? { step: 'failed', wallet: state.wallet, error: action.error, sent: false }
+      : state;
   }
   if (action.type === 'loan_opened' || action.type === 'loan_repaid') {
     return onLoan(state, action.type);

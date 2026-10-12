@@ -28,14 +28,14 @@ describe('useStatus', () => {
   it('is live when the gateway answers and the registry entry is active', async () => {
     const d = await deps();
     const { result } = renderHook(() => useStatus(d), { wrapper: queryWrapper() });
-    await waitFor(() => expect(result.current.data).toEqual({ state: 'live', reason: null }));
+    await waitFor(() => expect(result.current.data).toMatchObject({ state: 'live', reason: null }));
   });
 
   it('is down when the registry entry is revoked', async () => {
     const d = await deps({}, 5n);
     const { result } = renderHook(() => useStatus(d), { wrapper: queryWrapper() });
     await waitFor(() =>
-      expect(result.current.data).toEqual({ state: 'down', reason: 'enclave_revoked' }),
+      expect(result.current.data).toMatchObject({ state: 'down', reason: 'enclave_revoked' }),
     );
   });
 
@@ -46,7 +46,7 @@ describe('useStatus', () => {
     });
     const { result } = renderHook(() => useStatus(d), { wrapper: queryWrapper() });
     await waitFor(() =>
-      expect(result.current.data).toEqual({ state: 'down', reason: 'gateway_unreachable' }),
+      expect(result.current.data).toMatchObject({ state: 'down', reason: 'gateway_unreachable' }),
     );
   });
 

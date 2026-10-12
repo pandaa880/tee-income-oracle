@@ -2,6 +2,7 @@
 // validated before any decoder sees it. Account bytes are checked for owner, length and
 // discriminator here; the generated decoders check neither (gateway/src/registry.ts).
 import { type Address, address, blockhash, getBase64Encoder } from '@solana/kit';
+import { TOKEN_PROGRAM_ADDRESS, getTokenDecoder, getTokenSize } from '@solana-program/token';
 import {
   DEMO_POOL_PROGRAM_ADDRESS,
   LOAN_DISCRIMINATOR,
@@ -56,6 +57,10 @@ function decodeAccount(owner: Address, data: Uint8Array): ChainAccount {
   if (owner === ORACLE_PROGRAM_ID) {
     const bytes = checked(data, getEnclaveEntrySize(), ENCLAVE_ENTRY_DISCRIMINATOR);
     return { kind: 'enclave_entry', entry: getEnclaveEntryDecoder().decode(bytes) };
+  }
+  if (owner === TOKEN_PROGRAM_ADDRESS) {
+    // SPL token accounts have no discriminator: the length is the only shape check available.
+    return { kind: 'token', token: getTokenDecoder().decode(checked(data, getTokenSize(), [])) };
   }
   if (owner === DEMO_POOL_PROGRAM_ADDRESS) {
     if (startsWith(data, POOL_DISCRIMINATOR)) {

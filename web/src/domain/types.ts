@@ -3,6 +3,7 @@ import type { Address, Blockhash } from '@solana/kit';
 import type { EnclaveEntry } from '@tio/oracle-client';
 import type { StoredAttestation } from '@tio/oracle-client/attest';
 import type { Loan, Pool } from '@tio/demo-pool-client';
+import type { Token } from '@solana-program/token';
 
 /** Gateway error codes of FORMATS §16 that carry nothing beyond a message. */
 export type GatewayCode =
@@ -101,4 +102,5 @@ export type ChainAccount =
   | { kind: 'attestation'; attestation: StoredAttestation }
   | { kind: 'enclave_entry'; entry: EnclaveEntry }
   | { kind: 'pool'; pool: Pool }
-  | { kind: 'loan'; loan: Loan };
+  | { kind: 'loan'; loan: Loan }
+  | { kind: 'token'; token: Token };

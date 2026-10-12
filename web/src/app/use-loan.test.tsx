@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import {
   decompileTransactionMessage,
@@ -34,6 +35,7 @@ import {
   SCHEMA,
   sasAccountBytes,
 } from '../test-support/fixtures.ts';
+import { queryKeys } from './query-keys.ts';
 import { queryWrapper } from '../test-support/query.tsx';
 
 let key: KeyPairSigner;
@@ -329,5 +331,74 @@ describe('useLoan repay', () => {
     expect(signature).toBe(await relayerSignature(vi.mocked(relay.relay).mock.calls[0]?.[0] ?? ''));
     const shape = await checkLoanTx(sentBytes(relay), relayer.address, GATEWAY_DEPLOYMENT);
     expect(shape).toMatchObject({ ok: true, value: { kind: 'repay', borrower: key.address } });
+  });
+});
+
+async function cached(relay?: RelayPort) {
+  const { deps } = await setup(relay ? { relay } : {});
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const wallet = key.address;
+  const poolKey = queryKeys.pool('devnet', POOL_0, wallet);
+  const credentialKey = queryKeys.credential('devnet', wallet);
+  const otherPoolKey = queryKeys.pool('devnet', POOL_1, wallet);
+  client.setQueryData(poolKey, 'cached');
+  client.setQueryData(credentialKey, 'cached');
+  client.setQueryData(otherPoolKey, 'cached');
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const hook = renderHook(() => useLoan(POOL_0, deps), { wrapper });
+  const invalidated = (k: readonly unknown[]) => client.getQueryState(k)?.isInvalidated;
+  /** Writing data again clears the invalidated flag. */
+  const refresh = () => {
+    for (const k of [poolKey, credentialKey, otherPoolKey]) client.setQueryData(k, 'cached');
+  };
+  return { ...hook, poolKey, credentialKey, otherPoolKey, invalidated, refresh };
+}
+
+describe('useLoan refreshes what it changed', () => {
+  it('invalidates the pool and credential queries after a successful borrow', async () => {
+    const { result, invalidated, poolKey, credentialKey } = await cached();
+    await act(async () => {
+      await result.current.borrow.mutateAsync(1_000_000n);
+    });
+    expect(invalidated(poolKey)).toBe(true);
+    expect(invalidated(credentialKey)).toBe(true);
+  });
+
+  it('leaves the other pool alone', async () => {
+    const { result, invalidated, otherPoolKey } = await cached();
+    await act(async () => {
+      await result.current.borrow.mutateAsync(1_000_000n);
+    });
+    expect(invalidated(otherPoolKey)).toBe(false);
+  });
+
+  it('invalidates the pool and credential queries after a successful repay', async () => {
+    const { result, invalidated, poolKey, credentialKey, refresh } = await cached();
+    await act(async () => {
+      await result.current.borrow.mutateAsync(1_000_000n);
+    });
+    refresh();
+    expect(invalidated(poolKey)).toBe(false);
+    await act(async () => {
+      await result.current.repay.mutateAsync();
+    });
+    expect(invalidated(poolKey)).toBe(true);
+    expect(invalidated(credentialKey)).toBe(true);
+  });
+
+  it('does not invalidate when the relayer refuses', async () => {
+    const relay: RelayPort = {
+      relay: vi.fn<RelayPort['relay']>(async () => fail({ code: 'bad_transaction', rule: 7 })),
+    };
+    const { result, invalidated, poolKey, credentialKey } = await cached(relay);
+    await act(async () => {
+      await expect(result.current.borrow.mutateAsync(1n)).rejects.toMatchObject({
+        code: 'bad_transaction',
+      });
+    });
+    expect(invalidated(poolKey)).toBe(false);
+    expect(invalidated(credentialKey)).toBe(false);
   });
 });

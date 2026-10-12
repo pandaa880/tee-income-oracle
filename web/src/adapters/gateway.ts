@@ -1,7 +1,7 @@
 // The gateway HTTP API (FORMATS §16). The `complete` reply is a live SSE stream, read event by
 // event so the processing screen shows each stage as it starts.
 import { type Address, address, isSignature } from '@solana/kit';
-import { EventSourceParserStream } from 'eventsource-parser/stream';
+import { EventSourceParserStream, ParseError } from 'eventsource-parser/stream';
 import { z } from 'zod';
 import {
   errorFieldsSchema,
@@ -125,7 +125,10 @@ async function* readEvents(body: ReadableStream<Uint8Array>, signal: AbortSignal
     for (;;) {
       const { done, value } = await reader.read();
       if (done) {
-        yield fail(protocolError); // the stream ended without a result or an error
+        // The connection closed before a result or an error: a proxy timeout or a dropped
+        // connection looks exactly like this, and the enclave keeps working, so it is a
+        // transport failure the page recovers from by reading the chain.
+        yield fail({ code: 'network' });
         return;
       }
       const event = toFlowEvent(value.event, value.data);
@@ -137,9 +140,10 @@ async function* readEvents(body: ReadableStream<Uint8Array>, signal: AbortSignal
         return;
       }
     }
-  } catch {
-    // An abort errors the body; anything else is a broken or oversized stream.
-    yield fail(signal.aborted ? { code: 'cancelled' } : protocolError);
+  } catch (cause) {
+    // A malformed or oversized event is the gateway breaking the protocol; anything else
+    // erroring the body is an abort or a dropped connection.
+    yield fail(cause instanceof ParseError ? protocolError : fetchFailure(cause, signal));
   } finally {
     reader.releaseLock();
   }

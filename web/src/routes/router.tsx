@@ -1,21 +1,21 @@
 // Code-based routes. Each page loads lazily; each route owns its search-param schema.
 import {
   type RouterHistory,
-  Outlet,
   createRootRoute,
   createRoute,
   createRouter,
   lazyRouteComponent,
 } from '@tanstack/react-router';
 import { z } from 'zod';
-import { HomePage } from '../pages/home-page.tsx';
+import { HomePage } from '../pages/home/home-page.tsx';
+import { SiteLayout } from '../pages/layout/site-layout.tsx';
 
 /** `?pool=0|1`; anything else (7, abc, -1) falls back to pool 0 instead of an error page. */
-export const borrowSearchSchema = z.object({
+export const poolSearchSchema = z.object({
   pool: z.union([z.literal(0), z.literal(1)]).catch(0),
 });
 
-const rootRoute = createRootRoute({ component: Outlet });
+const rootRoute = createRootRoute({ component: SiteLayout });
 
 const homeRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -26,11 +26,17 @@ const homeRoute = createRoute({
 const borrowRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/borrow',
-  validateSearch: borrowSearchSchema,
-  component: lazyRouteComponent(() => import('../pages/borrow-page.tsx'), 'BorrowPage'),
+  component: lazyRouteComponent(() => import('../pages/borrow/borrow-page.tsx'), 'BorrowPage'),
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, borrowRoute]);
+const loanRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/loan',
+  validateSearch: poolSearchSchema,
+  component: lazyRouteComponent(() => import('../pages/loan/loan-page.tsx'), 'LoanPage'),
+});
+
+const routeTree = rootRoute.addChildren([homeRoute, borrowRoute, loanRoute]);
 
 export function createAppRouter(options: { history?: RouterHistory } = {}) {
   return createRouter({ routeTree, ...(options.history ? { history: options.history } : {}) });

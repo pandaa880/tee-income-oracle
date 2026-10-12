@@ -2,6 +2,7 @@
 // state (CODING-GUIDELINES §3: anything shown as verified is read from RPC, not the gateway).
 import type { Address } from '@solana/kit';
 import type { Pool } from '@tio/demo-pool-client';
+import type { Tier } from './types.ts';
 import type { EnclaveEntry } from '@tio/oracle-client';
 import {
   type DecodedPayload,
@@ -40,8 +41,15 @@ function isApproved(bitmap: Uint8Array, id: number): boolean {
   return ((bitmap[Math.floor(id / 8)] ?? 0) & (1 << (id % 8))) !== 0;
 }
 
+const TIER_OF: Record<number, Tier> = { 1: 'A', 2: 'B', 3: 'C' };
+
+/** The §7 tier byte as a letter; null for anything the payload format doesn't define. */
+export function tierFromByte(byte: number): Tier | null {
+  return TIER_OF[byte] ?? null;
+}
+
 /** The pool's limit for a payload tier (1 = A … 3 = C); 0 means "not lent to". */
-function tierLimit(limits: readonly bigint[], tier: number): bigint {
+export function tierLimit(limits: readonly bigint[], tier: number): bigint {
   return tier >= 1 && tier <= 3 ? (limits[tier - 1] ?? 0n) : 0n;
 }
 
@@ -80,4 +88,23 @@ export function readCredential(input: CredentialInput): CredentialStatus {
   if (tierLimit(params.tierLimits, payload.tier) === 0n) return 'tier_not_accepted';
   if (!sameBytes(payload.policyHash, Uint8Array.from(params.policyHash))) return 'policy_mismatch';
   return freshness(params, payload, now) ?? enclave(params, payload, enclaveEntry) ?? 'valid';
+}
+
+/** The status plus what the pages show: the decoded record and this pool's limit for its tier. */
+export type CredentialRecord = {
+  status: CredentialStatus;
+  record: { payload: DecodedPayload; expiry: bigint } | null;
+  limit: bigint;
+};
+
+export function readCredentialRecord(input: CredentialInput): CredentialRecord {
+  const status = readCredential(input);
+  const { attestation, pool } = input;
+  if (attestation === undefined) return { status, record: null, limit: 0n };
+  const payload = decodePayload(attestation.payload);
+  return {
+    status,
+    record: { payload, expiry: attestation.expiry },
+    limit: tierLimit(pool.params.tierLimits, payload.tier),
+  };
 }

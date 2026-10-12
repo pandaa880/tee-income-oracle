@@ -13,8 +13,24 @@ Vite + React single-page app, built on `@tio/ui` (`packages/ui`). Three surfaces
 
 All three are untrusted clients — no privileged logic lives here.
 
-Today the home page is a placeholder composed from `@tio/ui` (its sample seal is labelled as
-an example) and `/borrow` shows the flow position; the logic below it is complete.
+## Routes
+
+| Route | Page |
+|---|---|
+| `/` | Landing: the receipts thesis with an example receipt, proof bar, what a funder can check on every loan, how it works (data-path schematic), borrower and lender doors, the pilot ask, live status strip |
+| `/borrow` | Borrower flow: demo wallet → bank account (4 sandbox personas) → consent (signs the exact §9 intent, 10-minute countdown) → live stages → result or REJECT |
+| `/loan?pool=0\|1` | Loan screen, one tab per pool: borrow up to `min(tier limit, vault)`, the open loan, repay. Reads only the chain, so a reload or a returning wallet lands in the right state |
+
+The borrow and loan pages load lazily. `app/config.ts` `features` gates what isn't shipped yet:
+`verify` (5b) adds the Verify nav item and "Anyone can check it" links, `book` (5c) adds the
+Loan book nav item and the lender door's link; while off, they are hidden and the lender door
+shows a NEXT badge.
+
+What the pages trust: a tier is shown only once a chain read holds exactly the payload the
+gateway reported (until then the page says it is reading the tier back), and its tier, dates,
+build and pool limits come from that read. "Registered on Solana" appears only when the
+registry entry was read and matches. A dropped stream after the intent was signed polls the
+chain for the attestation; a failure before that is a plain error.
 
 ## Layout
 
@@ -25,16 +41,17 @@ Four layers, dependencies pointing inward (`docs/CODING-GUIDELINES.md` §3; enfo
 |---|---|
 | `src/domain/` | Pure rules: credential status (the pool's borrow checks, in order), the §9 intent check, loan-transaction builders, the flow reducer, amounts, error messages, tones |
 | `src/adapters/` | One module per outside system: gateway (live SSE), relay, Solana RPC (429 backoff), confirmation polling, storage, the demo wallet |
-| `src/app/` | Config, deps, one hook per use case (`use-borrow-flow`, `use-credential`, `use-loan`, `use-status`) |
-| `src/pages/`, `src/routes/` | Composition only |
+| `src/app/` | Config, deps, one hook per use case (`use-borrow-flow`, `use-credential`, `use-pool`, `use-loan`, `use-status`, `use-countdown`) |
+| `src/pages/`, `src/routes/` | Composition only: `pages/layout`, `pages/home`, `pages/borrow`, `pages/loan` |
 
 Two tests (`domain/loan-tx.test.ts`, `app/use-loan.test.tsx`) import `gateway/src/loan-relay.ts`
 directly: the relayer's own shape check is the oracle for the transactions the browser builds,
 so a change there can fail the web tests on purpose.
 
 The gateway is untrusted: the browser rebuilds the intent before signing, checks the result
-against the wallet's attestation PDA and payload, and confirms a relayed loan by reading the
-Loan account.
+against the wallet's attestation PDA and payload, shows it only once the chain holds the same
+payload, and confirms a relayed loan by verifying the relayer's signature over its own message
+and reading the Loan account.
 
 ## Run
 

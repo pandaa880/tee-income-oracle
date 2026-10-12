@@ -33,7 +33,7 @@ import type { Tone } from '@tio/ui/tokens';
 |---|---|
 | `./fonts.css` | Google Fonts import (Newsreader, IBM Plex Sans, IBM Plex Mono) |
 | `./tokens.css` | CSS variables: colours, type scale, radii, spacing, motion. Dark via `prefers-color-scheme` or `[data-theme=dark]`; motion zeroed under `prefers-reduced-motion` |
-| `./theme.css` | Tailwind v4 `@theme inline` map (`bg-card`, `text-tone-positive`, `font-display`, …), Tailwind's default palette removed, `dark:` variant on `[data-theme=dark]`, the `seal-press` animation |
+| `./theme.css` | Tailwind v4 `@theme inline` map (`bg-card`, `text-tone-positive`, `font-display`, …), Tailwind's default palette removed, `dark:` variant on `[data-theme=dark]`, the `seal-press` and `line-in` animations |
 | `./tokens` | `Tone`, `TONES`, `TONE_TEXT`, `TONE_BORDER` |
 | `./cn` | `cn(...classes)`: `clsx` + `tailwind-merge` |
 
@@ -63,7 +63,7 @@ take a tone, never a tier or status; `web/` maps those to tones.
 | `./seal` | `Seal` | `tone`, `label`, `letter?`, `caption?`; pressed-stamp entrance |
 | `./stepper` | `Stepper` | `steps: { label, state: 'done' \| 'current' \| 'todo' }[]` |
 | `./status-badge` | `StatusBadge` | `tone`, `label` |
-| `./schematic` | `Schematic` | `nodes: { id, label, x, y }[]` (x, y in percent), `edges: { from, to, active? }[]`, `width?`, `height?`; square drawing, fills its container without a size |
+| `./schematic` | `Schematic` | `nodes: { id, label, slot, note?, kicker?, sealed? }[]` (`slot`: `top` / `left` / `center` / `right` / `bottom`), `lit?: id[]`, `spokes?: id[]` (outer nodes whose spoke to the hub is lit); boxed nodes in a plus shape on the `--blueprint-grid` panel, one `role="img"` named by every node and note |
 | `./flow-strip` | `FlowStrip` | `items: { label, note }[]`, `bracket?: { from, to, label }` (inclusive, zero-based) |
 | `./proof-bar` | `ProofBar` | `items: { label, href? }[]`; links open with `rel="noopener noreferrer"` |
 | `./theme-toggle` | `ThemeToggle` | sets `data-theme` on `<html>`, remembers it in `localStorage` |

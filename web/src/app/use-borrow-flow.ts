@@ -128,7 +128,8 @@ export function useBorrowFlow(deps: Deps = realDeps()): BorrowFlow {
         : policies;
       const signed = bytes.ok ? await signIntent(bytes.value, signal) : bytes;
       if (!signed.ok) {
-        if (live()) dispatch({ type: 'event', event: failure(signed.error) });
+        // Nothing reached the gateway yet: a plain failure, not a dropped stream.
+        if (live()) dispatch({ type: 'failed', error: signed.error });
         return;
       }
       const events = deps.gateway.completeSession(session.sessionId, signed.value, signal);

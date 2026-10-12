@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StoredAttestation } from '@tio/oracle-client/attest';
 import { parseSasAttestation, SAS_PROGRAM_ID } from '@tio/oracle-client/attest';
-import { readCredential } from './credential.ts';
+import { readCredential, readCredentialRecord, tierLimit } from './credential.ts';
 import {
   ADMIN,
   entry,
@@ -205,5 +205,60 @@ describe('readCredential (the pool checks of FORMATS §14, in the pool order)', 
       expect(afterFixing({ payload: staleButRightPolicy })).toBe('stale');
       expect(afterFixing({ payload: payloadBytes({ measurementId: 2 }) })).toBe('not_approved');
     });
+  });
+});
+
+describe('tierLimit', () => {
+  const limits = [5n, 3n, 1n];
+
+  it.each([
+    [1, 5n],
+    [2, 3n],
+    [3, 1n],
+    [0, 0n],
+    [4, 0n],
+    [-1, 0n],
+  ])('tier byte %i -> %s', (tier, expected) => {
+    expect(tierLimit(limits, tier)).toBe(expected);
+  });
+
+  it('is 0n when the pool lists fewer limits than the tier', () => {
+    expect(tierLimit([5n], 3)).toBe(0n);
+  });
+});
+
+describe('readCredentialRecord', () => {
+  it('has no record, status none and limit 0 without an attestation', () => {
+    expect(readCredentialRecord({ ...base, attestation: undefined })).toEqual({
+      status: 'none',
+      record: null,
+      limit: 0n,
+    });
+  });
+
+  it('returns the decoded payload, the expiry and the pool limit of the payload tier', () => {
+    const record = readCredentialRecord({
+      ...base,
+      attestation: attestation(payloadBytes({ tier: 2 }), { expiry: NOW + 50n }),
+    });
+    expect(record.status).toBe('valid');
+    expect(record.limit).toBe(3_000_000n);
+    expect(record.record).toMatchObject({ expiry: NOW + 50n, payload: { tier: 2 } });
+  });
+
+  it('keeps the record and a zero limit for a tier the pool does not accept', () => {
+    const record = readCredentialRecord({
+      ...base,
+      pool: pool({ tierLimits: [5_000_000n, 3_000_000n, 0n] }),
+      attestation: attestation(payloadBytes({ tier: 3 })),
+    });
+    expect(record.status).toBe('tier_not_accepted');
+    expect(record.limit).toBe(0n);
+    expect(record.record?.payload.tier).toBe(3);
+  });
+
+  it('agrees with readCredential on the status', () => {
+    const stale = aged(MAX_AGE + 1n);
+    expect(readCredentialRecord(stale).status).toBe(readCredential(stale));
   });
 });

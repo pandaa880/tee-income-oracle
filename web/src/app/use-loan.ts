@@ -8,10 +8,11 @@ import {
   isSignatureBytes,
   verifySignature,
 } from '@solana/kit';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { findLoanPda } from '@tio/demo-pool-client';
 import { attestationAddress, decodePayload } from '@tio/oracle-client/attest';
 import { type Deps, realDeps } from './deps.ts';
+import { queryKeys } from './query-keys.ts';
 import { useCancelScope } from './use-cancel-scope.ts';
 import { sleep } from '../adapters/sleep.ts';
 import { waitConfirmed } from '../adapters/confirm.ts';
@@ -133,7 +134,17 @@ async function relayAndConfirm(
 
 export function useLoan(pool: Address, deps: Deps = realDeps()) {
   const { next: nextSignal } = useCancelScope(LOAN_TIMEOUT_MS);
+  const queryClient = useQueryClient();
+  const { cluster } = deps.config;
+  const wallet = deps.signer.address;
+  // A landed loan changes the pool read (loan, vault) and the credential view: re-read both.
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.pool(cluster, pool, wallet) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.credential(cluster, wallet) }),
+    ]);
   const borrow = useMutation<string, AppError, bigint>({
+    onSuccess: refresh,
     mutationFn: async (amount) => {
       try {
         const signal = nextSignal();
@@ -150,6 +161,7 @@ export function useLoan(pool: Address, deps: Deps = realDeps()) {
     },
   });
   const repay = useMutation<string, AppError>({
+    onSuccess: refresh,
     mutationFn: async () => {
       try {
         const signal = nextSignal();
