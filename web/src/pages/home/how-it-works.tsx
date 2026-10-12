@@ -14,54 +14,37 @@ const STEPS = [
   ['Lend', 'Pools read the tier inside their own instruction and lend within their own limits.'],
 ] as const;
 
-/** Every hop the data takes, drawn once; the gateway in the middle carries what it can't read. */
-const PATH_EDGES = [
-  { from: 'browser', to: 'gateway' },
-  { from: 'gateway', to: 'bank' },
-  { from: 'bank', to: 'gateway', active: true },
-  { from: 'gateway', to: 'enclave', active: true },
-  { from: 'gateway', to: 'chain', active: true },
-];
-
-const CAPTIONS: Record<string, string> = {
-  bank: 'encrypts · AA signs',
-  browser: 'consent only',
-  gateway: 'relays, can’t read',
-  enclave: 'plaintext only here',
-  chain: 'tier + hashes',
-};
+/** At rest the drawing shows the whole path: every spoke in use, the relay and the enclave lit. */
+const LIT = ['gateway', 'enclave'];
+const SPOKES = DATA_NODES.filter((n) => n.slot !== 'center').map((n) => n.id);
 
 export function HowItWorks() {
   return (
     <section className="grid grid-cols-1 gap-8 md:grid-cols-2 md:items-start">
-      <div className="flex flex-col gap-6">
+      <div className="flex min-w-0 flex-col gap-5">
         <h2 className="font-display text-2xl leading-tight">From consent to loan in four steps</h2>
-        <ol className="flex list-decimal flex-col gap-4 pl-6 marker:font-mono marker:text-muted-foreground">
-          {STEPS.map(([title, body]) => (
-            <li key={title}>
-              <span className="font-medium">{title}.</span> {body}
+        <ol className="m-0 flex list-none flex-col border-t-3 border-double border-rule-strong p-0">
+          {STEPS.map(([title, body], i) => (
+            <li key={title} className="flex gap-4 border-b border-border py-3.5">
+              <span aria-hidden="true" className="min-w-6 font-mono text-sm text-muted-foreground">
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span>
+                <strong className="font-semibold">{title}.</strong> {body}
+              </span>
             </li>
           ))}
         </ol>
-        <div className="flex flex-col gap-1 text-sm text-muted-foreground">
-          <p>Your browser sees only the consent.</p>
-          <p>The gateway relays ciphertext it can’t read.</p>
-          <p>You trust AWS Nitro and the published code.</p>
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Your browser sees only the consent. The gateway relays ciphertext it can’t read. You trust
+          AWS Nitro and the published code.
+        </p>
       </div>
-      <figure className="flex flex-col gap-3">
+      <figure className="m-0 flex min-w-0 flex-col gap-2">
         <figcaption className="font-mono text-xs tracking-(--tracking-caps) text-muted-foreground uppercase">
           Fig. 1 — where the data travels
         </figcaption>
-        <Schematic nodes={DATA_NODES} edges={PATH_EDGES} />
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-5">
-          {DATA_NODES.map((node) => (
-            <div key={node.id} className="flex flex-col">
-              <dt className="font-mono tracking-(--tracking-caps) uppercase">{node.label}</dt>
-              <dd className="text-muted-foreground">{CAPTIONS[node.id]}</dd>
-            </div>
-          ))}
-        </dl>
+        <Schematic nodes={DATA_NODES} lit={LIT} spokes={SPOKES} />
       </figure>
     </section>
   );

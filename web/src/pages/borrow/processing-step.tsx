@@ -2,7 +2,7 @@ import { Badge } from '@tio/ui/badge';
 import { Button } from '@tio/ui/button';
 import { Schematic } from '@tio/ui/schematic';
 import { STAGE_ORDER } from '../../domain/flow.ts';
-import { activeEdges, DATA_NODES, dataPath, STAGE_COPY } from '../../domain/stages.ts';
+import { DATA_NODES, dataPath, litPath, STAGE_COPY } from '../../domain/stages.ts';
 import type { Stage } from '../../domain/types.ts';
 
 export type ProcessingStepProps = {
@@ -28,6 +28,17 @@ function stageState(stage: Stage, stages: readonly Stage[], done: boolean): Stag
   return 'todo';
 }
 
+/** Each place's role, above its name on the live drawing. */
+const KICKERS: Record<string, string> = {
+  bank: 'FIP + AA (simulated)',
+  browser: 'Client',
+  gateway: 'Untrusted relay',
+  enclave: 'AWS Nitro · sealed',
+  chain: 'Public ledger',
+};
+const NODES = DATA_NODES.map((node) => ({ ...node, kicker: KICKERS[node.id] }));
+const AT_REST = { nodes: [], spokes: [] };
+
 const WHERE = [
   ['Browser', 'never'],
   ['Gateway', 'ciphertext only'],
@@ -39,7 +50,8 @@ const WHERE = [
 export function ProcessingStep(props: ProcessingStepProps) {
   const { stages, done, measurementId, verifyHref, onRestart } = props;
   const current = stages.at(-1) ?? 'bind';
-  const edges = activeEdges(current).map((e) => ({ ...e, active: true }));
+  // Once every stage ran, nothing is in flight: the drawing goes back to rest.
+  const lit = done ? AT_REST : litPath(current);
   const path = dataPath(current);
   return (
     <div className="flex flex-col gap-8">
@@ -95,7 +107,7 @@ export function ProcessingStep(props: ProcessingStepProps) {
           <figcaption className="font-mono text-xs tracking-(--tracking-caps) text-muted-foreground uppercase">
             Fig. 1 — where your data travels
           </figcaption>
-          <Schematic nodes={DATA_NODES} edges={edges} />
+          <Schematic nodes={NODES} lit={lit.nodes} spokes={lit.spokes} />
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
             <dt className="font-mono tracking-(--tracking-caps) uppercase">Path</dt>
             <dd>{path.path}</dd>

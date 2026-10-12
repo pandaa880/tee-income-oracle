@@ -82,6 +82,11 @@
     transparent 1px 3px
   );
   --ledger-lines: repeating-linear-gradient(180deg, transparent 0 31px, var(--border) 31px 32px);
+  /* Faint blue drafting grid behind schematics (tile with background-size: 16px 16px) */
+  --blueprint-line: rgba(44, 79, 143, 0.06);
+  --blueprint-grid:
+    linear-gradient(var(--blueprint-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--blueprint-line) 1px, transparent 1px);
 
   /* Motion: one orchestrated moment per screen */
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -117,6 +122,7 @@
     --status-old-policy: #b9a2ea;
     --status-live: #6fc3a0;
     --paper-grain: none;
+    --blueprint-line: rgba(140, 169, 230, 0.08);
   }
 }
 :root[data-theme='dark'] {
@@ -142,6 +148,7 @@
   --status-old-policy: #b9a2ea;
   --status-live: #6fc3a0;
   --paper-grain: none;
+  --blueprint-line: rgba(140, 169, 230, 0.08);
 }
 
 @media (prefers-reduced-motion: reduce) {

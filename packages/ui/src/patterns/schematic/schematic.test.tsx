@@ -1,78 +1,82 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { Schematic } from './schematic.tsx';
+import { type SchematicNode, Schematic } from './schematic.tsx';
 
-const NODES = [
-  { id: 'hub', label: 'Enclave', x: 50, y: 50 },
-  { id: 'a', label: 'Bank', x: 10, y: 20 },
-  { id: 'b', label: 'Chain', x: 90, y: 20 },
-];
-const EDGES = [
-  { from: 'hub', to: 'a', active: true },
-  { from: 'hub', to: 'b' },
+const NODES: SchematicNode[] = [
+  { id: 'bank', label: 'Bank', slot: 'top', note: 'signs' },
+  { id: 'hub', label: 'Gateway', slot: 'center', kicker: 'Relay' },
+  { id: 'vault', label: 'Enclave', slot: 'right', note: 'plaintext only here', sealed: true },
+  { id: 'chain', label: 'Chain', slot: 'bottom' },
 ];
 
 function queryAll(container: HTMLElement, slot: string): Element[] {
   return Array.from(container.querySelectorAll(`[data-slot="${slot}"]`));
 }
 
+const attr = (elements: Element[], name: string) => elements.map((e) => e.getAttribute(name));
+
 describe('Schematic', () => {
-  it('renders an svg', () => {
-    const { container } = render(<Schematic nodes={NODES} edges={EDGES} />);
-    expect(container.querySelector('svg')).not.toBeNull();
+  it('is one image whose label reads every node with its note', () => {
+    render(<Schematic nodes={NODES} />);
+    expect(screen.getByRole('img')).toHaveAccessibleName(
+      'Bank: signs; Gateway; Enclave: plaintext only here; Chain',
+    );
   });
 
-  it('draws one element per node with its label', () => {
-    const { container } = render(<Schematic nodes={NODES} edges={EDGES} />);
-    expect(queryAll(container, 'schematic-node')).toHaveLength(3);
-    for (const label of ['Enclave', 'Bank', 'Chain']) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+  it('draws one box per node with its kicker, label and note', () => {
+    const { container } = render(<Schematic nodes={NODES} />);
+    expect(queryAll(container, 'schematic-node')).toHaveLength(4);
+    for (const text of ['Bank', 'Gateway', 'Relay', 'Enclave', 'plaintext only here', 'Chain']) {
+      expect(screen.getByText(text)).toBeInTheDocument();
     }
   });
 
-  it('draws one element per edge', () => {
-    const { container } = render(<Schematic nodes={NODES} edges={EDGES} />);
-    expect(queryAll(container, 'schematic-edge')).toHaveLength(2);
+  it('places each node in its slot on the plus-shaped grid', () => {
+    const { container } = render(<Schematic nodes={NODES} />);
+    const [bank, hub, vault, chain] = queryAll(container, 'schematic-node');
+    expect(bank).toHaveClass('col-start-3', 'row-start-1');
+    expect(hub).toHaveClass('col-start-3', 'row-start-3');
+    expect(vault).toHaveClass('col-start-5', 'row-start-3');
+    expect(chain).toHaveClass('col-start-3', 'row-start-5');
   });
 
-  it('marks only active edges with data-active="true"', () => {
-    const { container } = render(<Schematic nodes={NODES} edges={EDGES} />);
-    const active = queryAll(container, 'schematic-edge').map((e) => e.getAttribute('data-active'));
-    expect(active).toEqual(['true', 'false']);
+  it('draws one spoke per outer node, none for the hub', () => {
+    const { container } = render(<Schematic nodes={NODES} />);
+    expect(queryAll(container, 'schematic-edge')).toHaveLength(3);
   });
 
-  it('draws no edges and no nodes for empty input', () => {
-    const { container } = render(<Schematic nodes={[]} edges={[]} />);
+  it('lights only the listed nodes and spokes', () => {
+    const { container } = render(
+      <Schematic nodes={NODES} lit={['hub', 'vault']} spokes={['vault']} />,
+    );
+    expect(attr(queryAll(container, 'schematic-node'), 'data-lit')).toEqual([
+      'false',
+      'true',
+      'true',
+      'false',
+    ]);
+    expect(attr(queryAll(container, 'schematic-edge'), 'data-active')).toEqual([
+      'false',
+      'true',
+      'false',
+    ]);
+  });
+
+  it('draws the sealed node with a double rule, lit or not', () => {
+    const { container } = render(<Schematic nodes={NODES} />);
+    const vault = queryAll(container, 'schematic-node')[2];
+    expect(vault).toHaveClass('border-double');
+    expect(queryAll(container, 'schematic-node')[0]).toHaveClass('border-dashed');
+  });
+
+  it('draws nothing for empty input', () => {
+    const { container } = render(<Schematic nodes={[]} />);
     expect(queryAll(container, 'schematic-node')).toHaveLength(0);
     expect(queryAll(container, 'schematic-edge')).toHaveLength(0);
   });
 
-  it('applies width and height to the svg', () => {
-    const { container } = render(
-      <Schematic nodes={NODES} edges={EDGES} width={400} height={200} />,
-    );
-    const svg = container.querySelector('svg');
-    expect(svg).toHaveAttribute('width', '400');
-    expect(svg).toHaveAttribute('height', '200');
-  });
-
-  it('merges className', () => {
-    const { container } = render(<Schematic nodes={NODES} edges={EDGES} className="sch-x" />);
-    expect(container.querySelector('svg')).toHaveClass('sch-x');
-  });
-
-  it('keeps a fixed 0..100 viewBox and fills its container when no size is given', () => {
-    const { container } = render(<Schematic nodes={NODES} edges={EDGES} />);
-    const svg = container.querySelector('svg');
-    expect(svg).toHaveAttribute('viewBox', '0 0 100 100');
-    expect(svg).not.toHaveAttribute('width');
-    expect(svg).toHaveClass('w-full');
-  });
-
-  it('does not stretch to the container when a size is given', () => {
-    const { container } = render(<Schematic nodes={NODES} edges={EDGES} height={200} />);
-    const svg = container.querySelector('svg');
-    expect(svg).toHaveAttribute('viewBox', '0 0 100 100');
-    expect(svg).not.toHaveClass('w-full');
+  it('merges className onto the panel', () => {
+    const { container } = render(<Schematic nodes={NODES} className="sch-x" />);
+    expect(container.querySelector('[data-slot="schematic"]')).toHaveClass('sch-x');
   });
 });

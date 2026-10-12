@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STAGE_ORDER } from './flow.ts';
-import { activeEdges, DATA_NODES, dataPath, STAGE_COPY } from './stages.ts';
+import { DATA_NODES, dataPath, litPath, STAGE_COPY } from './stages.ts';
 
 describe('STAGE_COPY', () => {
   it('uses the copy-deck titles', () => {
@@ -24,16 +24,39 @@ describe('DATA_NODES', () => {
   });
 });
 
-describe('activeEdges and dataPath', () => {
+describe('DATA_NODES on the drawing', () => {
+  it('puts the gateway in the middle and every other place on its own spoke', () => {
+    const slots = DATA_NODES.map((n) => n.slot);
+    expect(slots).toEqual(['top', 'left', 'center', 'right', 'bottom']);
+    expect(DATA_NODES.find((n) => n.slot === 'center')?.id).toBe('gateway');
+  });
+
+  it('seals only the enclave, and says what each place sees', () => {
+    expect(DATA_NODES.filter((n) => n.sealed === true).map((n) => n.id)).toEqual(['enclave']);
+    for (const node of DATA_NODES) expect(node.note.length).toBeGreaterThan(0);
+  });
+});
+
+describe('litPath and dataPath', () => {
   const ids = new Set(DATA_NODES.map((n) => n.id));
 
-  it.each(STAGE_ORDER)('%s lights at least one edge between known nodes', (stage) => {
-    const edges = activeEdges(stage);
-    expect(edges.length).toBeGreaterThan(0);
-    for (const edge of edges) {
-      expect(ids.has(edge.from)).toBe(true);
-      expect(ids.has(edge.to)).toBe(true);
-    }
+  it.each(STAGE_ORDER)(
+    '%s lights known nodes through the gateway, never its own spoke',
+    (stage) => {
+      const { nodes, spokes } = litPath(stage);
+      expect(nodes).toContain('gateway');
+      expect(nodes.every((id) => ids.has(id))).toBe(true);
+      expect(spokes.length).toBeGreaterThan(0);
+      expect(spokes).not.toContain('gateway');
+      expect(spokes.every((id) => nodes.includes(id))).toBe(true);
+    },
+  );
+
+  it('lights the fetch path bank → gateway → enclave', () => {
+    expect(litPath('fi_fetch')).toEqual({
+      nodes: ['bank', 'gateway', 'enclave'],
+      spokes: ['bank', 'enclave'],
+    });
   });
 
   it.each(STAGE_ORDER)('%s says what travels and over which path', (stage) => {

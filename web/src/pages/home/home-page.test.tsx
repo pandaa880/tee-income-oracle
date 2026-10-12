@@ -209,12 +209,16 @@ describe('HowItWorks', () => {
     const steps = screen.getAllByRole('listitem');
     expect(steps).toHaveLength(4);
     const starts = ['Consent', 'Verify blind', 'Attest', 'Lend'];
-    steps.forEach((step, i) => expect(step.textContent).toMatch(new RegExp(`^\\W*${starts[i]}`)));
+    steps.forEach((step, i) =>
+      expect(step).toHaveTextContent(`${String(i + 1).padStart(2, '0')}${starts[i]}.`),
+    );
   });
 
-  it('draws where the data travels and says the browser sees only the consent', async () => {
-    expect(await screen.findByRole('img')).toBeInTheDocument();
-    expect(screen.getByText('Your browser sees only the consent.')).toBeInTheDocument();
+  it('draws where the data travels, naming what each place sees', async () => {
+    const figure = await screen.findByRole('img');
+    expect(figure).toHaveAccessibleName(/Gateway: relays, can’t read/);
+    expect(figure).toHaveAccessibleName(/Enclave: plaintext only here/);
+    expect(screen.getByText(/your browser sees only the consent\./i)).toBeInTheDocument();
   });
 });
 

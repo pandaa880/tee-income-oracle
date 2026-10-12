@@ -24,15 +24,27 @@ export const STAGE_COPY: Record<Stage, { title: string; note: string }> = {
   },
 };
 
-export type DataNode = { id: string; label: string; x: number; y: number };
+export type DataNode = {
+  id: string;
+  label: string;
+  /** Place on the plus-shaped drawing (the `Schematic` slots). */
+  slot: 'top' | 'left' | 'center' | 'right' | 'bottom';
+  /** What this place sees of the data. */
+  note: string;
+  /** The one trusted place. */
+  sealed?: boolean;
+};
 
-/** Hub and spokes on the square drawing: the gateway in the middle carries everything. */
+/** The hub every path runs through: it carries everything and reads none of it. */
+const HUB = 'gateway';
+
+/** Hub and spokes: the gateway in the middle, the bank above, the chain below. */
 export const DATA_NODES: readonly DataNode[] = [
-  { id: 'bank', label: 'Bank & AA', x: 15, y: 20 },
-  { id: 'browser', label: 'Browser', x: 15, y: 80 },
-  { id: 'gateway', label: 'Gateway', x: 50, y: 50 },
-  { id: 'enclave', label: 'Enclave', x: 85, y: 20 },
-  { id: 'chain', label: 'Solana', x: 85, y: 80 },
+  { id: 'bank', label: 'Bank & AA', slot: 'top', note: 'encrypts · AA signs' },
+  { id: 'browser', label: 'Browser', slot: 'left', note: 'consent only' },
+  { id: HUB, label: 'Gateway', slot: 'center', note: 'relays, can’t read' },
+  { id: 'enclave', label: 'Enclave', slot: 'right', note: 'plaintext only here', sealed: true },
+  { id: 'chain', label: 'Solana', slot: 'bottom', note: 'tier + hashes' },
 ];
 
 type Edge = { from: string; to: string };
@@ -69,9 +81,10 @@ const PATHS: Record<Stage, { path: string; carries: string }> = {
   },
 };
 
-/** The edges that light up while `stage` runs. */
-export function activeEdges(stage: Stage): readonly Edge[] {
-  return EDGES[stage];
+/** What lights up while `stage` runs: every node on its edges, and the spokes they travel. */
+export function litPath(stage: Stage): { nodes: string[]; spokes: string[] } {
+  const ids = [...new Set(EDGES[stage].flatMap((e) => [e.from, e.to]))];
+  return { nodes: ids, spokes: ids.filter((id) => id !== HUB) };
 }
 
 export function dataPath(stage: Stage): { path: string; carries: string } {

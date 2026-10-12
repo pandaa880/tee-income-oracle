@@ -63,7 +63,7 @@ take a tone, never a tier or status; `web/` maps those to tones.
 | `./seal` | `Seal` | `tone`, `label`, `letter?`, `caption?`; pressed-stamp entrance |
 | `./stepper` | `Stepper` | `steps: { label, state: 'done' \| 'current' \| 'todo' }[]` |
 | `./status-badge` | `StatusBadge` | `tone`, `label` |
-| `./schematic` | `Schematic` | `nodes: { id, label, x, y }[]` (x, y in percent), `edges: { from, to, active? }[]`, `width?`, `height?`; square drawing, fills its container without a size |
+| `./schematic` | `Schematic` | `nodes: { id, label, slot, note?, kicker?, sealed? }[]` (`slot`: `top` / `left` / `center` / `right` / `bottom`), `lit?: id[]`, `spokes?: id[]` (outer nodes whose spoke to the hub is lit); boxed nodes in a plus shape on the `--blueprint-grid` panel, one `role="img"` named by every node and note |
 | `./flow-strip` | `FlowStrip` | `items: { label, note }[]`, `bracket?: { from, to, label }` (inclusive, zero-based) |
 | `./proof-bar` | `ProofBar` | `items: { label, href? }[]`; links open with `rel="noopener noreferrer"` |
 | `./theme-toggle` | `ThemeToggle` | sets `data-theme` on `<html>`, remembers it in `localStorage` |
