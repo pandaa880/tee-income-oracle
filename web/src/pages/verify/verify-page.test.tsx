@@ -1,11 +1,11 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { CHECKS } from '@tio/verifier/report';
 import { describe, expect, it, vi } from 'vitest';
 import { GITHUB_URL, RELEASE } from '../../app/release.ts';
 import type { Deps } from '../../app/deps.ts';
 import { CHECK_EXPLANATIONS } from '../../domain/verify-view.ts';
 import { explorerAddressUrl } from '../../domain/explorer.ts';
-import { formatUnixDate, shortAddress, shortHex } from '../../domain/format.ts';
+import { formatUnixDate, formatUnixDateTime, shortAddress, shortHex } from '../../domain/format.ts';
 import { ADMIN } from '../../test-support/fixtures.ts';
 import { ledgerValue } from '../../test-support/ledger.ts';
 import { renderApp } from '../../test-support/render.tsx';
@@ -286,6 +286,57 @@ describe('VerifyPage with a failing check', () => {
     expect(screen.getAllByLabelText('fail')).toHaveLength(2);
     expect(within(rowOf('Runs our published code')).getByLabelText('fail')).toBeInTheDocument();
     expect(within(rowOf('Entry is active')).getByLabelText('fail')).toBeInTheDocument();
+  });
+});
+
+/** A 7/7 PASS on screen, then a re-read that fails with `rpc_busy`. */
+async function passThenFail() {
+  const w = await openWallet();
+  await checksHeading('Build #1 · 7 of 7 checks pass');
+  const readAt = w.queryClient.getQueryCache().findAll({ queryKey: ['verify'] })[0]
+    ?.state.dataUpdatedAt;
+  if (readAt === undefined) throw new Error('no verification read');
+  vi.mocked(w.chain.rawAccounts).mockResolvedValue({ ok: false, error: { code: 'rpc_busy' } });
+  // TanStack notifies observers on a timer tick: wait one, inside act, before asserting.
+  await act(async () => {
+    await w.queryClient.refetchQueries();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  return { ...w, readAt };
+}
+
+describe('VerifyPage when a re-check fails after a result', () => {
+  it('keeps the result on screen but says the re-check failed and when the checks ran', async () => {
+    const { readAt, queryClient } = await passThenFail();
+    expect(queryClient.getQueryCache().findAll({ queryKey: ['verify'] })[0]?.state.status).toBe(
+      'error',
+    );
+    const banner = screen.getByRole('status', { name: /couldn.t re-check this wallet/i });
+    expect(banner).toHaveTextContent(/network busy/i);
+    expect(banner).toHaveTextContent(formatUnixDateTime(BigInt(Math.floor(readAt / 1000))));
+    expect(banner).toHaveTextContent(/the checks ran then/i);
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Build #1 · 7 of 7 checks pass' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('PASS')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('clears the warning once Try again verifies the wallet again', async () => {
+    const w = await passThenFail();
+    vi.mocked(w.chain.rawAccounts).mockImplementation(async (addresses) => ({
+      ok: true,
+      value: addresses.map((a) => w.raw.get(a) ?? null),
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await vi.waitFor(
+      () =>
+        expect(
+          screen.queryByRole('status', { name: /couldn.t re-check this wallet/i }),
+        ).not.toBeInTheDocument(),
+      SLOW,
+    );
+    expect(screen.getByText('PASS')).toBeInTheDocument();
   });
 });
 

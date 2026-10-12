@@ -1,6 +1,7 @@
 import type { Address } from '@solana/kit';
 import { Skeleton } from '@tio/ui/skeleton';
 import { useVerification } from '../../app/use-verification.ts';
+import { RefreshFailed } from '../layout/refresh-failed.tsx';
 import { AttestationCard } from './attestation-card.tsx';
 import { BuildsAside } from './builds-aside.tsx';
 import { ChecksCard } from './checks-card.tsx';
@@ -21,7 +22,11 @@ function Loading() {
   );
 }
 
-/** Everything under the form once there is a wallet: the facts, the builds aside, the checks. */
+/**
+ * Everything under the form once there is a wallet: the facts, the builds aside, the checks.
+ * A re-check that fails (a refocus after the result went stale) keeps the result on screen with
+ * a warning that says when it was verified: an entry revoked since would still read "active".
+ */
 export function VerificationResult({ wallet }: VerificationResultProps) {
   const query = useVerification(wallet);
   const retry = () => void query.refetch();
@@ -39,6 +44,15 @@ export function VerificationResult({ wallet }: VerificationResultProps) {
 
   return (
     <>
+      {query.error !== null && (
+        <RefreshFailed
+          title="Couldn’t re-check this wallet"
+          note="the checks ran then"
+          error={query.error}
+          readAt={query.dataUpdatedAt}
+          onRetry={retry}
+        />
+      )}
       <AttestationCard view={query.data} />
       <div className="flex flex-wrap items-start gap-6">
         <BuildsAside />

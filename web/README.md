@@ -46,7 +46,9 @@ is checked against the hash the registry pinned; the compose file is fetched fro
 repository at the build's release tag and only has to reproduce PCR16; the chain is read as raw
 accounts and decoded by the verifier's own readers. Everything shown as verified (tier, dates,
 "written by", the verdict) comes from the library's report; the deployment file only supplies
-links. A wallet without an attestation is an error card, not a FAIL.
+links. A wallet without an attestation is an error card, not a FAIL. A re-check that fails
+(a refocus after the result went stale) keeps the result on screen with a warning that says
+when the checks ran, like the loan book's failed re-read.
 
 ## Layout
 
