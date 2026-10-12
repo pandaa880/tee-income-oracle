@@ -16,6 +16,12 @@ import {
   getProgramDerivedAddress,
   getUtf8Encoder,
 } from '@solana/kit';
+import {
+  ENCLAVE_ENTRY_DISCRIMINATOR,
+  type EnclaveEntry,
+  getEnclaveEntryDecoder,
+  getEnclaveEntrySize,
+} from './generated/index.ts';
 
 export const ORACLE_PROGRAM_ID = address('HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xwNG8');
 export const SAS_PROGRAM_ID = address('22zoJMtdu4tQc2PzL74ZUT7FrwgB1Udec8DdW4yw4BdG');
@@ -206,4 +212,26 @@ export function parseSasAttestation(owner: Address, data: Uint8Array): StoredAtt
     payload: data.slice(SAS_DATA_OFFSET, SAS_DATA_OFFSET + PAYLOAD_LEN),
     expiry: v.getBigInt64(SAS_EXPIRY_OFFSET, true),
   };
+}
+
+// --- §13 registry entry ----------------------------------------------------
+
+/**
+ * Decodes an `EnclaveEntry` account you didn't create: the generated decoder checks
+ * neither the length nor the discriminator, so this does, after the owner.
+ *
+ * @throws on a wrong owner, length or discriminator.
+ */
+export function parseEnclaveEntry(owner: Address, data: Uint8Array): EnclaveEntry {
+  if (owner !== ORACLE_PROGRAM_ID) throw new Error('account is not owned by the oracle program');
+  const size = getEnclaveEntrySize();
+  if (data.length !== size) {
+    throw new Error(
+      `enclave entry has the wrong length: expected ${size} bytes, got ${data.length}`,
+    );
+  }
+  if (!ENCLAVE_ENTRY_DISCRIMINATOR.every((byte, i) => data[i] === byte)) {
+    throw new Error('account is not an oracle EnclaveEntry (wrong discriminator)');
+  }
+  return getEnclaveEntryDecoder().decode(data);
 }

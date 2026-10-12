@@ -94,13 +94,19 @@ oyster-cvm list --address <oyster-wallet-address>    # balance and time left
 Then register it:
 
 ```sh
-pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip>
+pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip> --release <tag>
 ```
 
 `enclave:rotate` fetches one attestation document from `:1301`, checks it
 with `oyster-cvm verify` (Nitro root chain + image id), checks the attested
 key against the enclave's `/v1/info`, then in one transaction registers the
 next `measurement_id`, approves it in every pool and revokes the old entries.
+`--release` is the tag whose `enclave/docker-compose.yml` was deployed; it is
+recorded with the enclave's attestation endpoint in `deployments/devnet.json`
+so the verifier can recompute PCR16 from the tagged compose file. Any time
+after, anyone re-checks a wallet with
+`pnpm --filter @tio/verifier verify -- <wallet> --cluster devnet`
+(`docs/VERIFY.md`); `oyster-cvm verify` stays the cross-check at rotation.
 
 ## 4. Gateway and bank on Azure Container Apps
 
@@ -168,7 +174,7 @@ dead and every pool must approve the new one.
    `--debug true` then `--debug false`; only the second boot gets
    registered).
 2. Wait until `/v1/info` shows a new `attester_address`.
-3. `pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip>`.
+3. `pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip> --release <tag>`.
 4. Point the gateway at the new `MEASUREMENT_ID`. On express, `az containerapp
    update --set-env-vars` changes the config but doesn't replace the
    running replica, and `revision restart` isn't available: delete the

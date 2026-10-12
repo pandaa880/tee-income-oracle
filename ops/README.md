@@ -112,7 +112,7 @@ boot). Needs `oyster-cvm` (5.0.1; its log lines are parsed) on `PATH` and the
 enclave reachable on `:1301` (Oyster attestation server) and `:8080`.
 
 ```sh
-pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4>
+pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4> --release <tag>
 ```
 
 1. Refuse the template `enclave/docker-compose.yml` (placeholder digest), then
@@ -122,8 +122,12 @@ pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4>
    with `oyster-cvm verify --attestation-hex-file … --image-id <computed>`
    (AWS Nitro root, freshness, image id). Any missing line, ERROR line or
    non-zero exit stops the run.
-3. Derive the attester's eth address from the attested public key, and require
-   the enclave's `/v1/info` to report the same one.
+3. Derive the attester's eth address from the attested public key
+   (`@tio/verifier/eth-address`), and require the enclave's `/v1/info` to
+   report the same one. `--release` must be the `vX.Y.Z` tag whose
+   `enclave/docker-compose.yml` was deployed: it is written to the record
+   together with the attestation endpoint (`http://<ip>:1301`), which the
+   verifier uses to recompute PCR16 (`docs/VERIFY.md`).
 4. In one transaction: `register_enclave` (kind 1, image id, attester,
    `sha256` of the document), `update_pool` for every pool in `pools` (approve
    the new id, clear the ids being revoked; other params unchanged), then

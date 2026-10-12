@@ -83,9 +83,15 @@ function rotate(ports: RotatePorts, rpc = chain.rpc): ReturnType<typeof runRotat
     admin: chain.admin,
     deploymentPath,
     archiveDir,
+    release: RELEASE,
+    endpoint: ENDPOINT,
     ports,
   });
 }
+
+/** What the verifier later needs: the compose file's release tag, and the enclave's attestation server (cross-check only). */
+const RELEASE = 'v0.3.0';
+const ENDPOINT = 'http://10.0.0.1:1301';
 
 const sha256Hex = (hex: string): Uint8Array =>
   new Uint8Array(createHash('sha256').update(Buffer.from(hex, 'hex')).digest());
@@ -294,6 +300,8 @@ describe('runRotate on surfpool', () => {
       expect(String(enclaves[0]?.['image_id']).toLowerCase()).toContain(ONE.imageIdHex);
       expect(String(enclaves[0]?.['attester']).toLowerCase()).toContain(ONE.attesterHex.slice(2));
       expect(String(enclaves[0]?.['attestation_file'])).toMatch(/attestation-0\.hex$/);
+      expect(enclaves[0]?.['release']).toBe(RELEASE);
+      expect(enclaves[0]?.['endpoint']).toBe(ENDPOINT);
       expect(deployment['pools']).toEqual([{ address: pool, pool_id: 0 }]);
       expect(typeof deployment['mint']).toBe('string');
       expect(typeof deployment['credential']).toBe('string');

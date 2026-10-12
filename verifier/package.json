@@ -1,0 +1,49 @@
+{
+  "name": "@tio/verifier",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": "./src/verify.ts",
+    "./nitro": "./src/nitro/index.ts",
+    "./chain": "./src/chain/index.ts",
+    "./report": "./src/report.ts",
+    "./sources": "./src/sources.ts",
+    "./deployment": "./src/deployment.ts",
+    "./eth-address": "./src/eth-address.ts"
+  },
+  "scripts": {
+    "verify": "node --import tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c ../.oxlintrc.json --type-aware --deny-warnings src",
+    "format": "oxfmt -c ../.oxfmtrc.json src",
+    "format:check": "oxfmt -c ../.oxfmtrc.json --check src",
+    "test": "vitest run",
+    "test:programs": "vitest run --config vitest.programs.config.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
+    "@peculiar/asn1-schema": "2.10.0",
+    "@peculiar/asn1-x509": "2.10.0",
+    "@solana/kit": "7.1.1",
+    "@tio/encoding": "workspace:*",
+    "@tio/oracle-client": "workspace:*",
+    "cborg": "6.1.3",
+    "tsx": "4.23.15",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@solana/surfpool": "1.6.0",
+    "@tio/oracle-tests": "workspace:*",
+    "@types/node": "24.19.0",
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003",
+    "typescript": "7.0.2",
+    "vitest": "5.0.2"
+  }
+}

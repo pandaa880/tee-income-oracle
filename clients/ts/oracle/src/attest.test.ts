@@ -13,7 +13,11 @@ import {
   sasShapedAccount,
   signMessage,
 } from '../../../../programs/oracle/tests/src/attest.ts';
-import { ORACLE_PROGRAM_ADDRESS } from './generated/index.ts';
+import {
+  ORACLE_PROGRAM_ADDRESS,
+  getEnclaveEntryEncoder,
+  getEnclaveEntrySize,
+} from './generated/index.ts';
 import {
   DOMAIN_TAG,
   MAX_SIGNATURE_LIFETIME_SECS,
@@ -36,6 +40,7 @@ import {
   buildMessage,
   buildPrecompileData,
   decodePayload,
+  parseEnclaveEntry,
   parseSasAttestation,
   payloadIssuedAt,
   precompileInstruction,
@@ -357,5 +362,58 @@ describe('decodePayload (FORMATS §7)', () => {
     for (const length of [0, 82, 84]) {
       expect(() => decodePayload(new Uint8Array(length))).toThrow(RangeError);
     }
+  });
+});
+
+describe('parseEnclaveEntry', () => {
+  const entryArgs = {
+    version: 1,
+    bump: 254,
+    measurementId: 5,
+    measurementKind: 1,
+    measurement: new Uint8Array(32).fill(0xaa),
+    attester: new Uint8Array(20).fill(0xbb),
+    attestationDocHash: new Uint8Array(32).fill(0xcc),
+    registeredAt: 1_790_000_000n,
+    revokedAt: 0n,
+  };
+  const data = (): Uint8Array => new Uint8Array(getEnclaveEntryEncoder().encode(entryArgs));
+
+  it('decodes_an_account_the_oracle_owns', () => {
+    const entry = parseEnclaveEntry(ORACLE_PROGRAM_ID, data());
+    expect(entry).toMatchObject({
+      version: 1,
+      bump: 254,
+      measurementId: 5,
+      measurementKind: 1,
+      registeredAt: 1_790_000_000n,
+      revokedAt: 0n,
+    });
+    expect(new Uint8Array(entry.attester)).toEqual(entryArgs.attester);
+    expect(new Uint8Array(entry.measurement)).toEqual(entryArgs.measurement);
+    expect(new Uint8Array(entry.attestationDocHash)).toEqual(entryArgs.attestationDocHash);
+  });
+
+  it('rejects_an_account_owned_by_another_program', () => {
+    expect(() => parseEnclaveEntry(SAS_PROGRAM_ID, data())).toThrow(/owner|owned/i);
+  });
+
+  it('rejects_a_length_of_111', () => {
+    expect(data()).toHaveLength(getEnclaveEntrySize());
+    expect(() => parseEnclaveEntry(ORACLE_PROGRAM_ID, data().subarray(0, 111))).toThrow(/112/);
+  });
+
+  it('rejects_a_length_of_113', () => {
+    expect(() => parseEnclaveEntry(ORACLE_PROGRAM_ID, Uint8Array.from([...data(), 0]))).toThrow(
+      /112/,
+    );
+  });
+
+  it('rejects_a_wrong_discriminator', () => {
+    const wrong = data();
+    wrong[0] = (wrong[0] ?? 0) ^ 1;
+    expect(() => parseEnclaveEntry(ORACLE_PROGRAM_ID, wrong)).toThrow(
+      /discriminator|enclave entry/i,
+    );
   });
 });

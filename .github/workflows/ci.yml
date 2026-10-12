@@ -79,6 +79,12 @@ jobs:
       - run: pnpm --filter @tio/ops lint
       - run: pnpm --filter @tio/ops format:check
       - run: pnpm --filter @tio/ops test
+      # Attestation verifier: Nitro document, chain, image id against the archived
+      # devnet documents (no chain needed). The surfnet suite runs in `programs`.
+      - run: pnpm --filter @tio/verifier typecheck
+      - run: pnpm --filter @tio/verifier lint
+      - run: pnpm --filter @tio/verifier format:check
+      - run: pnpm --filter @tio/verifier test
       - run: pnpm --filter @tio/sandbox-bank gen:vectors
       - run: git diff --exit-code -- test-vectors/ && test -z "$(git status --porcelain -- test-vectors/)"
 
@@ -146,6 +152,9 @@ jobs:
       # ops admin scripts against the real programs (oracle:init, pool:setup,
       # enclave:rotate with fake Oyster ports); the unit tests run in the ts job.
       - run: pnpm --filter @tio/ops test:programs
+      # Verifier against the real oracle registry + SAS on surfnet, and the CLI
+      # as a subprocess; the document/chain unit tests run in the ts job.
+      - run: pnpm --filter @tio/verifier test:programs
 
   golden-vectors:
     runs-on: ubuntu-latest

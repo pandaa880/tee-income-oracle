@@ -184,7 +184,8 @@ What a hostile gateway or host can do at each hop:
   statement. The decryption key is created inside the enclave and never
   leaves it.
 - Anyone can check that a tier came from a specific build of this repo. The
-  verifier ties the attested key to the image id recomputed from source.
+  verifier (`@tio/verifier`, `docs/VERIFY.md`) ties the attested key to the
+  image id recomputed from the compose file at the release tag.
 - A tier can't be altered, moved to another wallet, or replayed in another
   context. The signed message covers the domain tag, program, credential,
   schema, wallet, payload and expiry.

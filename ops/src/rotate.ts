@@ -33,7 +33,7 @@ import { fromHex, toHex } from '@tio/encoding';
 import { type Cluster, assertCluster } from './cluster.ts';
 import { isRecord, poolAddresses, readDeployment, updateDeployment } from './deployments.ts';
 import { OpsError } from './errors.ts';
-import { ethAddressFromPublicKey, toEthHex } from './eth-address.ts';
+import { ethAddressFromPublicKey, toEthHex } from '@tio/verifier/eth-address';
 import { isPlaceholderCompose, parseImageId, parseVerifyOutput } from './oyster.ts';
 import { type Registry, readRegistry } from './registry.ts';
 import { type RotatePlan, planRotate } from './rotate-plan.ts';
@@ -65,6 +65,14 @@ export type RotateInput = ChainClients & {
   deploymentPath: string;
   /** Where `attestation-<id>.hex` files are kept (`deployments/<cluster>/`). */
   archiveDir: string;
+  /** Git tag whose `enclave/docker-compose.yml` produced the image (the verifier recomputes PCR16 from it). */
+  release: string;
+  /**
+   * The enclave's Oyster attestation server, `http://<ip>:1301`. A cross-check
+   * only: it signs a fresh document per request, so its hash never matches the
+   * archived one on chain.
+   */
+  endpoint: string;
   ports: RotatePorts;
 };
 
@@ -380,6 +388,8 @@ type EnclaveRecord = {
   image_id: string;
   attester: string;
   attestation_file: string;
+  release: string;
+  endpoint: string;
 };
 
 function enclaveRecord(
@@ -394,6 +404,8 @@ function enclaveRecord(
     attester: toEthHex(attested.attester),
     // Relative to the deployment file, so the committed path works in any checkout.
     attestation_file: relative(dirname(input.deploymentPath), attestationFile),
+    release: input.release,
+    endpoint: input.endpoint,
   };
 }
 
