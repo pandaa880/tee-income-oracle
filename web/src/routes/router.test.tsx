@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Deps } from '../app/deps.ts';
 import { renderApp } from '../test-support/render.tsx';
 import { world } from '../test-support/world.ts';
+import { verifySearchSchema } from './router.tsx';
 
 // Pages call the hooks with their default `realDeps()`; swap it for fakes so no network or env is needed.
 const hoisted = vi.hoisted(() => ({ deps: undefined as Deps | undefined }));
@@ -60,6 +61,19 @@ describe('app router', () => {
     },
   );
 
+  it('renders the verify page at /verify even while its nav flag is off', async () => {
+    await renderAt('/verify');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Check any tier yourself' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows an inline error, not a crash, at /verify?wallet=junk', async () => {
+    await renderAt('/verify?wallet=junk');
+    expect(await screen.findByText('Not a Solana address')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/check any tier/i);
+  });
+
   it('wraps every page in the site layout: a header with a Borrow link', async () => {
     await renderAt('/');
     const banner = await screen.findByRole('banner');
@@ -72,5 +86,19 @@ describe('app router', () => {
     const banner = await screen.findByRole('banner');
     expect(within(banner).getByRole('link', { name: /borrow/i })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /loan book|verify/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('verifySearchSchema', () => {
+  it('keeps a wallet string as it is, without judging it', () => {
+    expect(verifySearchSchema.parse({ wallet: 'junk' })).toEqual({ wallet: 'junk' });
+  });
+
+  it('allows no wallet at all', () => {
+    expect(verifySearchSchema.parse({})).toEqual({});
+  });
+
+  it.each([5, null, ['a', 'b'], { a: 1 }])('drops a wallet that is not text (%j)', (wallet) => {
+    expect(verifySearchSchema.parse({ wallet }).wallet).toBeUndefined();
   });
 });

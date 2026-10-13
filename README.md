@@ -191,9 +191,13 @@ The web app (`web/`) runs on `@tio/ui` and deploys to Vercel: a landing page, th
 borrower flow (demo wallet, consent, live stages, the tier read back from chain),
 a loan page that borrows and repays on both pools through the sponsored relay, and a loan
 book per pool (every open loan with the health of its credential, read from chain).
-Everything the gateway reports is checked against chain before it is shown. The
-verify page is next.
-Any tier can be re-checked from a clone with
+Everything the gateway reports is checked against chain before it is shown. A verify
+page (`/verify?wallet=…`) runs the verifier's seven checks in the browser, from the public
+RPC, the archived document bundled with the app and the compose file at the release tag;
+try https://tee-income-oracle-web.vercel.app/verify?wallet=8Z6Fa1j6WChXyAgxu6bCyPPUVi9mnuPgWTxM7W8cngAp
+(7 of 7 as of 2026-10-13; a wallet attested by a retired build fails "Entry is active"), or
+click an example borrower on the page.
+Any tier can also be re-checked from a clone with
 `pnpm --filter @tio/verifier verify -- <wallet> --cluster devnet` ([`docs/VERIFY.md`](docs/VERIFY.md)).
 
 ## License

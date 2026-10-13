@@ -5,6 +5,7 @@ import { Button } from '@tio/ui/button';
 import { cn } from '@tio/ui/cn';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@tio/ui/table';
 import { TONE_TEXT } from '@tio/ui/tokens';
+import { useConfig } from '../../app/use-config.ts';
 import type { BookRow } from '../../domain/book.ts';
 import { bookHealthLabel } from '../../domain/credential-copy.ts';
 import { credentialTone } from '../../domain/credential-tone.ts';
@@ -37,7 +38,7 @@ const HEAD = 'px-3 py-2.5 font-sans font-medium tracking-wide first:pl-6 last:pr
 const FOOTNOTE =
   'An enclave restart retires its old build, so every credential it issued shows “build retired” until the borrower re-attests — monitoring, not a bug. “Old policy” = issued under rules this pool no longer accepts; new borrows need a fresh attestation.';
 
-function LoanRow({ row, cluster }: { row: BookRow; cluster: string }) {
+function LoanRow({ row, cluster, verify }: { row: BookRow; cluster: string; verify: boolean }) {
   // Explicit roles: `display: block` (stacked) drops the native table semantics in WebKit.
   const cell = (label: string, className?: string) => ({
     role: 'cell',
@@ -85,6 +86,15 @@ function LoanRow({ row, cluster }: { row: BookRow; cluster: string }) {
               Attestation{of}
             </ExternalLink>
           )}
+          {verify && (
+            <Link
+              to="/verify"
+              search={{ wallet: row.borrower }}
+              className="inline-flex items-center underline underline-offset-4"
+            >
+              Verify{of}
+            </Link>
+          )}
         </span>
       </TableCell>
     </TableRow>
@@ -94,6 +104,8 @@ function LoanRow({ row, cluster }: { row: BookRow; cluster: string }) {
 /** Every open loan of the pool, newest first; an empty pool offers the way to make one. */
 export function LoanTable({ rows, cluster, poolId }: LoanTableProps) {
   const titleId = useId();
+  // The verify page ships behind its flag; the row link follows it.
+  const { verify } = useConfig().features;
   return (
     <section
       aria-labelledby={titleId}
@@ -128,7 +140,7 @@ export function LoanTable({ rows, cluster, poolId }: LoanTableProps) {
           </TableHeader>
           <TableBody role="rowgroup" className={STACK.body}>
             {rows.map((row) => (
-              <LoanRow key={row.loanAddress} row={row} cluster={cluster} />
+              <LoanRow key={row.loanAddress} row={row} cluster={cluster} verify={verify} />
             ))}
           </TableBody>
         </Table>

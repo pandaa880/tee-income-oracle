@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.1](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.0...v0.5.1) (2026-10-12)
+
+
+### Features
+
+* **web:** add the verify page ([#47](https://github.com/pandaa880/tee-income-oracle/issues/47)) ([359bf1f](https://github.com/pandaa880/tee-income-oracle/commit/359bf1f807a26a848d033fa583f945d048589039))
+* **web:** example wallets on the verify page, Verify links in the book ([#51](https://github.com/pandaa880/tee-income-oracle/issues/51)) ([529928d](https://github.com/pandaa880/tee-income-oracle/commit/529928da547bdcd80e3c15a22470c0bf0153e69d))
+
+
+### Bug Fixes
+
+* **web:** lay out the landing per the v22 design review ([#50](https://github.com/pandaa880/tee-income-oracle/issues/50)) ([580e67b](https://github.com/pandaa880/tee-income-oracle/commit/580e67bee3036ff2866d347e42e3e28f9fc13261))
+* **web:** match the header and status strip to home v22 ([#49](https://github.com/pandaa880/tee-income-oracle/issues/49)) ([20af3b1](https://github.com/pandaa880/tee-income-oracle/commit/20af3b19d644bd6c517b5bead199a18621fb3c58))
+
 ## [0.5.0](https://github.com/pandaa880/tee-income-oracle/compare/v0.4.0...v0.5.0) (2026-10-12)
 
 

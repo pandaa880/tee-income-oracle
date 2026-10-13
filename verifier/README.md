@@ -60,7 +60,8 @@ PASS, 1 on FAIL, 2 for a usage, I/O or chain error (`error: <code>: …` on stde
 | `@tio/verifier/deployment` | `parseDeployment(json)` (zod; program ids must equal the client's constants) |
 | `@tio/verifier/sources` | `fetchArchivedDocument`, `fetchComposeAtTag`, `fetchLiveDocument`, `parseHexDocument` (fetch, timeouts) |
 | `@tio/verifier/report` | `CHECKS`, `formatReport` |
-| `@tio/verifier/eth-address` | `ethAddressFromPublicKey`, `toEthHex` (also used by `ops`) |
+| `@tio/verifier/eth-address` | `ethAddressFromPublicKey`, `toEthHex` (also used by `ops` and the web's builds aside) |
+| `@tio/verifier/errors` | `VerifierError`, `VerifierErrorCode` (the web maps a thrown one to its `verify_failed` error) |
 
 Everything outside `src/cli.ts` and `src/node/` is browser-safe (no `node:` imports, no
 `process`; enforced by `package-rules.test.ts`). Crypto is `@noble/curves` /

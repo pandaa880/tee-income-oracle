@@ -23,6 +23,11 @@ export const borrowSearchSchema = z.object({
     .catch(undefined),
 });
 
+/** `?wallet=<text>`, kept as typed: the page judges it (and says "Not a Solana address"). */
+export const verifySearchSchema = z.object({
+  wallet: z.string().optional().catch(undefined),
+});
+
 const rootRoute = createRootRoute({ component: SiteLayout });
 
 const homeRoute = createRoute({
@@ -52,7 +57,20 @@ const bookRoute = createRoute({
   component: lazyRouteComponent(() => import('../pages/book/book-page.tsx'), 'BookPage'),
 });
 
-const routeTree = rootRoute.addChildren([homeRoute, borrowRoute, loanRoute, bookRoute]);
+const verifyRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/verify',
+  validateSearch: verifySearchSchema,
+  component: lazyRouteComponent(() => import('../pages/verify/verify-page.tsx'), 'VerifyPage'),
+});
+
+const routeTree = rootRoute.addChildren([
+  homeRoute,
+  borrowRoute,
+  loanRoute,
+  bookRoute,
+  verifyRoute,
+]);
 
 export function createAppRouter(options: { history?: RouterHistory } = {}) {
   return createRouter({ routeTree, ...(options.history ? { history: options.history } : {}) });

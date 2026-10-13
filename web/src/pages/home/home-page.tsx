@@ -43,12 +43,14 @@ export function HomePage() {
   return (
     <>
       <StatusStrip />
-      <main className="mx-auto flex max-w-(--content-max) flex-col gap-16 px-4 py-12">
+      <main>
         <Hero ctaDisabledReason={down} />
-        <ProofBar items={proofItems(status.data, status.isPending, features.verify)} />
-        <FunderChecks />
-        <HowItWorks />
-        <Doors features={features} />
+        <div className="mx-auto flex max-w-(--content-max) flex-col gap-16 px-4 py-16">
+          <ProofBar items={proofItems(status.data, status.isPending, features.verify)} />
+          <FunderChecks />
+          <HowItWorks />
+          <Doors features={features} />
+        </div>
         <Pilot ctaDisabledReason={down} />
       </main>
     </>
