@@ -308,7 +308,10 @@ Add a line whenever an agent makes the same mistake twice.
 - **Git: never commit or push to `main` or `develop`.** Follow
   `CONTRIBUTING.md` → Git workflow (git-flow):
   - Branch from an up-to-date `develop` (`git switch -c <type>/<short-name>`,
-    e.g. `feat/tio-core-ecdh`), and open PRs **into `develop`**.
+    e.g. `feat/tio-core-ecdh`), and open PRs **into `develop`**: always
+    `gh pr create --base develop`. The GitHub default branch is `main`
+    (released code only), so a PR without `--base` targets `main`. Only the
+    release promotion PR (`--base main --head develop`) targets `main`.
   - Commit with `git commit -s` and Conventional Commit messages; the squash
     title drives release-please, so it must be accurate.
   - Don't commit, push, open or merge PRs unless asked. Never force-push
