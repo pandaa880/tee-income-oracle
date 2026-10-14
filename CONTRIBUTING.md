@@ -30,18 +30,23 @@ Git-flow with two long-lived branches. Everything else is a short-lived
 branch merged by pull request.
 
 ```
-main     ─────────────●───────────────●────   releases only
+main     ─────────────●───────────────●────   releases only (default branch)
                      /               /
-develop  ──●──●──●──R────●──●──●────R──────   integration (default branch)
+develop  ──●──●──●──R────●──●──●────R──────   integration
             \/ \/          \/
          feat/…  fix/…   feat/…              one branch per task
 ```
 
 ### `develop` and `main`
-- **`develop`** is the default branch and where all work lands. It must stay
-  green: builds and tests pass, and docs match the code.
+- **`develop`** is where all work lands. It must stay green: builds and tests
+  pass, and docs match the code.
 - **`main`** only ever receives releases (a promotion PR from `develop`). It
-  always equals the latest release.
+  always equals the latest release, and it is the GitHub default branch, so
+  the repo page shows released code.
+- Because `main` is the default, `gh pr create` and GitHub's "Compare & pull
+  request" button target `main` unless told otherwise. Always pass
+  `--base develop` (or pick `develop` in the UI); only release promotions
+  target `main`.
 - **Nobody commits or pushes directly to either.** Both are protected: PR
   required, no force-push, no deletion.
 
