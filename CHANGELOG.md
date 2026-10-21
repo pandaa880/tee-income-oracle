@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.1...v0.5.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* **web:** define process.env.NODE_ENV for the dev server ([#54](https://github.com/pandaa880/tee-income-oracle/issues/54)) ([86ac7f3](https://github.com/pandaa880/tee-income-oracle/commit/86ac7f300dcad56e50705fa96efb4cbcd79a9adf))
+
 ## [0.5.1](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.0...v0.5.1) (2026-10-12)
 
 
