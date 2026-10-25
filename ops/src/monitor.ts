@@ -165,8 +165,9 @@ function oysterRunway(probe: Probed<OysterJob | null>, nowSecs: bigint, owner: s
   if (!probe.ok) return check('oyster_runway', title, 'fail', probe.error);
   const job = probe.value;
   if (job === null) return check('oyster_runway', title, 'fail', 'no such job on the market');
+  // The report becomes a public issue: name the problem, never the wallets.
   if (!sameAddress(job.owner, owner)) {
-    return check('oyster_runway', title, 'fail', `job owner is ${job.owner}, expected ${owner}`);
+    return check('oyster_runway', title, 'fail', 'the job is owned by another wallet');
   }
   const until = paidUntil(job);
   if (until === null)

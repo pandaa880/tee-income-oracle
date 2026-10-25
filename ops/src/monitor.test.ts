@@ -12,16 +12,17 @@ import {
   renderReport,
 } from './monitor.ts';
 
-const OWNER = '0xd68918e095d1bab2aa83d5bef021f0c064c66837';
+// A placeholder, not a real wallet: fixtures never carry ours (it would sit in a public repo).
+const OWNER = `0x${'ab'.repeat(20)}`;
 const ATTESTER = '0x7588de07d659a583c8c82261ff3b95c0e039a7f3';
 const NOW = 1_792_900_000n;
 const DAY = 86_400n;
 
-// Head words of the real jobs(bytes32) answer for job 0x…320a on 2026-10-24
-// (Arbitrum One market 0x9d95…a34B); the metadata string after them is irrelevant.
-const JOB_320A_HEAD = [
+// Head words of a real jobs(bytes32) answer from the Arbitrum One market (2026-10-24), with the
+// owner word replaced by the placeholder; the metadata string after them is irrelevant.
+const REAL_JOB_HEAD = [
   '00000000000000000000000000000000000000000000000000000000000000c0',
-  '000000000000000000000000d68918e095d1bab2aa83d5bef021f0c064c66837',
+  `000000000000000000000000${'ab'.repeat(20)}`,
   '000000000000000000000000e10fa12f580e660ecd593ea4119cebc90509d642',
   '000000000000000000000000000000000000000000000000000015786e77eb85',
   '0000000000000000000000000000000000000000000000000000000003b4a0a9',
@@ -57,7 +58,7 @@ const statusOf = (probes: Probes, id: string) => byId(evaluate(probes, NOW, OWNE
 
 describe('decodeJob', () => {
   it('reads_owner_rate_balance_and_last_settled_from_the_real_answer', () => {
-    expect(decodeJob(`0x${JOB_320A_HEAD}00`)).toEqual({
+    expect(decodeJob(`0x${REAL_JOB_HEAD}00`)).toEqual({
       owner: OWNER,
       rate: 23_606_993_611_653n,
       balance: 62_169_257n,
@@ -76,7 +77,7 @@ describe('decodeJob', () => {
 
 describe('paidUntil', () => {
   it('matches_the_real_job_paid_until_2026_11_08_01_19_34_utc', () => {
-    const job = decodeJob(JOB_320A_HEAD);
+    const job = decodeJob(REAL_JOB_HEAD);
     expect(job).not.toBeNull();
     if (job !== null) expect(paidUntil(job)).toBe(1_794_100_774n);
   });
@@ -176,6 +177,15 @@ describe('evaluate', () => {
     expect(
       statusOf({ ...healthy(), oysterJob: { ok: true, value: stranger } }, 'oyster_runway'),
     ).toBe('fail');
+  });
+
+  it('never_names_a_wallet_in_the_report_when_the_owner_differs', () => {
+    const stranger = { ...jobLasting(30n), owner: '0x' + '2'.repeat(40) };
+    const checks = evaluate({ ...healthy(), oysterJob: { ok: true, value: stranger } }, NOW, OWNER);
+    const report = renderReport(checks, NOW);
+    expect(byId(checks, 'oyster_runway').detail).toBe('the job is owned by another wallet');
+    expect(report.toLowerCase()).not.toContain(OWNER.slice(2));
+    expect(report).not.toContain('2'.repeat(40));
   });
 
   it.each([

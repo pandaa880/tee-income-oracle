@@ -11,18 +11,19 @@ const RELAYER = '9jR2xmkX4ccCPkrH58NZPpLtSA29dQggXosyxhLFusDq';
 const TARGETS = {
   gatewayUrl: 'https://gw.test',
   enclaveIp: '10.0.0.1',
-  oysterJobId: '0x324a',
+  oysterJobId: '0x1a2b',
   solanaRpcUrl: 'https://sol.test/',
   arbitrumRpcUrl: 'https://arb.test/',
   indexerUrl: 'https://idx.test/graphql',
   retryDelayMs: 0,
 };
-// jobs() head of a live job: owner, provider, rate 0.084985 USDC/h, 1.084985 USDC, settled.
+// jobs() head of a live job: owner (a placeholder, never our wallet), provider,
+// rate 0.084985 USDC/h, 1.084985 USDC, settled.
 const JOB_HEAD =
   '0x' +
   [
     '00000000000000000000000000000000000000000000000000000000000000c0',
-    '000000000000000000000000d68918e095d1bab2aa83d5bef021f0c064c66837',
+    `000000000000000000000000${'ab'.repeat(20)}`,
     '000000000000000000000000e10fa12f580e660ecd593ea4119cebc90509d642',
     '000000000000000000000000000000000000000000000000000015786e77eb85',
     '0000000000000000000000000000000000000000000000000000000000108e39',
@@ -132,7 +133,7 @@ afterEach(() => {
 
 describe('jobsCalldata', () => {
   it('is_the_jobs_selector_and_the_left_padded_id', () => {
-    expect(jobsCalldata('0x324A')).toBe(`0x38ed7cfc${'0'.repeat(60)}324a`);
+    expect(jobsCalldata('0x1A2B')).toBe(`0x38ed7cfc${'0'.repeat(60)}1a2b`);
   });
 });
 
@@ -153,7 +154,7 @@ describe('runProbes', () => {
     });
     expect(probes.indexerLagSecs.ok && probes.indexerLagSecs.value).toBeGreaterThanOrEqual(60);
     const ethCall = calls.find((c) => c.method === 'eth_call');
-    expect(ethCall?.params[0]).toEqual({ to: OYSTER_MARKET, data: jobsCalldata('0x324a') });
+    expect(ethCall?.params[0]).toEqual({ to: OYSTER_MARKET, data: jobsCalldata('0x1a2b') });
     expect(calls.find((c) => c.method === 'eth_getBlockByNumber')?.params).toEqual(['0x64', false]);
   });
 

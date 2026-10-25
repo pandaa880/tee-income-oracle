@@ -3,11 +3,13 @@
 # registry, the Oyster job's paid-until time, the relayer's SOL and Marlin's
 # indexer lag. Read-only, no secrets. A run that isn't ok opens or updates the
 # `monitor` issue; a healthy run closes it. Schedules run on the default branch
-# only. Targets are repo variables, so a redeploy needs no commit:
+# only. Targets live in the repo settings, so a redeploy needs no commit. The job id and its
+# owner wallet are secrets, not variables: Actions logs of a public repo are public, and
+# GitHub masks secret values there (the report itself never names them).
 #   gh variable set MONITOR_GATEWAY_URL --body https://<gateway host>
 #   gh variable set MONITOR_ENCLAVE_IP --body <ipv4>
-#   gh variable set MONITOR_OYSTER_JOB_ID --body 0x<job id>
-#   gh variable set MONITOR_OYSTER_OWNER --body 0x<job owner wallet>
+#   gh secret set MONITOR_OYSTER_JOB_ID   # paste 0x<job id>
+#   gh secret set MONITOR_OYSTER_OWNER    # paste 0x<job owner wallet>
 name: monitor
 
 on:
@@ -45,8 +47,8 @@ jobs:
         env:
           GATEWAY_URL: ${{ vars.MONITOR_GATEWAY_URL }}
           ENCLAVE_IP: ${{ vars.MONITOR_ENCLAVE_IP }}
-          OYSTER_JOB_ID: ${{ vars.MONITOR_OYSTER_JOB_ID }}
-          OYSTER_OWNER: ${{ vars.MONITOR_OYSTER_OWNER }}
+          OYSTER_JOB_ID: ${{ secrets.MONITOR_OYSTER_JOB_ID }}
+          OYSTER_OWNER: ${{ secrets.MONITOR_OYSTER_OWNER }}
         run: >-
           pnpm --filter @tio/ops monitor:devnet --
           --gateway "$GATEWAY_URL" --enclave-ip "$ENCLAVE_IP"

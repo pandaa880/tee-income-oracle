@@ -171,14 +171,19 @@ every 30 minutes and keeps one `monitor` issue open while something is wrong
 ```sh
 gh variable set MONITOR_GATEWAY_URL --body https://<gateway fqdn>
 gh variable set MONITOR_ENCLAVE_IP --body <enclave ip>
-gh variable set MONITOR_OYSTER_JOB_ID --body 0x<job id>
-gh variable set MONITOR_OYSTER_OWNER --body 0x<oyster wallet address>
+gh secret set MONITOR_OYSTER_JOB_ID    # paste 0x<job id>
+gh secret set MONITOR_OYSTER_OWNER     # paste 0x<oyster wallet address>
 gh workflow run monitor   # one run now
 ```
 
+The job id and the wallet that owns it are secrets, not variables. This repo's
+Actions logs are public and GitHub masks only secrets in them. Keep both out of
+issues, PRs, commits and test fixtures too: posted together, they tie a wallet to
+its money and to a live problem.
+
 Scheduled workflows run from the default branch only, and GitHub pauses them
-after 60 days without repository activity. Set the variables again after every
-redeploy (new IP, new job).
+after 60 days without repository activity. Set them again after every redeploy
+(new IP, new job).
 
 ## 6. Enclave restart
 
@@ -200,8 +205,8 @@ dead and every pool must approve the new one.
    gateway app and create it again (same name, same FQDN). Until then the
    gateway refuses new sessions with `enclave_rotated`.
 5. Run `e2e:devnet` again.
-6. If the enclave moved (new job, new IP), set `MONITOR_ENCLAVE_IP` and
-   `MONITOR_OYSTER_JOB_ID` again (§5).
+6. If the enclave moved (new job, new IP), set the `MONITOR_ENCLAVE_IP`
+   variable and the `MONITOR_OYSTER_JOB_ID` secret again (§5).
 
 Borrowers attested by a revoked entry must attest again (FORMATS §13).
 
