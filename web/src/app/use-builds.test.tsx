@@ -18,10 +18,11 @@ async function open(options: WorldOptions = {}) {
 }
 
 describe('useBuilds', () => {
-  it('lists the two builds of the deployment, newest first, one revoked', async () => {
-    const { result } = await open({ verify: { docId: 1 } });
+  it('lists every build of the deployment, newest first, one revoked', async () => {
+    const { result } = await open({ verify: { docId: 1 }, entries: { 2: {} } });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.map((r) => [r.id, r.status])).toEqual([
+      [2, 'active'],
       [1, 'active'],
       [0, 'revoked'],
     ]);
@@ -30,12 +31,12 @@ describe('useBuilds', () => {
   it('shows the revocation time and the attester each chain entry holds', async () => {
     const { result } = await open({ verify: { docId: 1 } });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    const [newest, oldest] = result.current.data ?? [];
-    expect(newest).toMatchObject({
+    const byId = (id: number) => result.current.data?.find((r) => r.id === id);
+    expect(byId(1)).toMatchObject({
       attester: '0xb6dda6eed87322334ba37809bd451a852ae6574c',
       registeredAt: 1_790_000_000n,
     });
-    expect(oldest).toMatchObject({
+    expect(byId(0)).toMatchObject({
       attester: '0xc39b71ae1d2bbc0919ee8c1250728a9b2380052b',
       revokedAt: REVOKED_AT,
     });
@@ -46,6 +47,7 @@ describe('useBuilds', () => {
     const { result } = await open();
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.map((r) => [r.id, r.status])).toEqual([
+      [2, 'unknown'],
       [1, 'unknown'],
       [0, 'active'],
     ]);
@@ -65,8 +67,10 @@ describe('useBuilds', () => {
     await waitFor(() => expect(w.result.current.isSuccess).toBe(true));
     expect(w.chain.accounts).toHaveBeenCalledTimes(1);
     const keys = vi.mocked(w.chain.accounts).mock.calls[0]?.[0] ?? [];
-    expect(keys).toHaveLength(2);
-    expect(keys).toEqual(expect.arrayContaining([await entryPda(0), await entryPda(1)]));
+    expect(keys).toHaveLength(3);
+    expect(keys).toEqual(
+      expect.arrayContaining([await entryPda(0), await entryPda(1), await entryPda(2)]),
+    );
   });
 
   it('reads no wallet attestation: it needs no wallet', async () => {

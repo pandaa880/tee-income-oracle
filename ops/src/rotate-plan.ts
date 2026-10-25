@@ -3,9 +3,10 @@
  *
  * An enclave restart gets a new attester key, so it is a new registry entry
  * (FORMATS §13). Every pool must approve the new id (§14), and the old
- * entries are revoked so their attestations stop lending. A re-run after a
- * partial failure finds the entry it already registered and only finishes
- * the rest.
+ * entries are revoked so their attestations stop lending, except those listed
+ * in `keepActive`: an instance that is gone took its key with it, so its
+ * attestations can keep lending and verifying. A re-run after a partial
+ * failure finds the entry it already registered and only finishes the rest.
  */
 import { clearMeasurementBit, setMeasurementBit } from './bitmap.ts';
 
@@ -33,14 +34,24 @@ export type RotatePlan = {
 const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
   a.length === b.length && a.every((byte, i) => byte === b[i]);
 
-/** @throws Error when a new entry is needed and the registry is full. */
+/**
+ * @throws Error when a new entry is needed and the registry is full, or when a
+ * `keepActive` id is not an active entry.
+ */
 export function planRotate(input: {
   nextMeasurementId: number;
   entries: EntryView[];
   pools: PoolView[];
   enclave: NewEnclave;
+  /** Active ids to leave active and approved instead of revoking. */
+  keepActive: number[];
 }): RotatePlan {
   const active = input.entries.filter((e) => e.revokedAt === 0n);
+  const activeIds = new Set(active.map((e) => e.measurementId));
+  const unknown = input.keepActive.find((id) => !activeIds.has(id));
+  if (unknown !== undefined) {
+    throw new Error(`keep-active id ${unknown} is not an active registry entry`);
+  }
   const existing = active.find(
     (e) =>
       sameBytes(e.attester, input.enclave.attester) &&
@@ -52,7 +63,7 @@ export function planRotate(input: {
   const measurementId = existing?.measurementId ?? input.nextMeasurementId;
   const revoke = active
     .map((e) => e.measurementId)
-    .filter((id) => id !== measurementId)
+    .filter((id) => id !== measurementId && !input.keepActive.includes(id))
     .toSorted((a, b) => a - b);
   return {
     measurementId,

@@ -74,6 +74,8 @@ export type RotateInput = ChainClients & {
    */
   endpoint: string;
   ports: RotatePorts;
+  /** Active registry ids to leave active and approved instead of revoking; default none. */
+  keepActive?: number[];
 };
 
 export type RotateResult = {
@@ -203,6 +205,7 @@ async function prepareRotation(
       approvedMeasurements: new Uint8Array(params.approvedMeasurements),
     })),
     enclave: attested,
+    keepActive: input.keepActive ?? [],
   });
   const attestationFile = archivePath(input, plan.measurementId);
   // Checked before sending: after the send, the pending file must be able to take this name.

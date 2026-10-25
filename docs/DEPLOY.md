@@ -175,6 +175,9 @@ dead and every pool must approve the new one.
    registered).
 2. Wait until `/v1/info` shows a new `attester_address`.
 3. `pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip> --release <tag>`.
+   If the old instance died rather than being compromised, add
+   `--keep-active <old id>`. Its attestations then keep lending and verifying,
+   and their borrowers don't need to attest again.
 4. Point the gateway at the new `MEASUREMENT_ID`. On express, `az containerapp
    update --set-env-vars` changes the config but doesn't replace the
    running replica, and `revision restart` isn't available: delete the
@@ -182,7 +185,7 @@ dead and every pool must approve the new one.
    gateway refuses new sessions with `enclave_rotated`.
 5. Run `e2e:devnet` again.
 
-Borrowers attested by the old entry must attest again (FORMATS §13).
+Borrowers attested by a revoked entry must attest again (FORMATS §13).
 
 ## 7. Stop paying
 

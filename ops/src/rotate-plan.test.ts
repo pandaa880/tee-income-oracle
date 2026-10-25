@@ -31,12 +31,14 @@ function plan(o: {
   entries?: EntryView[];
   pools?: PoolView[];
   enclave?: NewEnclave;
+  keep?: number[];
 }) {
   return planRotate({
     nextMeasurementId: o.next,
     entries: o.entries ?? [],
     pools: o.pools ?? [],
     enclave: o.enclave ?? enclave(1),
+    keepActive: o.keep ?? [],
   });
 }
 
@@ -195,6 +197,59 @@ describe('planRotate', () => {
 
   it('throws_registry_full_when_a_new_entry_would_need_id_255', () => {
     expect(() => plan({ next: 255 })).toThrow(/registry full/);
+  });
+
+  it('keep_active_leaves_the_listed_entry_active_and_approved', () => {
+    const result = plan({
+      next: 2,
+      entries: [entry(0, 1, REVOKED), entry(1, 2)],
+      pools: [pool('P', 1)],
+      enclave: enclave(3),
+      keep: [1],
+    });
+    expect(result).toEqual({
+      measurementId: 2,
+      register: true,
+      poolUpdates: [{ address: 'P', approvedMeasurements: bitmap(1, 2) }],
+      revoke: [],
+    });
+  });
+
+  it('keep_active_still_revokes_the_entries_it_does_not_list', () => {
+    const result = plan({
+      next: 2,
+      entries: [entry(0, 1), entry(1, 2)],
+      pools: [pool('P', 0, 1)],
+      enclave: enclave(3),
+      keep: [1],
+    });
+    expect(result.revoke).toEqual([0]);
+    expect(result.poolUpdates).toEqual([{ address: 'P', approvedMeasurements: bitmap(1, 2) }]);
+  });
+
+  it('rerun_with_keep_active_changes_nothing', () => {
+    const result = plan({
+      next: 3,
+      entries: [entry(0, 1, REVOKED), entry(1, 2), entry(2, 3)],
+      pools: [pool('P', 1, 2)],
+      enclave: enclave(3),
+      keep: [1],
+    });
+    expect(result).toEqual({ measurementId: 2, register: false, poolUpdates: [], revoke: [] });
+  });
+
+  it.each([
+    ['an id with no entry', 5],
+    ['a revoked entry', 0],
+  ])('throws_when_keep_active_names_%s', (_why, id) => {
+    expect(() =>
+      plan({
+        next: 2,
+        entries: [entry(0, 1, REVOKED), entry(1, 2)],
+        enclave: enclave(3),
+        keep: [id],
+      }),
+    ).toThrow(new RegExp(`keep-active id ${id} is not an active registry entry`));
   });
 
   it('does_not_throw_at_255_when_an_existing_entry_is_reused', () => {
