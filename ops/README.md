@@ -13,6 +13,9 @@ Order for a fresh cluster (after `anchor deploy` of both programs):
 4. `enclave:rotate`: register the running enclave, approve it in the pools.
 5. `e2e:devnet`: drive the deployed gateway end to end.
 
+`monitor:devnet` is the exception to "admin": it reads only, needs no key, and
+runs in CI on a schedule.
+
 Every script first checks the RPC's genesis hash, so a `localnet` run can't
 touch devnet, testnet or mainnet, and a `devnet` run only accepts devnet. Only
 the HTTP RPC is checked: point `SOLANA_WS_URL` at the same cluster, or
@@ -112,8 +115,14 @@ boot). Needs `oyster-cvm` (5.0.1; its log lines are parsed) on `PATH` and the
 enclave reachable on `:1301` (Oyster attestation server) and `:8080`.
 
 ```sh
-pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4> --release <tag>
+pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4> --release <tag> [--keep-active <id>[,<id>…]]
 ```
+
+`--keep-active` lists active registry ids to leave active and approved instead
+of revoking them. Use it when the old instance is gone, not compromised: its
+attester key existed only inside that enclave, so nobody can sign with it again,
+and its attestations keep lending and passing the verifier. An id that isn't an
+active entry fails the run before anything is sent.
 
 1. Refuse the template `enclave/docker-compose.yml` (placeholder digest), then
    compute the image id from it (`oyster-cvm compute-image-id`).
@@ -131,7 +140,7 @@ pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4> --rel
 4. In one transaction: `register_enclave` (kind 1, image id, attester,
    `sha256` of the document), `update_pool` for every pool in `pools` (approve
    the new id, clear the ids being revoked; other params unchanged), then
-   `revoke_enclave` for every other active entry.
+   `revoke_enclave` for every other active entry not listed in `--keep-active`.
 5. Rename the document to `attestation-<id>.hex`, add the entry to `enclaves`,
    and print the `az containerapp update … MEASUREMENT_ID=<id>` command that
    points the gateway at the new entry. On an Azure Container Apps express
@@ -170,6 +179,32 @@ row per step; exit 1 if any fails.
 ```sh
 pnpm --filter @tio/ops e2e:devnet --cluster devnet --gateway https://<gateway host>
 ```
+
+## `monitor:devnet`: is the deployed demo up?
+
+Read-only, no keys; the `monitor` workflow runs it every 30 minutes.
+
+```sh
+pnpm --filter @tio/ops monitor:devnet --gateway https://<gateway host> --enclave-ip <ipv4> \
+  --oyster-job 0x<job id> --owner 0x<job owner wallet> [--out <dir>]
+```
+
+| Check | Fails when | Warns when |
+|---|---|---|
+| Gateway `/health` | no 200 | |
+| Session | `POST /v1/sessions` (gateway → enclave → bank) isn't 200 | |
+| Enclave `/v1/info` | no 200 | |
+| Attester match | the enclave's attester isn't the gateway's (a restart the gateway hasn't caught up with) | |
+| Registry entry | the gateway's `measurement_id` has no entry, is revoked or names another attester | |
+| Oyster runway | the job is missing, owned by another wallet, or paid for less than 1 day | less than 7 days |
+| Relayer SOL | below 0.05 SOL | below 0.5 SOL |
+| Marlin's indexer | | its newest block is over 2 h old (in 2026-10 a stalled indexer stopped our funded job) |
+
+The paid-until time comes from the market's `jobs(bytes32)` on Arbitrum One,
+not from Marlin's indexer. It prints a Markdown report. With `--out`, it also
+writes `report.md` and `status` (`ok`, `warn` or `fail`). It exits 1 on `fail`.
+Optional env: `SOLANA_RPC_URL` (default public devnet), `ARBITRUM_RPC_URL`,
+`OYSTER_INDEXER_URL`.
 
 ## Tests
 

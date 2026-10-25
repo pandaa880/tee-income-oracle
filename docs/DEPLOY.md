@@ -164,6 +164,22 @@ pnpm --filter @tio/ops e2e:devnet -- --cluster devnet --gateway https://<gateway
 Four personas (A, B, C, REJECT) attest on chain, then the tier A wallet
 borrows and repays. Expect `PASS` on every row.
 
+Then point the monitor at the deployment. The `monitor` workflow checks it
+every 30 minutes and keeps one `monitor` issue open while something is wrong
+(`ops/README.md` lists the checks):
+
+```sh
+gh variable set MONITOR_GATEWAY_URL --body https://<gateway fqdn>
+gh variable set MONITOR_ENCLAVE_IP --body <enclave ip>
+gh variable set MONITOR_OYSTER_JOB_ID --body 0x<job id>
+gh variable set MONITOR_OYSTER_OWNER --body 0x<oyster wallet address>
+gh workflow run monitor   # one run now
+```
+
+Scheduled workflows run from the default branch only, and GitHub pauses them
+after 60 days without repository activity. Set the variables again after every
+redeploy (new IP, new job).
+
 ## 6. Enclave restart
 
 A restart gives the enclave a new attester key: the old registry entry is
@@ -175,20 +191,30 @@ dead and every pool must approve the new one.
    registered).
 2. Wait until `/v1/info` shows a new `attester_address`.
 3. `pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip> --release <tag>`.
+   If the old instance died rather than being compromised, add
+   `--keep-active <old id>`. Its attestations then keep lending and verifying,
+   and their borrowers don't need to attest again.
 4. Point the gateway at the new `MEASUREMENT_ID`. On express, `az containerapp
    update --set-env-vars` changes the config but doesn't replace the
    running replica, and `revision restart` isn't available: delete the
    gateway app and create it again (same name, same FQDN). Until then the
    gateway refuses new sessions with `enclave_rotated`.
 5. Run `e2e:devnet` again.
+6. If the enclave moved (new job, new IP), set `MONITOR_ENCLAVE_IP` and
+   `MONITOR_OYSTER_JOB_ID` again (§5).
 
-Borrowers attested by the old entry must attest again (FORMATS §13).
+Borrowers attested by a revoked entry must attest again (FORMATS §13).
 
 ## 7. Stop paying
 
 ```sh
+gh workflow disable monitor
 oyster-cvm withdraw --wallet-file <oyster-key> --job-id <job> --max
 oyster-cvm stop --wallet-file <oyster-key> --job-id <job>
 az containerapp delete -g <rg> -n gateway --yes
 az containerapp delete -g <rg> -n bank --yes
 ```
+
+`withdraw --max` can revert with `not enough balance`: its estimate is off.
+The contract allows the settled balance minus `rate × lockWaitTime(RATE_LOCK)`
+(300 s). Pass `--amount` a little below that.

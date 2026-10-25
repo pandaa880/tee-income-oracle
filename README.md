@@ -113,7 +113,8 @@ sandbox-bank/        Node/TS mock FIP + AA speaking ReBIT with test keys. Also t
 verifier/            TS. Checks the Nitro attestation to AWS's root, the image id,
                      and the attester key on chain.
 ops/                 TS admin scripts: oracle init, SAS credential + schema, demo pool,
-                     attested enclave rotation, devnet end-to-end run.
+                     attested enclave rotation, devnet end-to-end run; and a read-only
+                     devnet health monitor (run every 30 min by a GitHub workflow).
 deployments/         Public addresses per cluster, written by ops.
 web/                 Vite + React SPA on packages/ui. Borrower flow, loan book, verify page.
 test-vectors/        Generated fixtures, including golden vectors from Sahamati's
