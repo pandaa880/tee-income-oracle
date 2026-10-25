@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.2](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.1...v0.5.2) (2026-10-25)
+
+
+### Features
+
+* **ops:** add --keep-active to enclave:rotate ([#56](https://github.com/pandaa880/tee-income-oracle/issues/56)) ([bc41594](https://github.com/pandaa880/tee-income-oracle/commit/bc415943dac05c3c0fc57701e49c8f303c39a9ba))
+* **ops:** add devnet health monitor and scheduled workflow ([#57](https://github.com/pandaa880/tee-income-oracle/issues/57)) ([11b0dce](https://github.com/pandaa880/tee-income-oracle/commit/11b0dce712045e5325406054bd6cbde0479478d6))
+
+
+### Bug Fixes
+
+* **web:** define process.env.NODE_ENV for the dev server ([#54](https://github.com/pandaa880/tee-income-oracle/issues/54)) ([86ac7f3](https://github.com/pandaa880/tee-income-oracle/commit/86ac7f300dcad56e50705fa96efb4cbcd79a9adf))
+
 ## [0.5.1](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.0...v0.5.1) (2026-10-12)
 
 
