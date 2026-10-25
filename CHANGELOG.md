@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.2...v0.5.3) (2026-10-25)
+
+
+### Bug Fixes
+
+* **ops:** keep the Oyster wallet and job id out of public tests, logs and reports ([#60](https://github.com/pandaa880/tee-income-oracle/issues/60)) ([dee71b1](https://github.com/pandaa880/tee-income-oracle/commit/dee71b1ee726dc2eee632ea020e11d9ea02d96a4))
+
 ## [0.5.2](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.1...v0.5.2) (2026-10-25)
 
 
