@@ -16,6 +16,7 @@
     "pool:setup": "node --import tsx src/pool-setup-cli.ts",
     "enclave:rotate": "node --import tsx src/enclave-rotate-cli.ts",
     "e2e:devnet": "node --import tsx src/e2e-devnet-cli.ts",
+    "monitor:devnet": "node --import tsx src/monitor-cli.ts",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint -c ../.oxlintrc.json --type-aware --deny-warnings src",
     "format": "oxfmt -c ../.oxfmtrc.json src",

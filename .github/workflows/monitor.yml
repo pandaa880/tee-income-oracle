@@ -1,0 +1,60 @@
+# Devnet demo health check every 30 minutes: gateway, a real session through
+# gateway → enclave → bank, the enclave's attester against the gateway and the
+# registry, the Oyster job's paid-until time, the relayer's SOL and Marlin's
+# indexer lag. Read-only, no secrets. A run that isn't ok opens or updates the
+# `monitor` issue; a healthy run closes it. Schedules run on the default branch
+# only. Targets are repo variables, so a redeploy needs no commit:
+#   gh variable set MONITOR_GATEWAY_URL --body https://<gateway host>
+#   gh variable set MONITOR_ENCLAVE_IP --body <ipv4>
+#   gh variable set MONITOR_OYSTER_JOB_ID --body 0x<job id>
+#   gh variable set MONITOR_OYSTER_OWNER --body 0x<job owner wallet>
+name: monitor
+
+on:
+  schedule:
+    # Off the hour: GitHub delays or drops scheduled runs at :00 and :30.
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  devnet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The issue token must not sit in .git/config while npm code runs.
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --filter @tio/ops...
+      # The issue is the alert: a red run every 30 min of an outage would email each time too.
+      - name: Probe
+        timeout-minutes: 5
+        continue-on-error: true
+        env:
+          GATEWAY_URL: ${{ vars.MONITOR_GATEWAY_URL }}
+          ENCLAVE_IP: ${{ vars.MONITOR_ENCLAVE_IP }}
+          OYSTER_JOB_ID: ${{ vars.MONITOR_OYSTER_JOB_ID }}
+          OYSTER_OWNER: ${{ vars.MONITOR_OYSTER_OWNER }}
+        run: >-
+          pnpm --filter @tio/ops monitor:devnet --
+          --gateway "$GATEWAY_URL" --enclave-ip "$ENCLAVE_IP"
+          --oyster-job "$OYSTER_JOB_ID" --owner "$OYSTER_OWNER"
+          --out "$RUNNER_TEMP/monitor"
+      - name: Issue
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash .github/scripts/monitor-issue.sh "$RUNNER_TEMP/monitor"

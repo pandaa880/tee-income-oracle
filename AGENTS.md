@@ -73,7 +73,8 @@ verifier/             `@tio/verifier`: TS library (Node + browser) + CLI. Wallet
                       PCR16 from the compose at the release tag, attester, doc hash (`docs/VERIFY.md`).
 ops/                  TS admin scripts (admin wallet): `oracle:init`, `sas:setup` (SAS credential
                       + schema), `pool:setup` (demo mint + pool), `enclave:rotate` (attested
-                      Oyster key → registry + pools), `e2e:devnet`.
+                      Oyster key → registry + pools), `e2e:devnet`; read-only
+                      `monitor:devnet` (run by `.github/workflows/monitor.yml`).
 deployments/          Public addresses per cluster (`<cluster>.json`), written by ops.
 test-fixtures/        Hand-calculated scoring cases; `sas/` = SAS binary dumped from devnet
                       (+ SOURCE.md with sha256, LICENSE). Not generated, unlike test-vectors/.
@@ -140,6 +141,7 @@ has the test-vector and demo-key generators and the live mock FIP + AA HTTP serv
 | Demo pool (admin) | `pnpm --filter @tio/ops pool:setup --cluster <c> [--pool-id <0–255>] [--tier-limits <a,b,c>]` — mint (no freeze authority, created once and shared) + pool + funded vault in one transaction; re-run is a no-op | works on surfpool and devnet (2026-10-08) |
 | Enclave rotate (admin) | `pnpm --filter @tio/ops enclave:rotate --cluster <c> --enclave-ip <ipv4> --release <tag>` — needs `oyster-cvm` on PATH; archives the attestation in `deployments/<c>/` and records the release tag + attestation endpoint for the verifier | works on surfpool (fake Oyster ports) and against Oyster on devnet (2026-10-08) |
 | E2E (devnet) | `pnpm --filter @tio/ops e2e:devnet --cluster devnet --gateway <url>` — 4 personas + tier A borrow/repay against the deployed gateway | local only; passes on devnet (2026-10-08, before and after an enclave restart) |
+| Monitor (devnet) | `pnpm --filter @tio/ops monitor:devnet --gateway <url> --enclave-ip <ip> --oyster-job 0x<id> --owner 0x<wallet>` — read-only health report, exit 1 on fail; checks in `ops/README.md` | the `monitor` workflow runs it every 30 min and keeps one `monitor` issue open while something is wrong (repo variables `MONITOR_*`, `docs/DEPLOY.md` §5) |
 | Test (ops, programs) | `pnpm --filter @tio/ops test:programs` after `anchor build` — `oracle:init`, `pool:setup`, `enclave:rotate` against the real programs | works (also in CI, `programs` job) |
 | Verify a tier (anyone) | `pnpm --filter @tio/verifier verify -- <wallet> --cluster <c> [--deployment <file>] [--rpc <url>] [--doc <hex file>] [--compose <file>]` — archived document from `deployments/<c>/`, compose at the record's `release` tag via `git show`; exit 0 PASS / 1 FAIL / 2 error (`docs/VERIFY.md`) | works on surfpool (CI) and devnet |
 | Test (verifier, programs) | `pnpm --filter @tio/verifier test:programs` after `anchor build` — `verifyWallet` and the CLI against the real oracle registry + SAS on surfnet | works (also in CI, `programs` job) |
