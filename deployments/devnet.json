@@ -35,6 +35,14 @@
       "attestation_file": "devnet/attestation-1.hex",
       "release": "v0.3.0",
       "endpoint": "http://13.127.229.5:1301"
+    },
+    {
+      "measurement_id": 2,
+      "image_id": "7dd33d974511a825c871f267ebdc6b34fb9cdc2c63210e27a31a8c7cfb96daff",
+      "attester": "0x7588de07d659a583c8c82261ff3b95c0e039a7f3",
+      "attestation_file": "devnet/attestation-2.hex",
+      "release": "v0.5.1",
+      "endpoint": "http://65.1.14.135:1301"
     }
   ]
 }

@@ -115,8 +115,14 @@ boot). Needs `oyster-cvm` (5.0.1; its log lines are parsed) on `PATH` and the
 enclave reachable on `:1301` (Oyster attestation server) and `:8080`.
 
 ```sh
-pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4> --release <tag>
+pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4> --release <tag> [--keep-active <id>[,<id>…]]
 ```
+
+`--keep-active` lists active registry ids to leave active and approved instead
+of revoking them. Use it when the old instance is gone, not compromised: its
+attester key existed only inside that enclave, so nobody can sign with it again,
+and its attestations keep lending and passing the verifier. An id that isn't an
+active entry fails the run before anything is sent.
 
 1. Refuse the template `enclave/docker-compose.yml` (placeholder digest), then
    compute the image id from it (`oyster-cvm compute-image-id`).
@@ -134,7 +140,7 @@ pnpm --filter @tio/ops enclave:rotate --cluster devnet --enclave-ip <ipv4> --rel
 4. In one transaction: `register_enclave` (kind 1, image id, attester,
    `sha256` of the document), `update_pool` for every pool in `pools` (approve
    the new id, clear the ids being revoked; other params unchanged), then
-   `revoke_enclave` for every other active entry.
+   `revoke_enclave` for every other active entry not listed in `--keep-active`.
 5. Rename the document to `attestation-<id>.hex`, add the entry to `enclaves`,
    and print the `az containerapp update … MEASUREMENT_ID=<id>` command that
    points the gateway at the new entry. On an Azure Container Apps express
