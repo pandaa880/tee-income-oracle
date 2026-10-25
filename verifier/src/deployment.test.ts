@@ -22,9 +22,9 @@ describe('parseDeployment', () => {
     });
   });
 
-  it('maps_both_enclave_records', () => {
+  it('maps_every_enclave_record', () => {
     const { enclaves } = parseDeployment(devnet());
-    expect(enclaves).toHaveLength(2);
+    expect(enclaves).toHaveLength(3);
     expect(enclaves[0]).toMatchObject({
       measurementId: 0,
       imageId: '7dd33d974511a825c871f267ebdc6b34fb9cdc2c63210e27a31a8c7cfb96daff',
@@ -32,6 +32,14 @@ describe('parseDeployment', () => {
       attestationFile: 'devnet/attestation-0.hex',
     });
     expect(enclaves[1]?.attestationFile).toBe('devnet/attestation-1.hex');
+    // Registered 2026-10-25 on a new Oyster job after the first instance stopped.
+    expect(enclaves[2]).toMatchObject({
+      measurementId: 2,
+      attester: '0x7588de07d659a583c8c82261ff3b95c0e039a7f3',
+      attestationFile: 'devnet/attestation-2.hex',
+      release: 'v0.5.1',
+      endpoint: 'http://65.1.14.135:1301',
+    });
   });
 
   it('keeps_release_and_endpoint_when_a_record_has_them', () => {
