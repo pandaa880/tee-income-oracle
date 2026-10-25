@@ -1,4 +1,5 @@
 // Usage: pnpm --filter @tio/ops enclave:rotate -- --cluster devnet --enclave-ip <ip> --release <tag>
+//          [--keep-active <id>[,<id>…]]
 // Needs `oyster-cvm` on PATH and the deployed enclave reachable on :1301 (attestation) and
 // :8080 (/v1/info). Archives the attestation in deployments/<cluster>/ and records the release
 // tag + attestation endpoint for the verifier. Env: see ops/README.md.
@@ -10,6 +11,7 @@ import { z } from 'zod';
 import { chainClients, cliOptions, deploymentPath, readKeypair, repoPath, runCli } from './cli.ts';
 import { parseCluster } from './cluster.ts';
 import { loadConfig } from './config.ts';
+import { parseKeepActive } from './rotate-args.ts';
 import { type RotatePorts, runRotate } from './rotate.ts';
 
 const run = promisify(execFile);
@@ -58,12 +60,13 @@ function oysterPorts(ip: string): RotatePorts {
 }
 
 async function main(): Promise<void> {
-  const options = cliOptions(['cluster', 'enclave-ip', 'release']);
+  const options = cliOptions(['cluster', 'enclave-ip', 'release', 'keep-active']);
   const cluster = parseCluster(options.cluster);
   const ip = options['enclave-ip'] ?? '';
   if (isIP(ip) !== 4) throw new Error('--enclave-ip must be an IPv4 address');
   const release = options.release ?? '';
   if (!RELEASE_TAG.test(release)) throw new Error('--release must be a release tag like v0.3.0');
+  const keepActive = parseKeepActive(options['keep-active']);
   const config = loadConfig(process.env);
   const result = await runRotate({
     ...chainClients(config),
@@ -74,12 +77,13 @@ async function main(): Promise<void> {
     release,
     endpoint: `http://${ip}:${ATTESTATION_PORT}`,
     ports: oysterPorts(ip),
+    keepActive,
   });
   const { measurementId } = result;
   process.stdout.write(
     [
       `${result.registered ? 'registered' : 'already registered:'} measurement_id ${measurementId}`,
-      `revoked: ${result.revoked.join(', ') || 'none'}; pools updated: ${result.poolsUpdated.length}`,
+      `revoked: ${result.revoked.join(', ') || 'none'}; kept active: ${keepActive.join(', ') || 'none'}; pools updated: ${result.poolsUpdated.length}`,
       `attestation archived: ${result.attestationFile}`,
       ...result.warnings.map((w) => `WARNING: ${w}`),
       'point the gateway at it:',
