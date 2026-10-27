@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.4](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.3...v0.5.4) (2026-10-27)
+
+
+### Chores
+
+* release 0.5.4 ([#66](https://github.com/pandaa880/tee-income-oracle/issues/66)) ([a584fee](https://github.com/pandaa880/tee-income-oracle/commit/a584fee2d0a39d44576168d54273ee6da0e0a1cb))
+
 ## [0.5.3](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.2...v0.5.3) (2026-10-25)
 
 
