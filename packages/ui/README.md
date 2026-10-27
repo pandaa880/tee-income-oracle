@@ -1,15 +1,21 @@
 # @tio/ui
 
-Standalone React UI package for `web/`: design tokens (light "paper" and dark "carbon
-copy"), shadcn-style primitives on Radix, and the "audit ledger" patterns. It knows
-nothing about Solana, tiers or the app: props in, events out. Rules:
-`docs/CODING-GUIDELINES.md` §3 "Web (Vite SPA) and `@tio/ui`".
+The standalone React UI package for `web/`. It holds:
 
-A source package: no build step. The consumer (Vite + Tailwind v4) compiles it.
+- design tokens, in light ("paper") and dark ("carbon copy");
+- shadcn-style primitives on Radix;
+- the "audit ledger" patterns.
+
+It knows nothing about Solana, tiers or the app: props in, events out. The
+rules are in `docs/CODING-GUIDELINES.md` §3 → "Web (Vite SPA) and `@tio/ui`".
+
+It is a source package with no build step. The consumer (Vite + Tailwind v4)
+compiles it.
 
 ## Using it
 
-CSS, in this order (a remote `@import` is ignored unless it comes first):
+Import the CSS in this order. A remote `@import` is ignored unless it comes
+first.
 
 ```css
 @import '@tio/ui/fonts.css';
@@ -19,7 +25,7 @@ CSS, in this order (a remote `@import` is ignored unless it comes first):
 @source '../../packages/ui/src';
 ```
 
-Components, one import path each (no barrel):
+Import each component from its own path. There is no barrel file.
 
 ```tsx
 import { Button } from '@tio/ui/button';
@@ -32,13 +38,14 @@ import type { Tone } from '@tio/ui/tokens';
 | Export | What |
 |---|---|
 | `./fonts.css` | Google Fonts import (Newsreader, IBM Plex Sans, IBM Plex Mono) |
-| `./tokens.css` | CSS variables: colours, type scale, radii, spacing, motion. Dark via `prefers-color-scheme` or `[data-theme=dark]`; motion zeroed under `prefers-reduced-motion` |
-| `./theme.css` | Tailwind v4 `@theme inline` map (`bg-card`, `text-tone-positive`, `font-display`, …), Tailwind's default palette removed, `dark:` variant on `[data-theme=dark]`, the `seal-press` and `line-in` animations |
+| `./tokens.css` | CSS variables: colours, type scale, radii, spacing, motion. Dark mode via `prefers-color-scheme` or `[data-theme=dark]`. Motion is zeroed under `prefers-reduced-motion` |
+| `./theme.css` | Tailwind v4 `@theme inline` map (`bg-card`, `text-tone-positive`, `font-display`, …). Removes Tailwind's default palette, puts the `dark:` variant on `[data-theme=dark]`, and adds the `seal-press` and `line-in` animations |
 | `./tokens` | `Tone`, `TONES`, `TONE_TEXT`, `TONE_BORDER`, `TONE_TINT` (a 10 % wash, for soft chips) |
 | `./cn` | `cn(...classes)`: `clsx` + `tailwind-merge` |
 
-`Tone = 'positive' | 'info' | 'caution' | 'negative' | 'accent' | 'neutral'`. Components
-take a tone, never a tier or status; `web/` maps those to tones.
+`Tone = 'positive' | 'info' | 'caution' | 'negative' | 'accent' | 'neutral'`.
+Components take a tone, never a tier or a status. `web/` maps tiers and
+statuses to tones.
 
 ## Primitives
 
@@ -46,7 +53,7 @@ take a tone, never a tier or status; `web/` maps those to tones.
 |---|---|---|
 | `./button` | `Button` | `variant` `default \| outline \| ghost \| link`, `size` `sm \| md \| lg`, `asChild`; 44 px min height |
 | `./card` | `Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter` | `CardHeader rule="double"` |
-| `./badge` | `Badge` | `variant` `default \| outline \| soft` (soft = sentence-case chip on a wash of its tone), `tone?` |
+| `./badge` | `Badge` | `variant` `default \| outline \| soft` (soft = a sentence-case chip on a wash of its tone), `tone?` |
 | `./dialog` | `Dialog`, `DialogTrigger`, `DialogContent`, `DialogHeader`, `DialogTitle`, `DialogDescription`, `DialogFooter`, `DialogClose` | Radix Dialog, portal + scrim |
 | `./tabs` | `Tabs`, `TabsList`, `TabsTrigger`, `TabsContent` | Radix Tabs, ledger-style underline |
 | `./toast` | `Toaster`, `toast` | Sonner, themed through its CSS variables |
@@ -59,19 +66,20 @@ take a tone, never a tier or status; `web/` maps those to tones.
 
 | Import | Component | Props |
 |---|---|---|
-| `./ledger` | `LedgerList`, `LedgerRow` | row: `label`, `value` (ReactNode), `mono?`, `tone?`, `strong?` (double rule) |
-| `./seal` | `Seal` | `tone`, `label`, `letter?`, `caption?`; pressed-stamp entrance |
+| `./ledger` | `LedgerList`, `LedgerRow` | Row: `label`, `value` (ReactNode), `mono?`, `tone?`, `strong?` (double rule) |
+| `./seal` | `Seal` | `tone`, `label`, `letter?`, `caption?`; a pressed-stamp entrance |
 | `./stepper` | `Stepper` | `steps: { label, state: 'done' \| 'current' \| 'todo' }[]` |
 | `./status-badge` | `StatusBadge` | `tone`, `label` |
-| `./schematic` | `Schematic` | `nodes: { id, label, slot, note?, kicker?, sealed? }[]` (`slot`: `top` / `left` / `center` / `right` / `bottom`), `lit?: id[]`, `spokes?: id[]` (outer nodes whose spoke to the hub is lit); boxed nodes in a plus shape on the `--blueprint-grid` panel, one `role="img"` named by every node and note |
-| `./flow-strip` | `FlowStrip` | `items: { label, note, kicker? }[]`, `bracket?: { from, to, label }` (inclusive, zero-based; the bracketed items sit together above the label, arrows between items) |
+| `./schematic` | `Schematic` | `nodes: { id, label, slot, note?, kicker?, sealed? }[]` (`slot`: `top` / `left` / `center` / `right` / `bottom`), `lit?: id[]`, `spokes?: id[]` (outer nodes whose spoke to the hub is lit). Boxed nodes in a plus shape on the `--blueprint-grid` panel; one `role="img"`, named by every node and note |
+| `./flow-strip` | `FlowStrip` | `items: { label, note, kicker? }[]`, `bracket?: { from, to, label }` (inclusive, zero-based). The bracketed items sit together above the label, with arrows between items |
 | `./proof-bar` | `ProofBar` | `items: { label, href? }[]`; links open with `rel="noopener noreferrer"` |
-| `./theme-toggle` | `ThemeToggle` | sun/moon icon button (named by `aria-label`); sets `data-theme` on `<html>`, remembers it in `localStorage` |
+| `./theme-toggle` | `ThemeToggle` | A sun/moon icon button (named by `aria-label`). Sets `data-theme` on `<html>` and remembers it in `localStorage` |
 
-Every component takes `className`. List labels (stepper, flow strip, proof bar) must be
-unique: they are the React keys.
+- Every component takes `className`.
+- List labels (stepper, flow strip, proof bar) must be unique, because they
+  are the React keys.
 
-## Development
+## Test
 
 ```sh
 pnpm --filter @tio/ui typecheck
@@ -80,8 +88,15 @@ pnpm --filter @tio/ui format:check
 pnpm --filter @tio/ui test
 ```
 
-Tests run on happy-dom with Testing Library, beside each component. Two guard suites:
-`src/rules.test.ts` (no colour literals, no imports from Solana / web / `@tio/*`, one
-`exports` entry per component folder, no barrel) and `src/tokens/tokens.test.ts` (WCAG
-contrast ≥ 4.5:1 for text and tone pairs in both themes, the two dark blocks equal,
-reduced motion). Adding a component: new folder, test beside it, `exports` entry.
+Tests run on happy-dom with Testing Library, beside each component. Two guard
+suites enforce the package rules:
+
+- `src/rules.test.ts`: no colour literals; no imports from Solana, `web` or
+  `@tio/*`; one `exports` entry per component folder; no barrel.
+- `src/tokens/tokens.test.ts`: WCAG contrast ≥ 4.5:1 for text and tone pairs
+  in both themes; the two dark blocks are equal; reduced motion works.
+
+## Rules
+
+To add a component: create a new folder, put its test beside it, and add an
+`exports` entry.
