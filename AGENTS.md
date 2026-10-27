@@ -178,6 +178,25 @@ them and search them.
 - **Dated facts** carry their date ("as of 2026-10-13").
 - **One fact, one place.** Link to it instead of copying it.
 
+### Package READMEs
+
+Every package README uses these sections, in this order. Leave out a section
+that doesn't apply, and keep the heading names exact so a search for
+`## Test` finds the same thing in every package.
+
+1. Intro, no heading: what the package is, and its trust zone (trusted,
+   untrusted, or outside the trust boundary).
+2. `## What it does`
+3. Package-specific sections, e.g. Routes, Instructions, CLI, Library, or one
+   per script.
+4. `## Build`
+5. `## Run`
+6. `## Test`
+7. `## Layout`: files or modules, as a table.
+8. `## Rules`: constraints the code must keep.
+9. `## Gotchas`
+10. `## See also`
+
 ## Gotchas
 
 Add a line whenever an agent makes the same mistake twice.
