@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.5](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.4...v0.5.5) (2026-10-28)
+
+
+### Bug Fixes
+
+* **gateway:** pin loan attestations to each pool's seeds, harden the relayer ([#73](https://github.com/pandaa880/tee-income-oracle/issues/73)) ([d40464f](https://github.com/pandaa880/tee-income-oracle/commit/d40464f6f0d94817e7bbc127721ef2463b12f40c))
+* **programs:** pin enclave_entry to its registry PDA ([#69](https://github.com/pandaa880/tee-income-oracle/issues/69)) ([75f6fcb](https://github.com/pandaa880/tee-income-oracle/commit/75f6fcba4dc1296583f8d8b0572a79cf96e3d574))
+* **verifier:** mark a tier expired from its expiry second on ([#70](https://github.com/pandaa880/tee-income-oracle/issues/70)) ([ed9e90a](https://github.com/pandaa880/tee-income-oracle/commit/ed9e90a007b384dc968989b0c8de265cd0b937c5))
+* **web:** derive sas_signer, read the pool's attestation, expire at the expiry second ([#71](https://github.com/pandaa880/tee-income-oracle/issues/71)) ([d99bd9a](https://github.com/pandaa880/tee-income-oracle/commit/d99bd9a6321e3a487229e719745c1d8d8d0f0444))
+
 ## [0.5.4](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.3...v0.5.4) (2026-10-27)
 
 
