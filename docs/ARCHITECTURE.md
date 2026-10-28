@@ -232,6 +232,14 @@ What a hostile gateway or host can do at each hop:
   tokens are missed. The thresholds are policy, pinned by `policy_hash`; the
   classification rules are code, pinned by the image id. Thresholds are not
   calibrated on repayment data.
+- **Lender-safe rounding at tier boundaries.** Scoring floors its integer
+  steps (FORMATS §6.1): `foir_bps`, `cv_bps` and the even-count median of
+  obligations all round down, so each errs toward the borrower by less than
+  1 bp (half a paisa for the median). A file sitting exactly on a tier's FOIR
+  or CV limit can therefore land one tier better than exact arithmetic gives.
+  The income median also rounds down, which errs toward the lender. Rounding
+  the borrower-favouring steps up is a breaking §6.1 change: both
+  implementations, regenerated vectors and a new enclave build (§0.1).
 - **Rent reclaim for expired attestations.** No instruction closes an
   expired SAS attestation; its rent (≈ 0.00195 SOL) stays locked until the
   same wallet refreshes (FORMATS §7).
