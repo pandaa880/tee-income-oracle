@@ -76,6 +76,16 @@ describe('fetchBook', () => {
     expect(book.kpis).toMatchObject({ outstanding: 2_500_000n, openLoans: 1 });
   });
 
+  // Health mirrors `borrow`, which derives the attestation from the pool's credential and schema.
+  it('reads each attestation under the pool credential when the pool pins another one', async () => {
+    const w = await open({ poolCredential: OTHER, bookLoans: [{ amount: 1_000_000n }] });
+    const book = await fetchBook(w.deps, POOL_0, signal());
+    const [only] = w.bookLoans;
+    const expected = await attestationAddress(OTHER, SCHEMA, only?.borrower ?? OTHER);
+    expect(w.accountCalls()[1]).toEqual([expected]);
+    expect(book.rows[0]).toMatchObject({ attestationAddress: expected, health: 'valid' });
+  });
+
   it('reads the vault balance of the pool', async () => {
     const w = await open({ vault: { 0: 4_200_000n } });
     expect((await fetchBook(w.deps, POOL_0, signal())).kpis.vault).toBe(4_200_000n);

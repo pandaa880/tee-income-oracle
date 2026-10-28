@@ -47,13 +47,19 @@ async function common(deps: Deps, pool: Address, signal: AbortSignal) {
   };
 }
 
-/** The enclave build that scored this borrower: the borrow must name its registry entry. */
-async function measurementId(deps: Deps, signal: AbortSignal): Promise<number> {
-  const { credential, schema } = deps.config.deployment;
+/**
+ * What `borrow` derives from the pool: the attestation under the pool's own credential and
+ * schema (FORMATS §14), and the enclave build that scored it, whose registry entry it must name.
+ */
+async function borrowTarget(deps: Deps, pool: Address, signal: AbortSignal) {
+  const [poolAccount] = unwrap(await deps.chain.accounts([pool], signal));
+  if (poolAccount?.kind !== 'pool') throw { code: 'protocol_error' } satisfies AppError;
+  const { credential, schema } = poolAccount.pool;
   const at = await attestationAddress(credential, schema, deps.signer.address);
   const [account] = unwrap(await deps.chain.accounts([at], signal));
   if (account?.kind !== 'attestation') throw { code: 'protocol_error' } satisfies AppError;
-  return decodePayload(account.attestation.payload).measurementId;
+  const { measurementId } = decodePayload(account.attestation.payload);
+  return { credential, schema, measurementId };
 }
 
 /** Longer than the gateway's own 100 s relay deadline (FORMATS §16), so its answer arrives. */
@@ -164,9 +170,11 @@ export function useLoan(pool: Address, deps: Deps = realDeps()) {
       try {
         const signal = nextSignal();
         const base = await common(deps, pool, signal);
+        const { credential, schema, measurementId } = await borrowTarget(deps, pool, signal);
         const message = await buildBorrowMessage({
           ...base,
-          measurementId: await measurementId(deps, signal),
+          deployment: { ...base.deployment, credential, schema },
+          measurementId,
           amount,
         });
         return await settle(
