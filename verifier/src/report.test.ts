@@ -1,6 +1,6 @@
 // formatReport: the text the CLI prints, one PASS/FAIL line per check, then the verdict.
 import { describe, expect, it } from 'vitest';
-import { CHECKS, type Check, type VerificationReport, formatReport } from './report.ts';
+import { CHECKS, type Check, type VerificationReport, formatReport, isExpired } from './report.ts';
 import { WALLET, testDeployment, walletChain } from './test-fixtures.ts';
 import { readAttestation } from './chain/attestation.ts';
 
@@ -70,5 +70,31 @@ describe('formatReport', () => {
     const text = formatReport(report);
     expect(text).toContain(WALLET);
     expect(text).toContain(report.attestation.address);
+  });
+
+  it('marks_the_tier_expired_from_the_expiry_second_on', async () => {
+    const report = await reportWith([]);
+    const expiryMs = Number(report.attestation.expiry) * 1000;
+    expect(formatReport(report, expiryMs - 1000)).not.toContain('(EXPIRED)');
+    expect(formatReport(report, expiryMs)).toContain('(EXPIRED)');
+  });
+
+  it('keeps_the_verdict_when_the_tier_has_expired', async () => {
+    const report = await reportWith([]);
+    const afterExpiryMs = Number(report.attestation.expiry + 1n) * 1000;
+    expect(linesStartingWith(formatReport(report, afterExpiryMs), 'VERDICT')).toEqual([
+      'VERDICT PASS',
+    ]);
+  });
+});
+
+// The demo pool lends strictly before `expiry` (FORMATS §14, `check_expiry`).
+describe('isExpired', () => {
+  it.each([
+    ['one_second_before', false, 999n],
+    ['at', true, 1_000n],
+    ['one_second_after', true, 1_001n],
+  ])('%s_expiry_gives_%s', (_name, expired, now) => {
+    expect(isExpired(1_000n, now)).toBe(expired);
   });
 });

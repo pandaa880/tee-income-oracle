@@ -223,7 +223,8 @@ describe('verifyView facts', () => {
 
   it.each([
     ['before the expiry', EXPIRY - 1n, false],
-    ['exactly at the expiry', EXPIRY, false],
+    // The pool lends strictly before `expiry` (FORMATS §14), so the expiry second is expired.
+    ['exactly at the expiry', EXPIRY, true],
     ['after the expiry', EXPIRY + 1n, true],
   ])('is expired=%s only %s', (_, nowSeconds, expired) => {
     expect(verifyView(report(), context({ nowSeconds })).facts.expired).toBe(expired);

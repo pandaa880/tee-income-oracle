@@ -16,6 +16,8 @@ import {
   ORACLE_ERROR__STALE_ATTESTATION,
   ORACLE_ERROR__WRONG_DOMAIN_TAG,
   ORACLE_ERROR__WRONG_PROGRAM_ID,
+  ORACLE_PROGRAM_ADDRESS,
+  findEnclaveEntryPda,
 } from '@tio/oracle-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -25,6 +27,8 @@ import {
   buildPrecompileData,
   buildShiftedPrecompileData,
   buildTwoSignaturePrecompileData,
+  fetchRaw,
+  plantAccount,
   precompileInstruction,
   timeTravel,
 } from './attest.ts';
@@ -42,7 +46,7 @@ import {
   submit,
   submitExpectingFailure,
 } from './attest-fixture.ts';
-import { KIND_AWS_PCR0, findCustomErrorCode, send } from './harness.ts';
+import { ANCHOR_CONSTRAINT_SEEDS, KIND_AWS_PCR0, findCustomErrorCode, send } from './harness.ts';
 
 const COMPUTE_BUDGET = 'ComputeBudget111111111111111111111111111111' as Address;
 
@@ -336,6 +340,24 @@ describe('submit_attestation: registry checks (6019 to 6022)', () => {
     await revokeEntry(f.h, id);
     const c = await newCase(f, { key, entryId: id });
     await expectRejected(c, ORACLE_ERROR__ENCLAVE_REVOKED);
+  });
+
+  // Only `register_enclave` can create an oracle-owned EnclaveEntry, and only
+  // at its PDA; the seeds check keeps that true if a future instruction ever
+  // writes one elsewhere. A byte-for-byte copy of a live entry stands in.
+  it('rejects_with_2006_when_the_enclave_entry_is_a_copy_outside_its_pda', async () => {
+    const key = freshKey();
+    const id = await registerKey(f.h, key);
+    const [entry] = await findEnclaveEntryPda({ measurementId: id });
+    const copy = await stranger();
+    plantAccount(
+      f.h,
+      copy,
+      ORACLE_PROGRAM_ADDRESS,
+      (await fetchRaw(f.h, entry))?.data ?? new Uint8Array(),
+    );
+    const c = await newCase(f, { key, entryId: id, params: { accounts: { enclaveEntry: copy } } });
+    await expectRejected(c, ANCHOR_CONSTRAINT_SEEDS);
   });
 
   it('rejects_with_6020_when_a_valid_signature_comes_from_an_unregistered_key', async () => {

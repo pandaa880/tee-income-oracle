@@ -128,7 +128,8 @@ export function verifyView(report: VerificationReport, ctx: ViewContext): Verify
       policy: shortHex(hexOf(attestation.policyHash)),
       issued: formatUnixDate(attestation.issuedAt),
       expires: formatUnixDate(attestation.expiry),
-      expired: attestation.expiry < ctx.nowSeconds,
+      // The pool lends strictly before `expiry` (FORMATS §14), so the expiry second counts.
+      expired: ctx.nowSeconds >= attestation.expiry,
       build: attestation.measurementId,
     },
     headline: `Build #${attestation.measurementId} · ${passed} of ${checks.length} checks pass`,

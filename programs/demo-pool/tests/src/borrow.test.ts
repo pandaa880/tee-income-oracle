@@ -28,6 +28,8 @@ const TIER_A = 1;
 const TIER_B = 2;
 const TIER_C = 3;
 const TOKEN = 1_000_000n;
+const BELOW_RENT = 1;
+const ABOVE_RENT = 10_000_000;
 
 describe('borrow', () => {
   let f: PoolFixture;
@@ -86,6 +88,27 @@ describe('borrow', () => {
     const raw = await fetchRaw(f.h, loanAddress);
     expect(raw?.owner).toBe(DEMO_POOL_PROGRAM_ADDRESS);
     expect(raw?.data.length).toBe(getLoanSize());
+  });
+
+  // Anyone can send lamports to the loan PDA before the borrower's first
+  // `borrow`; that must not block the loan account's creation.
+  it.each([
+    ['below_rent', BELOW_RENT],
+    ['above_rent', ABOVE_RENT],
+  ])('lends_when_the_loan_address_already_holds_lamports_%s', async (_name, lamports) => {
+    const borrower = await prepare(f);
+    const [loanAddress] = await findLoanPda({
+      pool: pool.address,
+      borrower: borrower.signer.address,
+    });
+    f.h.surfnet.fundSol(loanAddress, lamports);
+    await borrow(f, { pool, borrower, amount: TOKEN });
+    const raw = await fetchRaw(f.h, loanAddress);
+    expect(raw?.owner).toBe(DEMO_POOL_PROGRAM_ADDRESS);
+    expect(raw?.data.length).toBe(getLoanSize());
+    const loan = (await fetchLoan(f.h.rpc, loanAddress)).data;
+    expect(loan).toMatchObject({ borrower: borrower.signer.address, amount: TOKEN });
+    expect(await tokenBalance(f.h, borrower.token)).toBe(TOKEN);
   });
 
   it('emits_borrowed', async () => {

@@ -30,6 +30,7 @@ import {
   entry,
   GATEWAY_DEPLOYMENT,
   loanBytes,
+  OTHER,
   payloadBytes,
   pool,
   POOL_0,
@@ -61,16 +62,23 @@ async function relayerSignature(txB64: string): Promise<string> {
  * relay plays the cluster: a borrow creates the Loan account, a repay closes it.
  */
 async function setup(
-  overrides: { relay?: RelayPort; chain?: (c: ChainPort) => void; loanAppears?: boolean } = {},
+  overrides: {
+    relay?: RelayPort;
+    chain?: (c: ChainPort) => void;
+    loanAppears?: boolean;
+    /** POOL_0 pins this credential, and the attestation is stored under it. */
+    poolCredential?: Address;
+  } = {},
 ) {
   const [loanAddress] = await findLoanPda({ pool: POOL_0, borrower: key.address });
+  const credential = overrides.poolCredential ?? CREDENTIAL;
   const store = new Map<Address, ChainAccount>([
     [
       (await findEnclaveEntryPda({ measurementId: 1 }))[0],
       { kind: 'enclave_entry', entry: entry({ measurementId: 1 }) },
     ],
     [
-      await attestationAddress(CREDENTIAL, SCHEMA, key.address),
+      await attestationAddress(credential, SCHEMA, key.address),
       {
         kind: 'attestation',
         attestation: parseSasAttestation(
@@ -82,7 +90,8 @@ async function setup(
   ]);
   // Both pools and their vaults: the readback reads pool, vault and loan in one request.
   for (const address of [POOL_0, POOL_1]) {
-    store.set(address, { kind: 'pool', pool: pool() });
+    const pinned = address === POOL_0 ? credential : CREDENTIAL;
+    store.set(address, { kind: 'pool', pool: { ...pool(), credential: pinned } });
     const [vault] = await findVaultPda({ pool: address });
     store.set(vault, { kind: 'token', token: tokenAccount({ amount: 9_000_000_000n }) });
   }
@@ -169,6 +178,28 @@ describe('useLoan borrow', () => {
       await relayerSignature(sent),
       expect.any(AbortSignal),
     );
+  });
+
+  // `borrow` derives the attestation from the pool's credential and schema (FORMATS §14), so the
+  // transaction must name that PDA, not the deployment's.
+  it('names the attestation under the pool credential when the pool pins another one', async () => {
+    const relay: RelayPort = {
+      relay: vi.fn<RelayPort['relay']>(async () => fail({ code: 'bad_transaction', rule: 8 })),
+    };
+    const { deps } = await setup({ relay, poolCredential: OTHER });
+    const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
+    await act(async () => {
+      await expect(result.current.borrow.mutateAsync(1n)).rejects.toMatchObject({
+        code: 'bad_transaction',
+      });
+    });
+    const { messageBytes } = getTransactionDecoder().decode(sentBytes(relay));
+    const ix = decompileTransactionMessage(
+      getCompiledTransactionMessageDecoder().decode(messageBytes),
+    ).instructions[1];
+    // Account 7 of `borrow` is the attestation, account 8 its registry entry.
+    expect(ix?.accounts?.[7]?.address).toBe(await attestationAddress(OTHER, SCHEMA, key.address));
+    expect(ix?.accounts?.[8]?.address).toBe((await findEnclaveEntryPda({ measurementId: 1 }))[0]);
   });
 
   it('rejects with the typed relay error and never polls when the relayer refuses', async () => {

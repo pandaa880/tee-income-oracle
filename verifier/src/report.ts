@@ -55,7 +55,9 @@ export type VerificationReport = {
 /**
  * PASS needs every check and an attestation the oracle wrote (`signerOk`): the
  * seven checks vouch for the registry entry, and only the oracle's `sas_signer`
- * ties the tier to that entry's precompile check (FORMATS §13).
+ * ties the tier to that entry's precompile check (FORMATS §13). Expiry is
+ * left out on purpose: the verdict is about provenance, and the report marks
+ * an expired tier on its own line (docs/VERIFY.md, "What it does not prove").
  */
 export function verdictOf(
   checks: Check[],
@@ -70,8 +72,16 @@ function date(unixSeconds: bigint): string {
   return new Date(Number(unixSeconds) * 1000).toISOString().slice(0, 10);
 }
 
+/**
+ * Whether a tier with SAS `expiry` is past it at `nowSeconds`. A pool lends
+ * strictly before `expiry` (FORMATS §14), so the expiry second itself counts.
+ */
+export function isExpired(expiry: bigint, nowSeconds: bigint): boolean {
+  return nowSeconds >= expiry;
+}
+
 function expiryNote(expiry: bigint, nowMs: number): string {
-  return BigInt(Math.floor(nowMs / 1000)) > expiry ? ' (EXPIRED)' : '';
+  return isExpired(expiry, BigInt(Math.floor(nowMs / 1000))) ? ' (EXPIRED)' : '';
 }
 
 /** One `PASS`/`FAIL` line per check and a `VERDICT` line last (the CLI's output). */

@@ -1131,7 +1131,8 @@ the §8 message inside the secp256k1 precompile instruction right before it
 
 Accounts: `payer` (signer, w; pays rent, receives the refund on refresh),
 `sas_signer` (PDA `["sas_signer"]`, no data), `credential`, `schema`,
-`attestation` (w), `enclave_entry`, `instructions` (the instructions sysvar),
+`attestation` (w), `enclave_entry` (PDA `["enclave", [measurement_id]]` of
+its own stored id), `instructions` (the instructions sysvar),
 `sas_event_authority` (PDA `["__event_authority"]` under SAS), `sas_program`,
 `system_program`.
 
@@ -1139,7 +1140,7 @@ Check order:
 
 | # | Check | Error |
 |---|---|---|
-| — | Anchor: entry not initialized; `sas_signer` / event authority not the PDA; wrong sysvar / SAS program | 3012; 2006; 2012 |
+| — | Anchor: entry not initialized; `sas_signer` / `enclave_entry` / event authority not the PDA; wrong sysvar / SAS program | 3012; 2006; 2012 |
 | 1 | instruction at current − 1 is the secp256k1 precompile (and current isn't 0) | `PrecompileNotFound` (6011) |
 | 2 | precompile data is exactly the §8 layout for its own index | `InvalidPrecompileLayout` (6012) |
 | 3 | message starts with `TIO-ATTEST-v1` | `WrongDomainTag` (6013) |
@@ -1253,7 +1254,8 @@ relayer), `borrower` (signer), `pool`, `mint`, `vault` (w), `borrower_token`
 `loan` (w, created here), `attestation` (the SAS PDA
 `["attestation", pool.credential, pool.schema, borrower]`, §7),
 `enclave_entry` (the oracle's `EnclaveEntry` for the payload's
-`measurement_id`, §13), `token_program`, `system_program`.
+`measurement_id`, at the oracle PDA `["enclave", [measurement_id]]` of its
+own stored id, §13), `token_program`, `system_program`.
 
 The borrower must sign and the attestation address is derived from that
 key, so a wallet can only borrow on its own attestation.
@@ -1262,7 +1264,7 @@ Check order:
 
 | # | Check | Error |
 |---|---|---|
-| — | Anchor: account not initialized / owned by another program / wrong type; `borrower` or `payer` not a signer; open loan (`loan` exists); `pool`, `vault`, `loan`, `attestation` not the PDA; `mint` not the pool's; token account of another mint / owner | 3012 / 3007 / 3002; 3010; system 0; 2006; 2001; 2014 / 2015 |
+| — | Anchor: account not initialized / owned by another program / wrong type; `borrower` or `payer` not a signer; open loan (`loan` exists); `pool`, `vault`, `loan`, `attestation`, `enclave_entry` not the PDA; `mint` not the pool's; token account of another mint / owner | 3012 / 3007 / 3002; 3010; system 0; 2006; 2001; 2014 / 2015 |
 | 1 | `amount > 0` | `ZeroAmount` (6002) |
 | 2 | attestation: owner = SAS, 256 bytes, discriminator 2 (also fails when there is no attestation) | `InvalidAttestation` (6003) |
 | 3 | stored `signer` = the oracle's PDA `["sas_signer"]` | `WrongAttestationSigner` (6004) |
