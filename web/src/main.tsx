@@ -18,7 +18,7 @@ try {
     throw new Error('This browser lacks AbortSignal.any / AbortSignal.timeout.');
   }
   // Config and the demo wallet first: hooks read them synchronously through realDeps().
-  await initDeps(loadConfig(import.meta.env));
+  await initDeps(await loadConfig(import.meta.env));
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } });
   render(
     <QueryClientProvider client={queryClient}>
