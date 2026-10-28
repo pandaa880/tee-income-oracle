@@ -39,6 +39,7 @@ import {
   readonly,
   repayParts,
   testDeployment,
+  testPool,
   withAccount,
   withAddress,
   withData,
@@ -619,7 +620,7 @@ describe('checkLoanTx: one fixture per rule rejects with exactly that rule', () 
   });
 
   it('rejects the relayer used as the pool (rule 10, all other rules satisfied)', async () => {
-    const deployment = testDeployment({ pools: [w.relayer.address] });
+    const deployment = testDeployment({ pools: [testPool(w.relayer.address)] });
     const opts: LoanOpts = { ...w.opts, deployment, pool: w.relayer.address };
     const borrow = await buildBorrowTx(opts);
     const repay = await buildRepayTx(opts);
@@ -717,12 +718,31 @@ describe('checkLoanTx: check order (the lower rule is reported when two are brok
   });
 
   it('rent_payer not the relayer + relayer as the pool -> rule 9', async () => {
-    const deployment = testDeployment({ pools: [w.relayer.address] });
+    const deployment = testDeployment({ pools: [testPool(w.relayer.address)] });
     const { repay } = await repayParts({ ...w.opts, deployment, pool: w.relayer.address });
     const wire = await w.tx([
       withAccount(repay, 6, { address: w.other.address, role: AccountRole.WRITABLE }),
     ]);
     expect(rejectedRule(await checkLoanTx(wire, w.relayer.address, deployment))).toBe(9);
+  });
+});
+
+// `borrow` derives the attestation from the pool's own credential and schema (FORMATS §14), and
+// a pool may pin others than the deployment's.
+/** POOL, created under another credential than the test default. */
+const pinned = () => testDeployment({ pools: [testPool(POOL, w.other.address)] });
+
+describe('checkLoanTx: the attestation follows the pool credential', () => {
+  it('accepts a borrow naming the attestation under the pool credential', async () => {
+    const deployment = pinned();
+    const { wire } = await buildBorrowTx({ ...w.opts, deployment });
+    expect(rejectedRule(await checkLoanTx(wire, w.relayer.address, deployment))).toBe('accepted');
+  });
+
+  it('rejects a borrow naming the attestation under another credential (rule 8)', async () => {
+    const deployment = pinned();
+    const { wire } = await buildBorrowTx(w.opts);
+    expect(rejectedRule(await checkLoanTx(wire, w.relayer.address, deployment))).toBe(8);
   });
 });
 

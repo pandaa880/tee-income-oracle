@@ -139,6 +139,10 @@ export function buildPrecompileData(p: PrecompileParts): Uint8Array {
   requireLength('eth address', p.ethAddress, ETH_ADDRESS_LEN);
   requireLength('signature', p.signature, SIGNATURE_LEN);
   requireLength('message', p.message, MESSAGE_LEN);
+  // The index fields are one byte, and a Uint8Array store would wrap anything outside it.
+  if (!Number.isInteger(p.index) || p.index < 0 || p.index > 255) {
+    throw new Error(`precompile index must be an integer from 0 to 255, got ${p.index}`);
+  }
   const data = new Uint8Array(PRECOMPILE_DATA_LEN);
   const v = view(data);
   data[0] = 1;

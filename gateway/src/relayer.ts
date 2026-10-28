@@ -40,7 +40,11 @@ import {
   parseSasAttestation,
   precompileInstruction,
 } from '@tio/oracle-client/attest';
-import { findEnclaveEntryPda, getSubmitAttestationInstructionAsync } from '@tio/oracle-client';
+import {
+  findEnclaveEntryPda,
+  findSasSignerPda,
+  getSubmitAttestationInstructionAsync,
+} from '@tio/oracle-client';
 
 import { fromHex } from '@tio/encoding';
 import type { Chain } from './chain.ts';
@@ -81,6 +85,8 @@ export type RelayerOptions = {
 type Ctx = RelayerOptions & {
   credential: Address;
   schema: Address;
+  /** The oracle's `sas_signer` PDA, derived once. */
+  sasSigner: Promise<Address>;
   /**
    * The attester (eth address) of our registry entry, read on every submit: an entry
    * revoked while the gateway runs must stop relaying at once, with a clear code.
@@ -97,14 +103,17 @@ async function buildInstructions(
 ): Promise<Instruction[]> {
   const { credential, schema, payer, measurementId } = ctx;
   const message = buildMessage({ programId: ORACLE_PROGRAM_ID, credential, schema, ...s });
+  const before = [computeUnitLimit(ctx.computeUnits ?? DEFAULT_COMPUTE_UNITS)];
+  // The precompile's index fields must name its own position (FORMATS §8): take it from the
+  // list it goes into, so adding an instruction in front can't leave a stale index.
   const data = buildPrecompileData({
     ethAddress: await ctx.attester(),
     signature: s.signature,
     message,
-    index: 1, // after the compute-budget instruction
+    index: before.length,
   });
   return [
-    computeUnitLimit(ctx.computeUnits ?? DEFAULT_COMPUTE_UNITS),
+    ...before,
     precompileInstruction(data),
     await getSubmitAttestationInstructionAsync({
       payer,
@@ -143,7 +152,10 @@ async function ownLanded(ctx: Ctx, sent: Signature[]): Promise<Signature | undef
   });
 }
 
-/** Whether the attestation account already stores exactly `payload`. */
+/**
+ * Whether the attestation account already stores exactly `payload`, written by the oracle's
+ * `sas_signer`: only the oracle writes through it, after checking the enclave signature.
+ */
 async function storesPayload(
   ctx: Ctx,
   attestation: Address,
@@ -152,7 +164,10 @@ async function storesPayload(
   const account = await ctx.chain.account(attestation);
   if (account === null) return false;
   const stored = parseSasAttestation(account.owner, account.data);
-  return Buffer.from(stored.payload).equals(Buffer.from(payload));
+  return (
+    stored.signer === (await ctx.sasSigner) &&
+    Buffer.from(stored.payload).equals(Buffer.from(payload))
+  );
 }
 
 async function submit(
@@ -197,6 +212,7 @@ export function createRelayer(opts: RelayerOptions): Relayer {
     ...opts,
     credential: address(deployment.credential),
     schema: address(deployment.schema),
+    sasSigner: findSasSignerPda().then(([pda]) => pda),
     attester: async () => {
       const [entryAddress] = await findEnclaveEntryPda({ measurementId });
       const entry = entryFromAccount(await chain.account(entryAddress));

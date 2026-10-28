@@ -28,7 +28,7 @@ import { fail, fakeChain, fakeDeps, fakeGateway, INFO, ok, SIG } from '../test-s
 import {
   CREDENTIAL,
   entry,
-  LOAN_DEPLOYMENT,
+  GATEWAY_DEPLOYMENT,
   loanBytes,
   OTHER,
   payloadBytes,
@@ -102,10 +102,7 @@ async function setup(
       const shape = await checkLoanTx(
         Uint8Array.from(getBase64Encoder().encode(txB64)),
         relayer.address,
-        {
-          ...LOAN_DEPLOYMENT,
-          pools: [POOL_0, POOL_1],
-        },
+        GATEWAY_DEPLOYMENT,
       );
       if (shape.ok && shape.value.kind === 'borrow' && overrides.loanAppears !== false) {
         const compiled = getCompiledTransactionMessageDecoder().decode(shape.value.tx.messageBytes);
@@ -133,7 +130,6 @@ async function setup(
   return { deps, relay, chain, store, loanAddress };
 }
 
-const GATEWAY_DEPLOYMENT = { ...LOAN_DEPLOYMENT, pools: [POOL_0, POOL_1] };
 const sentBytes = (relay: RelayPort): Uint8Array => {
   const b64 = vi.mocked(relay.relay).mock.calls[0]?.[0] ?? '';
   return Uint8Array.from(getBase64Encoder().encode(b64));

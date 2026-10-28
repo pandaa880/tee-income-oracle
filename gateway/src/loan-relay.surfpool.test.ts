@@ -42,7 +42,9 @@ import {
   buildRepayTx,
   buildTx,
   borrowParts,
+  testPool,
 } from './testing/loan-tx.ts';
+import { readLoanPools } from './loan-pools.ts';
 
 const AMOUNT = 1_000_000n;
 const FEE_PER_SIGNATURE = 5_000n;
@@ -72,16 +74,14 @@ describe('loan relay (surfpool)', { timeout: 120_000 }, () => {
     f.h.surfnet.stop();
   });
 
+  /** The pool as `main` serves it: created under the fixture's SAS credential and schema. */
+  const served = (pool: PoolRef) => testPool(pool.address, f.credential, f.schema);
+
   const relayFor = (pool: PoolRef) =>
     createLoanRelay({
       chain,
       payer: relayer,
-      deployment: {
-        mint: f.mint,
-        pools: [pool.address],
-        credential: f.credential,
-        schema: f.schema,
-      },
+      deployment: { mint: f.mint, pools: [served(pool)] },
     });
 
   async function loanOpts(
@@ -92,12 +92,7 @@ describe('loan relay (surfpool)', { timeout: 120_000 }, () => {
     return {
       relayer: relayer.address,
       borrower,
-      deployment: {
-        mint: f.mint,
-        pools: [pool.address],
-        credential: f.credential,
-        schema: f.schema,
-      },
+      deployment: { mint: f.mint, pools: [served(pool)] },
       pool: pool.address,
       amount: AMOUNT,
       measurementId: f.entryId,
@@ -114,6 +109,12 @@ describe('loan relay (surfpool)', { timeout: 120_000 }, () => {
 
   const ataOf = async (owner: Address): Promise<Address> =>
     (await findAssociatedTokenPda({ owner, mint: f.mint, tokenProgram: TOKEN_PROGRAM_ADDRESS }))[0];
+
+  it('reads a real pool credential and schema at boot', async () => {
+    const pool = await fundedPool(f);
+    const real = kitChain(f.h.rpc, f.h.rpcSubscriptions);
+    expect(await readLoanPools(real, [pool.address])).toEqual([served(pool)]);
+  });
 
   it('sponsors a borrow then a repay: the borrower pays nothing, the relayer pays fees and the ATA rent only', async () => {
     const pool = await fundedPool(f);
