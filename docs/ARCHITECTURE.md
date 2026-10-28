@@ -232,6 +232,25 @@ What a hostile gateway or host can do at each hop:
   tokens are missed. The thresholds are policy, pinned by `policy_hash`; the
   classification rules are code, pinned by the image id. Thresholds are not
   calibrated on repayment data.
+- **Lender-safe rounding at tier boundaries.** Scoring rounds down at two
+  kinds of step (FORMATS §6.1), and on the obligation side both err toward
+  the borrower:
+  - *Medians, in paise.* A loan's `scheduled` amount is the median of its
+    EMI debits, and the monthly obligation median is taken over the sums of
+    those; an even-count median floors the mean of the middle two. So
+    obligations can come out up to half a paisa low per loan, plus half a
+    paisa for the monthly median. Relative to income that is negligible at
+    real amounts (about 0.005 bp per loan at ₹10,000 a month) but has no
+    fixed bound in bps: 26 paise of monthly income against EMIs split
+    between 10 and 11 paise scores 3,846 bps, against about 4,038 exactly.
+  - *Final ratios, in bps.* `foir_bps` and `cv_bps` are floored, lowering
+    each by less than 1 bp.
+
+  A file at or just over a tier's FOIR or CV limit can therefore land one
+  tier better than exact arithmetic gives. The income median also floors,
+  which errs toward the lender. Rounding the borrower-favouring steps up is
+  a breaking §6.1 change: both implementations, regenerated vectors and a
+  new enclave build (§0.1).
 - **Rent reclaim for expired attestations.** No instruction closes an
   expired SAS attestation; its rent (≈ 0.00195 SOL) stays locked until the
   same wallet refreshes (FORMATS §7).
