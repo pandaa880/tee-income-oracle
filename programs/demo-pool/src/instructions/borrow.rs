@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, TransferChecked};
 use oracle::attest::{parse_payload, PayloadHeader};
 use oracle::sas::{parse_attestation, ATTESTATION_SEED, SAS_PROGRAM_ID};
-use oracle::state::{EnclaveEntry, SAS_SIGNER_SEED};
+use oracle::state::{EnclaveEntry, ENCLAVE_SEED, SAS_SIGNER_SEED};
 
 use crate::checks::{check_expiry, check_freshness, is_approved, tier_limit};
 use crate::error::PoolError;
@@ -56,6 +56,13 @@ pub struct Borrow<'info> {
     pub attestation: UncheckedAccount<'info>,
     /// Anchor checks it is an oracle-owned `EnclaveEntry`; the handler
     /// matches its id with the attestation's `measurement_id`.
+    // The seeds repeat what owner + discriminator already prove (the oracle
+    // only ever creates an `EnclaveEntry` at its PDA); kept as defence in depth.
+    #[account(
+        seeds = [ENCLAVE_SEED, &enclave_entry.measurement_id.to_le_bytes()],
+        bump = enclave_entry.bump,
+        seeds::program = oracle::ID,
+    )]
     pub enclave_entry: Account<'info, EnclaveEntry>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
