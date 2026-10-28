@@ -392,6 +392,7 @@ export type SubmitParams = {
     instructions: Address;
     sasEventAuthority: Address;
     sasProgram: Address;
+    enclaveEntry: Address;
   }>;
   /** Edit the §8 message before it is signed. */
   mutateMessage?: (message: Uint8Array) => void;
@@ -422,7 +423,8 @@ export async function buildSubmission(h: Harness, p: SubmitParams): Promise<Subm
   const data =
     p.buildData?.(p.key, message, index) ??
     buildPrecompileData(p.key, message, index, p.mutateData);
-  const [enclaveEntry] = await findEnclaveEntryPda({ measurementId: p.entryId });
+  const enclaveEntry =
+    p.accounts?.enclaveEntry ?? (await findEnclaveEntryPda({ measurementId: p.entryId }))[0];
   const credential = p.accounts?.credential ?? p.credential;
   const schema = p.accounts?.schema ?? p.schema;
   const attestation =
