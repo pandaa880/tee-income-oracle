@@ -51,14 +51,18 @@ async function checkLoanAddresses(pool: Address, loans: readonly PoolLoan[]): Pr
   if (loans.some(({ address }, i) => address !== expected[i])) throw PROTOCOL_ERROR;
 }
 
-/** One attestation PDA per borrower, read in one call (none for an empty book). */
+/**
+ * One attestation PDA per borrower, read in one call (none for an empty book). Derived from the
+ * pool's credential and schema, as `borrow` derives it (FORMATS §14).
+ */
 async function readAttestations(
   deps: Deps,
+  pool: Pool,
   loans: readonly PoolLoan[],
   signal: AbortSignal,
 ): Promise<Map<Address, HeldAttestation>> {
   if (loans.length === 0) return new Map();
-  const { credential, schema } = deps.config.deployment;
+  const { credential, schema } = pool;
   const pairs = await Promise.all(
     loans.map(async ({ loan }) => ({
       borrower: loan.borrower,
@@ -121,7 +125,7 @@ const approvedBuilds = (pool: Pool): Promise<ApprovedBuild[]> =>
 export async function fetchBook(deps: Deps, pool: Address, signal: AbortSignal): Promise<Book> {
   const read = await readPool(deps, pool, signal);
   await checkLoanAddresses(pool, read.loans);
-  const attestations = await readAttestations(deps, read.loans, signal);
+  const attestations = await readAttestations(deps, read.pool, read.loans, signal);
   const entries = await readEntries(deps, attestations.values(), signal);
   return buildBook({
     pool: read.pool,

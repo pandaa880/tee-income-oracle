@@ -1,6 +1,7 @@
 // Build-time configuration, parsed once at the edge. Every VITE_* value is public (it ships
 // in the bundle), so nothing secret belongs here: the RPC is the public devnet endpoint.
 import { type Address, address } from '@solana/kit';
+import { findSasSignerPda } from '@tio/oracle-client';
 import { type Deployment as VerifierDeployment, parseDeployment } from '@tio/verifier/deployment';
 import { z } from 'zod';
 import devnet from '../../../deployments/devnet.json';
@@ -77,18 +78,36 @@ function loadDeployment(raw: unknown): Deployment {
   };
 }
 
+/**
+ * The file is public data, and the book and credential badges trust records by their signer, so
+ * `sas_signer` must be the oracle's PDA. `oracleProgram` is the verifier's, already pinned to
+ * the compiled id.
+ */
+async function checkSasSigner(sasSigner: Address, oracleProgram: Address): Promise<void> {
+  const [derived] = await findSasSignerPda({ programAddress: oracleProgram });
+  if (sasSigner !== derived) {
+    throw new Error(
+      `bundled deployment: sas_signer ${sasSigner} is not the oracle's PDA ${derived}`,
+    );
+  }
+}
+
 /** Throws a message naming the bad variable; `main.tsx` shows it instead of a blank page. */
-export function loadConfig(env: Record<string, string | undefined>): Config {
+export async function loadConfig(
+  env: Record<string, string | undefined>,
+  bundled: unknown = devnet,
+): Promise<Config> {
   const gatewayUrl = serviceUrl('VITE_GATEWAY_URL', env['VITE_GATEWAY_URL']);
   const rpcUrl = serviceUrl('VITE_RPC_URL', env['VITE_RPC_URL']);
   const cluster = env['VITE_CLUSTER'];
   if (cluster !== 'devnet')
     throw new Error(`VITE_CLUSTER must be "devnet", got ${String(cluster)}`);
-  const deployment = loadDeployment(devnet);
+  const deployment = loadDeployment(bundled);
   if (deployment.cluster !== cluster) {
     throw new Error(`bundled deployment is for ${deployment.cluster}, VITE_CLUSTER is ${cluster}`);
   }
   // Throws a VerifierError naming the field if the file is not the one this client is built for.
-  const verifier = parseDeployment(devnet);
+  const verifier = parseDeployment(bundled);
+  await checkSasSigner(deployment.sasSigner, verifier.oracleProgram);
   return { gatewayUrl, rpcUrl, cluster, deployment, verifier, features: FEATURES };
 }

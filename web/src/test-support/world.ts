@@ -59,6 +59,8 @@ export type WorldOptions = {
   poolParams?: PoolParamsOverrides;
   /** Extra params for pool 1 only, on top of `poolParams`. */
   poolParams1?: PoolParamsOverrides;
+  /** The credential pool 0 pins (default the deployment's); its book loans attest under it. */
+  poolCredential?: Address;
   /** Per-pool vault balance in base units (default 9,000 tokens, above every test limit). */
   vault?: { 0?: bigint; 1?: bigint };
   /** An open Loan on pool 0 with this principal. */
@@ -91,16 +93,23 @@ export async function world(options: WorldOptions = {}) {
   const key = await generateKeyPairSigner();
   const wallet = key.address;
   const store = new Map<Address, ChainAccount>();
+  const credential0 = options.poolCredential ?? CREDENTIAL;
   const pools = [
-    { address: POOL_0, vault: options.vault?.[0], params: options.poolParams },
+    {
+      address: POOL_0,
+      vault: options.vault?.[0],
+      params: options.poolParams,
+      credential: credential0,
+    },
     {
       address: POOL_1,
       vault: options.vault?.[1],
       params: { ...options.poolParams, ...options.poolParams1 },
+      credential: CREDENTIAL,
     },
   ];
-  for (const { address, vault: balance, params } of pools) {
-    store.set(address, { kind: 'pool', pool: pool({ ...params }) });
+  for (const { address, vault: balance, params, credential } of pools) {
+    store.set(address, { kind: 'pool', pool: { ...pool({ ...params }), credential } });
     const [vault] = await findVaultPda({ pool: address });
     store.set(vault, { kind: 'token', token: tokenAccount({ amount: balance ?? 9_000_000_000n }) });
   }
@@ -135,7 +144,7 @@ export async function world(options: WorldOptions = {}) {
       loan: getLoanDecoder().decode(loanBytes(wallet, options.loan)),
     });
   }
-  const bookLoans = await addBookLoans(store, options.bookLoans ?? []);
+  const bookLoans = await addBookLoans(store, options.bookLoans ?? [], credential0);
   const raw = new Map<Address, RawAccount>();
   const verified =
     options.verify === undefined ? undefined : await addVerify(store, raw, wallet, options);
@@ -265,6 +274,7 @@ async function addVerify(
 async function addBookLoans(
   store: Map<Address, ChainAccount>,
   loans: readonly BookLoanOptions[],
+  credential0: Address,
 ): Promise<BookLoan[]> {
   const now = BigInt(Math.floor(Date.now() / 1000));
   const out: BookLoan[] = [];
@@ -274,7 +284,8 @@ async function addBookLoans(
     const attestation = given.attestation === false ? undefined : (given.attestation ?? {});
     const live = liveAttestation(attestation?.payload);
     const [loanAddress] = await findLoanPda({ pool: poolAddress, borrower });
-    const address = await attestationAddress(CREDENTIAL, SCHEMA, borrower);
+    const credential = poolAddress === POOL_0 ? credential0 : CREDENTIAL;
+    const address = await attestationAddress(credential, SCHEMA, borrower);
     if (attestation !== undefined) {
       const bytes = sasAccountBytes({
         wallet: borrower,

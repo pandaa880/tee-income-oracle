@@ -40,12 +40,16 @@ import { attestationAddress } from '@tio/oracle-client/attest';
 
 import { COMPUTE_BUDGET_PROGRAM } from './relayer.ts';
 
+/**
+ * A served pool and the SAS credential and schema it was created with: `borrow` derives the
+ * borrower's attestation from these (FORMATS §14), so the relay check must too.
+ */
+export type LoanPool = { address: Address; credential: Address; schema: Address };
+
 export type LoanDeployment = {
   mint: Address;
   /** Only these pools are served; empty = nothing is relayable on this cluster. */
-  pools: readonly Address[];
-  credential: Address;
-  schema: Address;
+  pools: readonly LoanPool[];
 };
 export type LoanTxKind = 'borrow' | 'repay';
 export type LoanTxShape = { kind: LoanTxKind; borrower: Address; tx: Transaction };
@@ -165,19 +169,20 @@ function accountsMatch(accounts: readonly AccountMeta[], expected: readonly Expe
   });
 }
 
-async function poolAccounts(pool: Address, borrower: Address, s: Slots, mint: Address) {
-  const [vault] = await findVaultPda({ pool });
-  const [loan] = await findLoanPda({ pool, borrower });
+/** The listed pool at `address`, if the deployment serves it. */
+function servedPool(s: Slots, at: Address | undefined): LoanPool | undefined {
+  return s.deployment.pools.find((p) => p.address === at);
+}
+
+async function poolAccounts(pool: LoanPool, borrower: Address, mint: Address) {
+  const [vault] = await findVaultPda({ pool: pool.address });
+  const [loan] = await findLoanPda({ pool: pool.address, borrower });
   const [ata] = await findAssociatedTokenPda({
     owner: borrower,
     mint,
     tokenProgram: TOKEN_PROGRAM_ADDRESS,
   });
-  const attestation = await attestationAddress(
-    s.deployment.credential,
-    s.deployment.schema,
-    borrower,
-  );
+  const attestation = await attestationAddress(pool.credential, pool.schema, borrower);
   return { vault, loan, ata, attestation };
 }
 
@@ -203,12 +208,11 @@ async function ataOk(ix: Instruction, s: Slots, mint: Address): Promise<boolean>
 /** Rule 8: `borrow(amount > 0)` on a listed pool, paid by the relayer, every PDA the borrower's own. */
 async function borrowOk(ix: Instruction, s: Slots, mint: Address): Promise<boolean> {
   const accounts = ix.accounts ?? [];
-  const pool = accounts[2]?.address;
-  if (accounts.length !== 11 || pool === undefined || !s.deployment.pools.includes(pool))
-    return false;
+  const pool = servedPool(s, accounts[2]?.address);
+  if (accounts.length !== 11 || pool === undefined) return false;
   if (getBorrowInstructionDataDecoder().decode(ix.data ?? new Uint8Array()).amount <= 0n)
     return false;
-  const pda = await poolAccounts(pool, s.borrower, s, mint);
+  const pda = await poolAccounts(pool, s.borrower, mint);
   return accountsMatch(accounts, [
     { at: 0, address: s.relayer, signer: true, writable: true },
     { at: 1, address: s.borrower, signer: true },
@@ -226,10 +230,9 @@ async function borrowOk(ix: Instruction, s: Slots, mint: Address): Promise<boole
 /** Rule 9: `repay()` on a listed pool whose Loan rent goes back to the relayer. */
 async function repayOk(ix: Instruction, s: Slots, mint: Address): Promise<boolean> {
   const accounts = ix.accounts ?? [];
-  const pool = accounts[1]?.address;
-  if (accounts.length !== 8 || pool === undefined || !s.deployment.pools.includes(pool))
-    return false;
-  const pda = await poolAccounts(pool, s.borrower, s, mint);
+  const pool = servedPool(s, accounts[1]?.address);
+  if (accounts.length !== 8 || pool === undefined) return false;
+  const pda = await poolAccounts(pool, s.borrower, mint);
   return accountsMatch(accounts, [
     { at: 0, address: s.borrower, signer: true },
     { at: 2, address: mint },

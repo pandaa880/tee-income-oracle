@@ -19,6 +19,7 @@ import { kitChain } from './chain.ts';
 import { type Config, ConfigError, loadConfig } from './config.ts';
 import { GatewayError } from './errors.ts';
 import { createFiuKeyManager } from './fiu-key.ts';
+import { readLoanPools } from './loan-pools.ts';
 import { createLoanRelay } from './loan-relay-flow.ts';
 import { createRateLimiter } from './rate-limit.ts';
 import { checkEnclaveEntry } from './registry.ts';
@@ -60,6 +61,8 @@ async function main(): Promise<void> {
 
   const chain = kitChain(rpc, createSolanaRpcSubscriptions(config.wsUrl));
   const { deployment } = config;
+  const pools =
+    deployment.mint === undefined ? [] : await readLoanPools(chain, deployment.pools.map(address));
   const app = createApp({
     enclave,
     bank,
@@ -69,9 +72,7 @@ async function main(): Promise<void> {
       payer,
       deployment: {
         mint: deployment.mint === undefined ? NO_MINT : address(deployment.mint),
-        pools: deployment.mint === undefined ? [] : deployment.pools.map(address),
-        credential: address(deployment.credential),
-        schema: address(deployment.schema),
+        pools,
       },
     }),
     sessions: createSessionStore({ now: nowSecs }),

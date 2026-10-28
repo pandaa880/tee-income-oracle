@@ -70,6 +70,11 @@ transaction, so an attestation by any other signer is FAIL whatever its payload.
   every registration is a public event, but a compromised admin could register a
   key whose document would still pass. Beyond the demo the admin should be a
   multisig; later, the chain itself should verify the document.
+- **That a lender would accept the tier today.** PASS is about where the tier
+  came from, not whether it is still usable. The attestation expires 30 days
+  after it was issued (the `tier` line shows the date, and `(EXPIRED)` from the
+  expiry second on), and each pool adds its own age, policy and build rules
+  (`docs/FORMATS.md` §14).
 - **That the bank data was real.** The hackathon bank is a sandbox speaking the
   real ReBIT protocol with demo keys (`docs/ARCHITECTURE.md` §2).
 

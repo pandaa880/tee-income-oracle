@@ -26,6 +26,8 @@ import {
   SAS_ATTESTATION_LEN,
   SYSTEM_PROGRAM,
   attestationAddress,
+  fetchRaw,
+  plantAccount,
   timeTravel,
 } from '@tio/oracle-tests/attest';
 import { revokeEntry } from '@tio/oracle-tests/attest-fixture';
@@ -729,6 +731,20 @@ describe('borrow: checks', () => {
         { pool, borrower, amount: TOKEN, accounts: { enclaveEntry: config } },
         ANCHOR_DISCRIMINATOR_MISMATCH,
       );
+    });
+
+    // Owner and discriminator alone would accept this byte-for-byte copy of
+    // the borrower's live entry; the seeds pin it to the oracle's PDA.
+    it('borrow_fails_with_seeds_error_when_the_enclave_entry_is_a_copy_outside_its_pda', async () => {
+      const borrower = await prepare(f);
+      const entry = await fetchRaw(f.h, await entryAddress(borrower.entryId));
+      const copy = (await generateKeyPairSigner()).address;
+      plantAccount(f.h, copy, ORACLE_PROGRAM_ADDRESS, entry?.data ?? new Uint8Array());
+      await expectRejected(
+        { pool, borrower, amount: TOKEN, accounts: { enclaveEntry: copy } },
+        ANCHOR_CONSTRAINT_SEEDS,
+      );
+      await expectBaselineSucceeds({ pool, borrower, amount: TOKEN });
     });
   });
 

@@ -13,7 +13,7 @@ use crate::sas::{
     attestation_address, close_attestation_ix, create_attestation_ix, stored_issued_at,
     SasAccounts, EVENT_AUTHORITY_SEED, SAS_PROGRAM_ID,
 };
-use crate::state::{EnclaveEntry, SAS_SIGNER_SEED};
+use crate::state::{EnclaveEntry, ENCLAVE_SEED, SAS_SIGNER_SEED};
 
 #[derive(Accounts)]
 pub struct SubmitAttestation<'info> {
@@ -36,6 +36,13 @@ pub struct SubmitAttestation<'info> {
     pub attestation: UncheckedAccount<'info>,
     /// Anchor checks owner and discriminator; the handler matches its id
     /// with the payload's `measurement_id`.
+    // The seeds repeat what owner + discriminator already prove (only
+    // `register_enclave` creates an `EnclaveEntry`, at its PDA); kept as
+    // defence in depth.
+    #[account(
+        seeds = [ENCLAVE_SEED, &enclave_entry.measurement_id.to_le_bytes()],
+        bump = enclave_entry.bump,
+    )]
     pub enclave_entry: Account<'info, EnclaveEntry>,
     /// CHECK: pinned to the instructions sysvar, so introspection can't read
     /// a fake instruction list.

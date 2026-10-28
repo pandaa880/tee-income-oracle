@@ -190,6 +190,17 @@ describe('buildPrecompileData (FORMATS §8 layout)', () => {
     expect([data[3], data[6], data[11]]).toEqual([5, 5, 5]);
   });
 
+  it('accepts the first and last index a one-byte field can hold', () => {
+    expect(build(0)[3]).toBe(0);
+    expect(build(255)[3]).toBe(255);
+  });
+
+  // A Uint8Array store wraps (256 → 0, -1 → 255): the precompile would then check another
+  // instruction's bytes, so a bad index must fail here, not on chain.
+  it.each([-1, 256, 1.5, Number.NaN])('rejects index %s', (index) => {
+    expect(() => build(index)).toThrow(/index must be an integer from 0 to 255/);
+  });
+
   it('equals the oracle-tests builder output for the same key, message and index', () => {
     expect(build(1)).toEqual(testBuildPrecompileData(key, msg, 1));
   });

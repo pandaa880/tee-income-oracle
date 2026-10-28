@@ -18,6 +18,13 @@ import type { AppError } from '../domain/types.ts';
 /** The credential plus the attestation account it was read from (the explorer link target). */
 export type CredentialRead = CredentialRecord & { attestation: Address };
 
+async function attestationAt(deps: Deps, at: Address, signal: AbortSignal) {
+  const read = await deps.chain.accounts([at], signal);
+  if (!read.ok) throw read.error;
+  const [account] = read.value;
+  return account?.kind === 'attestation' ? account.attestation : undefined;
+}
+
 /** Reads the attestation and pool, then the registry entry of the payload's enclave build. */
 export async function fetchCredential(
   deps: Deps,
@@ -26,13 +33,19 @@ export async function fetchCredential(
   signal: AbortSignal,
 ): Promise<CredentialRead> {
   const { credential, schema, sasSigner } = deps.config.deployment;
-  const at = await attestationAddress(credential, schema, wallet);
+  let at = await attestationAddress(credential, schema, wallet);
   const first = await deps.chain.accounts([at, poolAddress], signal);
   if (!first.ok) throw first.error;
   const [stored, poolAccount] = first.value;
-  const attestation = stored?.kind === 'attestation' ? stored.attestation : undefined;
+  let attestation = stored?.kind === 'attestation' ? stored.attestation : undefined;
   const pool = poolAccount?.kind === 'pool' ? poolAccount.pool : undefined;
   if (pool === undefined) throw { code: 'protocol_error' } satisfies AppError;
+  // `borrow` derives the attestation from the pool's own credential and schema. Every listed
+  // pool uses the deployment's; if one ever pins others, read the record the program would.
+  if (pool.credential !== credential || pool.schema !== schema) {
+    at = await attestationAddress(pool.credential, pool.schema, wallet);
+    attestation = await attestationAt(deps, at, signal);
+  }
   let enclaveEntry;
   if (attestation !== undefined) {
     const { measurementId } = decodePayload(attestation.payload);
