@@ -10,9 +10,10 @@ import {
   SolanaError,
   address,
   generateKeyPairSigner,
+  getAddressEncoder,
   getSignatureFromTransaction,
 } from '@solana/kit';
-import { findEnclaveEntryPda, getEnclaveEntryEncoder } from '@tio/oracle-client';
+import { findEnclaveEntryPda, findSasSignerPda, getEnclaveEntryEncoder } from '@tio/oracle-client';
 import {
   ORACLE_PROGRAM_ID,
   SAS_ATTESTATION_DISCRIMINATOR,
@@ -20,6 +21,7 @@ import {
   SAS_DATA_LEN_OFFSET,
   SAS_DATA_OFFSET,
   SAS_PROGRAM_ID,
+  SAS_SIGNER_OFFSET,
   attestationAddress,
 } from '@tio/oracle-client/attest';
 import { describe, expect, it } from 'vitest';
@@ -55,11 +57,12 @@ const custom = (code: number) =>
   new SolanaError(SOLANA_ERROR__INSTRUCTION_ERROR__CUSTOM, { code, index: 2 });
 const confirmed: SignatureStatus = { err: null, confirmationStatus: 'confirmed' };
 
-function sasAccount(payload: Uint8Array): RawAccount {
+function sasAccount(payload: Uint8Array, signer: Address): RawAccount {
   const data = new Uint8Array(SAS_ATTESTATION_LEN);
   data[0] = SAS_ATTESTATION_DISCRIMINATOR;
   new DataView(data.buffer).setUint32(SAS_DATA_LEN_OFFSET, 83, true);
   data.set(payload, SAS_DATA_OFFSET);
+  data.set(getAddressEncoder().encode(signer), SAS_SIGNER_OFFSET);
   return { owner: SAS_PROGRAM_ID, data };
 }
 
@@ -84,6 +87,8 @@ type FakeOpts = {
   /** Status per signature, by send index. */
   status?: (index: number) => SignatureStatus | null;
   stored?: Uint8Array | null;
+  /** Who wrote the stored attestation (default: the oracle's sas_signer). */
+  storedSigner?: Address;
   entry?: RawAccount | null;
   blockhashFails?: boolean;
   entryFails?: boolean;
@@ -94,6 +99,7 @@ async function setup(o: FakeOpts) {
   const sent: Signature[] = [];
   const attestation = await attestationAddress(CREDENTIAL, SCHEMA, WALLET);
   const [entryAt] = await findEnclaveEntryPda({ measurementId: MEASUREMENT_ID });
+  const storedSigner = o.storedSigner ?? (await findSasSignerPda())[0];
   let blockhashes = 0;
   const reads = { entry: 0 };
   const chain: Chain = {
@@ -119,7 +125,7 @@ async function setup(o: FakeOpts) {
         if (o.entryFails === true) throw new Error('rpc timeout');
         return o.entry === undefined ? entryAccount() : o.entry;
       }
-      if (at === attestation) return o.stored == null ? null : sasAccount(o.stored);
+      if (at === attestation) return o.stored == null ? null : sasAccount(o.stored, storedSigner);
       return null;
     },
   };
@@ -196,6 +202,17 @@ describe('relayer: after a failed send', () => {
   it('reports tx null when the payload is already stored but none of its signatures landed', async () => {
     const t = await setup({ sends: [new Error('AlreadyProcessed')], stored: PAYLOAD });
     expect(await t.relayer.submit(ARGS)).toEqual({ tx: null, attestation: t.attestation });
+  });
+
+  // Only the oracle writes through sas_signer, after checking the enclave signature; a record
+  // with our payload from any other signer says nothing about our submission.
+  it('does not count a stored payload written by another signer', async () => {
+    const t = await setup({
+      sends: [new Error('AlreadyProcessed')],
+      stored: PAYLOAD,
+      storedSigner: WALLET,
+    });
+    await expectRejected(t.relayer.submit(ARGS), { code: 'tx_failed', stage: 'chain' });
   });
 
   it('still checks the stored payload when the status lookup fails', async () => {

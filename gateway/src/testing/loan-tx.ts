@@ -35,7 +35,7 @@ import {
   getCreateAssociatedTokenIdempotentInstructionAsync,
 } from '@solana-program/token';
 
-import type { LoanDeployment } from '../loan-relay.ts';
+import type { LoanDeployment, LoanPool } from '../loan-relay.ts';
 
 export const COMPUTE_BUDGET_PROGRAM = address('ComputeBudget111111111111111111111111111111');
 export const SYSTEM_PROGRAM = address('11111111111111111111111111111111');
@@ -53,8 +53,17 @@ const OFFLINE_LIFETIME: Lifetime = {
   lastValidBlockHeight: 1n,
 };
 
+/** A served pool, by default created under the test credential and schema. */
+export function testPool(
+  pool: Address,
+  credential: Address = CREDENTIAL,
+  schema: Address = SCHEMA,
+): LoanPool {
+  return { address: pool, credential, schema };
+}
+
 export function testDeployment(over: Partial<LoanDeployment> = {}): LoanDeployment {
-  return { mint: MINT, pools: [POOL], credential: CREDENTIAL, schema: SCHEMA, ...over };
+  return { mint: MINT, pools: [testPool(POOL)], ...over };
 }
 
 // --- low level -------------------------------------------------------------
@@ -201,13 +210,15 @@ export async function borrowParts(o: LoanOpts): Promise<BorrowParts> {
     mint: o.deployment.mint,
   });
   const [enclaveEntry] = await findEnclaveEntryPda({ measurementId: o.measurementId ?? 1 });
+  // A pool the deployment doesn't list (negative tests) attests under the test defaults.
+  const seeds = o.deployment.pools.find((p) => p.address === o.pool) ?? testPool(o.pool);
   const borrow = await getBorrowInstructionAsync({
     payer: relayer,
     borrower: createNoopSigner(wallet),
     pool: o.pool,
     mint: o.deployment.mint,
     borrowerToken,
-    attestation: await attestationAddress(o.deployment.credential, o.deployment.schema, wallet),
+    attestation: await attestationAddress(seeds.credential, seeds.schema, wallet),
     enclaveEntry,
     amount: o.amount ?? DEFAULT_AMOUNT,
   });

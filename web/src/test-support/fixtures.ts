@@ -35,6 +35,16 @@ export const OTHER: Address = address('HZyMtqfwXMbqDUwWe9GVSvfZTaXaJZuKAMtJ1i6xw
 
 export const LOAN_DEPLOYMENT = { mint: MINT, credential: CREDENTIAL, schema: SCHEMA } as const;
 
+/** What the gateway's shape check serves: both pools, created under the deployment's seeds. */
+export const GATEWAY_DEPLOYMENT = {
+  mint: MINT,
+  pools: [POOL_0, POOL_1].map((at) => ({
+    address: at,
+    credential: CREDENTIAL,
+    schema: SCHEMA,
+  })),
+};
+
 export const POLICY_HASH = new Uint8Array(32).fill(0x11);
 export const NOW = 1_790_500_000n;
 export const ISSUED_AT = NOW - 1000n;

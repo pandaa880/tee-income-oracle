@@ -1507,8 +1507,9 @@ a tier, and it signs nothing but those two loan shapes.
      deployment mint, owner = borrower, classic Token program, data `[1]`;
   8. `borrow`: 11 accounts; payer = relayer, borrower signs, pool listed in
      the deployment, mint = the deployment mint, vault / loan / token account
-     / attestation = the derived PDAs, `amount > 0`; `enclave_entry` is any
-     account (the program checks it, §14);
+     / attestation = the derived PDAs (the attestation under the pool's own
+     `credential` and `schema`, as `borrow` derives it), `amount > 0`;
+     `enclave_entry` is any account (the program checks it, §14);
   9. `repay`: 8 accounts; the same pins, `rent_payer` = relayer (the Loan rent
      comes back to it, §14);
   10. the relayer appears nowhere else (fee payer, ATA payer, borrow payer,
@@ -1593,7 +1594,9 @@ a tier, and it signs nothing but those two loan shapes.
   `CLUSTER` (reads `deployments/<cluster>.json`; its program ids must equal
   the compiled-in ones, `demo_pool_program` included when present; its
   `mint` and `pools` `[{ address, pool_id }]` are the only pools the relay
-  serves, none when absent), `MEASUREMENT_ID` (0–254), `POLICY_PATH` (default
+  serves, none when absent; at boot the gateway reads each pool's
+  `credential` and `schema`, which never change, and refuses to start if a
+  listed address isn't a demo-pool `Pool`), `MEASUREMENT_ID` (0–254), `POLICY_PATH` (default
   `test-vectors/policy/default.json`; the file must be exact JCS with no
   trailing newline, so `policy_hash` = sha256 of its bytes = the §6 hash the
   enclave puts in the payload), `RELAYER_KEYPAIR` (Solana CLI keypair JSON),

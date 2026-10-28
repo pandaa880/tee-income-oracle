@@ -16,13 +16,18 @@ import { DEMO_POOL_PROGRAM_ADDRESS, getBorrowInstructionDataDecoder } from '@tio
 import { beforeAll, describe, expect, it } from 'vitest';
 import { checkLoanTx, verifyBorrowerSignature } from '../../../gateway/src/loan-relay.ts';
 import { buildBorrowMessage, buildRepayMessage, signForRelay } from './loan-tx.ts';
-import { LOAN_DEPLOYMENT, POOL_0, POOL_1, RELAYER } from '../test-support/fixtures.ts';
+import {
+  GATEWAY_DEPLOYMENT,
+  LOAN_DEPLOYMENT,
+  POOL_0,
+  POOL_1,
+  RELAYER,
+} from '../test-support/fixtures.ts';
 
 const BLOCKHASH = {
   blockhash: blockhash('4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi'),
   lastValidBlockHeight: 1000n,
 };
-const GATEWAY_DEPLOYMENT = { ...LOAN_DEPLOYMENT, pools: [POOL_0, POOL_1] };
 
 let borrower: KeyPairSigner;
 beforeAll(async () => {
