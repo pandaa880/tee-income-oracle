@@ -34,19 +34,33 @@ afterEach(() => {
 });
 
 async function world(
-  options: { attestation?: boolean; signer?: Address; policy?: Uint8Array } = {},
+  options: {
+    attestation?: boolean;
+    signer?: Address;
+    policy?: Uint8Array;
+    /** The credential the pool pins; the deployment's is always `CREDENTIAL`. */
+    poolCredential?: Address;
+    /** The credential the attestation is stored under. */
+    attestedCredential?: Address;
+  } = {},
 ) {
   const key = await generateKeyPairSigner();
   const wallet = key.address;
   const store = new Map<Address, ChainAccount>();
-  store.set(POOL_0, { kind: 'pool', pool: pool({ policyHash: options.policy ?? POLICY_HASH }) });
+  store.set(POOL_0, {
+    kind: 'pool',
+    pool: {
+      ...pool({ policyHash: options.policy ?? POLICY_HASH }),
+      credential: options.poolCredential ?? CREDENTIAL,
+    },
+  });
   store.set((await findEnclaveEntryPda({ measurementId: 0 }))[0], {
     kind: 'enclave_entry',
     entry: entry(),
   });
   if (options.attestation !== false) {
     const bytes = sasAccountBytes({ wallet, signer: options.signer ?? SAS_SIGNER });
-    store.set(await attestationAddress(CREDENTIAL, SCHEMA, wallet), {
+    store.set(await attestationAddress(options.attestedCredential ?? CREDENTIAL, SCHEMA, wallet), {
       kind: 'attestation',
       attestation: parseSasAttestation(SAS_PROGRAM_ID, bytes),
     });
@@ -89,6 +103,24 @@ describe('useCredential', () => {
 
   it('reports none when the wallet has no attestation', async () => {
     const { wallet, deps } = await world({ attestation: false });
+    const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
+      wrapper: queryWrapper(),
+    });
+    await waitFor(() => expect(result.current.data?.status).toBe('none'));
+  });
+
+  // `borrow` derives the attestation from the pool's credential and schema, not the deployment's.
+  it('reads the attestation under the pool credential when the pool pins another one', async () => {
+    const { wallet, deps } = await world({ poolCredential: OTHER, attestedCredential: OTHER });
+    const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
+      wrapper: queryWrapper(),
+    });
+    await waitFor(() => expect(result.current.data?.status).toBe('valid'));
+    expect(result.current.data?.attestation).toBe(await attestationAddress(OTHER, SCHEMA, wallet));
+  });
+
+  it('reports none when the only attestation is under a credential the pool does not use', async () => {
+    const { wallet, deps } = await world({ poolCredential: OTHER });
     const { result } = renderHook(() => useCredential(wallet, POOL_0, deps), {
       wrapper: queryWrapper(),
     });
