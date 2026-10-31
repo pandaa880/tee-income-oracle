@@ -116,9 +116,11 @@ async function poolLanded(
 /**
  * A transaction's id is its fee payer's signature over the message bytes, and the fee payer here
  * is the relayer. So the signature the gateway returns must verify, under the relayer's key,
- * over the exact message we built and the borrower signed. An unrelated (or replayed) signature
- * can't, and once it verifies, "confirmed" can only mean this transaction landed. Account reads
- * can't establish this: any of them may come from a stale node.
+ * over the exact message we built and the borrower signed. An unrelated signature can't. This
+ * ties the id to these bytes, not to this request: Ed25519 is deterministic, so an identical
+ * earlier borrow (same blockhash, after a repay) has the same id, and the relayer key itself
+ * comes from the gateway's /v1/info. The before/after Loan reads narrow that gap but can't close
+ * it: any of them may come from a stale node.
  */
 async function isOurTransaction(signature: string, txB64: string, relayer: Address) {
   const wire = Uint8Array.from(getBase64Encoder().encode(txB64));
