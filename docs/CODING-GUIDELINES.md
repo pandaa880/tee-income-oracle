@@ -317,9 +317,11 @@ pages, it is server state or URL state.
   base58 signatures); on-chain integers get zod bounds matching the Rust type (u8 0..255,
   u64 ≤ 2^64−1).
 - A chain read right after `confirmed` can reach a node a slot behind (load-balanced RPC):
-  retry it briefly (or pin `minContextSlot`) before calling it a failure. To prove *your*
-  transaction landed, verify the returned signature (the fee payer's) over your own message
-  bytes; account reads alone can't. Once a read has shown the transition, put that read in the
+  retry it briefly (or pin `minContextSlot`) before calling it a failure. To tie a returned id
+  to *your* message, verify the returned signature (the fee payer's) over your own message
+  bytes; account reads alone can't. It can't tell a repeat of identical bytes from the first
+  landing (Ed25519 is deterministic), so keep the read that shows the transition as well.
+  Once a read has shown the transition, put that read in the
   cache (`cancelQueries`, then `setQueryData`) rather than invalidating: the refetch can reach
   a node that is still behind and bring the old state back.
 - Every untrusted value that can become a URL or link is format-checked at the adapter
