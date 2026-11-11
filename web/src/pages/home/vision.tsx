@@ -12,7 +12,7 @@ const RAILS = [
 /** 08: where the same receipt fits next. */
 export function Vision() {
   return (
-    <SectionBand labelledBy="vision-h">
+    <SectionBand labelledBy="vision-h" tinted>
       <SectionHeading
         id="vision-h"
         kicker="08 · The vision"

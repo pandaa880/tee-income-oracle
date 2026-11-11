@@ -64,7 +64,7 @@ function cellText(row: Row, option: number): string {
 /** 04: TIO beside the checks funders use today. A table from `md` up, one ledger per option below. */
 export function Compare() {
   return (
-    <SectionBand labelledBy="compare-h">
+    <SectionBand labelledBy="compare-h" tinted>
       <SectionHeading
         id="compare-h"
         kicker="04 · Why it’s different"

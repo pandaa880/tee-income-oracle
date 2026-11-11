@@ -8,6 +8,7 @@ import { Hero } from './hero.tsx';
 import { HowItWorks } from './how-it-works.tsx';
 import { Market } from './market.tsx';
 import { Pilot } from './pilot.tsx';
+import { PoolSimulator } from './pool-simulator.tsx';
 import { Problem } from './problem.tsx';
 import { Solution } from './solution.tsx';
 import { StatusChecklist } from './status-checklist.tsx';
@@ -41,9 +42,10 @@ function proofItems(
 }
 
 /**
- * The landing page as a pitch: the category line, the problem as a story, what TIO adds, how it
- * compares, where the statement goes, what is built and what isn't (with the checkable facts),
- * the market, the vision and the pilot ask. Reading only the headings gives the whole argument.
+ * The landing page as a pitch: the category line, the problem as a story, what TIO adds, the
+ * bad-loan simulation and the example rules, how it compares, where the statement goes, what is
+ * built and what isn't (with the checkable facts), the market, the vision and the pilot ask.
+ * Reading only the headings gives the whole argument.
  */
 export function HomePage() {
   const { features } = useConfig();
@@ -58,6 +60,7 @@ export function HomePage() {
         <Hero ctaDisabledReason={down} live={live} />
         <Problem />
         <Solution />
+        <PoolSimulator />
         <Compare />
         <HowItWorks />
         <StatusChecklist

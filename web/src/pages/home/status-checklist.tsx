@@ -28,7 +28,7 @@ export type StatusChecklistProps = {
 /** 06: what is built and what isn't, then the facts a reader can check for themselves. */
 export function StatusChecklist({ proofItems, showBook }: StatusChecklistProps) {
   return (
-    <SectionBand labelledBy="status-h">
+    <SectionBand labelledBy="status-h" tinted>
       <SectionHeading
         id="status-h"
         kicker="06 · Where we are"

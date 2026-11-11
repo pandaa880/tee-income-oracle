@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Deps } from '../../app/deps.ts';
 import { renderWithRouter } from '../../test-support/render.tsx';
@@ -20,6 +20,7 @@ const BOTH_OFF = { book: false, verify: false };
 const H = {
   problem: 'Funding an NBFC means trusting its spreadsheet.',
   solution: 'TIO puts the borrower’s bank between the NBFC and the funder.',
+  rules: 'The funder sets the rules. They act before money moves.',
   compare: 'The only check the NBFC can’t write itself.',
   security: 'The bank statement is read in one place, then wiped.',
   status: 'Pre-pilot. The hard part is already live on devnet.',
@@ -120,12 +121,13 @@ describe('HomePage hero', () => {
 });
 
 describe('HomePage sections', () => {
-  it('lays the sections out in order: problem, solution, compare, security, status, market, vision, close', async () => {
+  it('lays the sections out in order: problem, solution, rules, compare, security, status, market, vision, close', async () => {
     await renderHome();
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
     expect(headings).toEqual([
       H.problem,
       H.solution,
+      H.rules,
       H.compare,
       H.security,
       H.status,
@@ -333,4 +335,141 @@ describe('HomePage close and whole-page rules', () => {
     expect(document.body).toHaveTextContent(/the pool’s eligibility criteria/i);
     expect(document.body).not.toHaveTextContent(/lender['’]s (own )?(rules|policy)/i);
   });
+});
+
+function shareButton(name: string): HTMLElement {
+  return sectionOf(H.rules).getByRole('button', { name });
+}
+
+describe('HomePage rules and simulation', () => {
+  const SHARES = ['0%', '2%', '5%', '10%', '20%'];
+
+  it('offers five share buttons in a bad-loans group, with 2% pressed by default', async () => {
+    await renderHome();
+    const group = sectionOf(H.rules).getByRole('group', { name: /bad loans/i });
+    const buttons = within(group).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent)).toEqual(SHARES);
+    for (const share of SHARES) {
+      expect(shareButton(share)).toHaveAttribute('aria-pressed', share === '2%' ? 'true' : 'false');
+    }
+  });
+
+  it('shows 124 loans blocked and the trapped-cash rule at 10%, and moves the pressed state', async () => {
+    await renderHome();
+    fireEvent.click(shareButton('10%'));
+    const rules = sectionOf(H.rules);
+    expect(rules.getByText('124')).toBeInTheDocument();
+    expect(rules.getByText('Collections trapped · senior paid first')).toBeInTheDocument();
+    expect(shareButton('10%')).toHaveAttribute('aria-pressed', 'true');
+    expect(shareButton('2%')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows nothing blocked, drawdowns open and nothing to find at 0%', async () => {
+    await renderHome();
+    fireEvent.click(shareButton('0%'));
+    const rules = sectionOf(H.rules);
+    expect(rules.getByText('0')).toBeInTheDocument();
+    expect(rules.getByText('Drawdowns open')).toBeInTheDocument();
+    expect(rules.getByText(/nothing to find/i)).toBeInTheDocument();
+  });
+
+  it('defaults to 25 blocked with drawdowns open, and stops new drawdowns at 5%', async () => {
+    await renderHome();
+    const rules = sectionOf(H.rules);
+    expect(rules.getByText('25')).toBeInTheDocument();
+    expect(rules.getByText('Drawdowns open')).toBeInTheDocument();
+    fireEvent.click(shareButton('5%'));
+    expect(rules.getByText('New drawdowns stopped')).toBeInTheDocument();
+    expect(rules.queryByText('Drawdowns open')).not.toBeInTheDocument();
+  });
+
+  it('labels the simulation and marks the thresholds as examples that are planned, not built', async () => {
+    await renderHome();
+    const rules = sectionOf(H.rules);
+    expect(rules.getByText('Simulation')).toBeInTheDocument();
+    expect(
+      rules.getByRole('heading', {
+        level: 3,
+        name: 'Put bad loans in the pool and watch what happens.',
+      }),
+    ).toBeInTheDocument();
+    expect(rules.getByText(/Example thresholds/)).toBeInTheDocument();
+    expect(rules.getByText(/Planned, not built/)).toBeInTheDocument();
+  });
+
+  it('names the Healthy, Warning and Trouble zones and shows a now marker', async () => {
+    await renderHome();
+    const rules = sectionOf(H.rules);
+    for (const zone of ['Healthy', 'Warning', 'Trouble']) {
+      expect(rules.getByText(zone)).toBeInTheDocument();
+    }
+    expect(rules.getByText(/^now · 97\.0%$/)).toBeInTheDocument();
+  });
+
+  it('announces the outcome in a polite live region that holds the blocked count', async () => {
+    await renderHome();
+    const live = sectionElement(H.rules).querySelector('[aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live).toHaveTextContent('25');
+    fireEvent.click(shareButton('10%'));
+    expect(live).toHaveTextContent('124');
+  });
+
+  it('lists the four example rules in the rule table', async () => {
+    await renderHome();
+    const table = within(sectionOf(H.rules).getByRole('table'));
+    expect(table.getByRole('row', { name: /no receipt or no payout/i })).toBeInTheDocument();
+    expect(table.getByRole('row', { name: /below 95%/i })).toBeInTheDocument();
+    expect(table.getByRole('row', { name: /below 90%/i })).toBeInTheDocument();
+    expect(table.getByRole('row', { name: /consent revoked/i })).toBeInTheDocument();
+  });
+
+  it('moves the now marker with the pick: 248 blocked, cash trapped and 79.2% at 20%', async () => {
+    await renderHome();
+    fireEvent.click(shareButton('20%'));
+    const rules = sectionOf(H.rules);
+    expect(rules.getByText('248')).toBeInTheDocument();
+    expect(rules.getByText('Collections trapped · senior paid first')).toBeInTheDocument();
+    expect(rules.getByText(/^now · 79\.2%$/)).toBeInTheDocument();
+    expect(rules.queryByText(/^now · 97\.0%$/)).not.toBeInTheDocument();
+  });
+
+  it('marks the example rules PLANNED from the roadmap and never calls them live', async () => {
+    await renderHome();
+    const rules = sectionOf(H.rules);
+    expect(rules.getByText('PLANNED')).toBeInTheDocument();
+    expect(rules.queryByText(/LIVE ON DEVNET|Live on Solana devnet/)).not.toBeInTheDocument();
+  });
+
+  it('announces one atomic summary per pick', async () => {
+    await renderHome();
+    const live = sectionElement(H.rules).querySelector('[aria-live="polite"]');
+    expect(live).toHaveAttribute('aria-atomic', 'true');
+    fireEvent.click(shareButton('5%'));
+    expect(live).toHaveTextContent(
+      '5% bad loans: 62 blocked before funding, match rate 94.1%, new drawdowns stopped.',
+    );
+  });
+
+  it.each([
+    [
+      '2%',
+      'The bank can’t confirm 25 loans on the tape. They’re refused before funding; the tape’s match rate holds at 97.0%, so drawdowns stay open.',
+    ],
+    [
+      '5%',
+      'The bank can’t confirm 62 loans on the tape. They’re refused before funding, the tape’s match rate falls to 94.1%, and the facility’s rule fires: new drawdowns stopped.',
+    ],
+    [
+      '10%',
+      'The bank can’t confirm 124 loans on the tape. They’re refused before funding, the tape’s match rate falls to 89.1%, and the facility’s rule fires: collections trapped · senior paid first.',
+    ],
+  ])(
+    'tells the with-TIO outcome in full at %s, naming the match-rate step',
+    async (share, line) => {
+      await renderHome();
+      fireEvent.click(shareButton(share));
+      expect(sectionOf(H.rules).getByText(line)).toBeInTheDocument();
+    },
+  );
 });
