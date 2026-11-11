@@ -1,5 +1,7 @@
 import { Schematic } from '@tio/ui/schematic';
 import { DATA_NODES } from '../../domain/stages.ts';
+import { SectionBand } from './section-band.tsx';
+import { SectionHeading } from './section-heading.tsx';
 
 const STEPS = [
   [
@@ -18,11 +20,18 @@ const STEPS = [
 const LIT = ['gateway', 'enclave'];
 const SPOKES = DATA_NODES.filter((n) => n.slot !== 'center').map((n) => n.id);
 
-/** The four steps beside Fig. 1; the heading spans both, which start on the same double rule. */
+/**
+ * 05: where the statement goes. The four steps beside Fig. 1; the heading spans both, which
+ * start on the same double rule.
+ */
 export function HowItWorks() {
   return (
-    <section className="flex flex-col gap-5">
-      <h2 className="font-display text-2xl leading-tight">From consent to loan in four steps</h2>
+    <SectionBand labelledBy="security-h" tinted>
+      <SectionHeading
+        id="security-h"
+        kicker="05 · Security"
+        title="The bank statement is read in one place, then wiped."
+      />
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:items-start">
         <div className="flex min-w-0 flex-col gap-5">
           <ol className="m-0 flex list-none flex-col border-t-3 border-double border-rule-strong p-0">
@@ -34,7 +43,7 @@ export function HowItWorks() {
                 >
                   {String(i + 1).padStart(2, '0')}
                 </span>
-                <span>
+                <span className="text-lg">
                   <strong className="font-semibold">{title}.</strong> {body}
                 </span>
               </li>
@@ -52,6 +61,6 @@ export function HowItWorks() {
           <Schematic nodes={DATA_NODES} lit={LIT} spokes={SPOKES} />
         </figure>
       </div>
-    </section>
+    </SectionBand>
   );
 }
