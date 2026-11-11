@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.6](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.5...v0.5.6) (2026-11-11)
+
+
+### Features
+
+* **web:** add the bad-loan simulation and example rules to the landing ([#81](https://github.com/pandaa880/tee-income-oracle/issues/81)) ([02084ed](https://github.com/pandaa880/tee-income-oracle/commit/02084edc8d0e90fd55e915a03e51496849553f78))
+* **web:** rebuild the landing as one argument, proof-of-reserves for loan books ([#80](https://github.com/pandaa880/tee-income-oracle/issues/80)) ([a55495b](https://github.com/pandaa880/tee-income-oracle/commit/a55495b2d861449399bd599eea214d604883ee2e))
+
 ## [0.5.5](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.4...v0.5.5) (2026-10-28)
 
 
