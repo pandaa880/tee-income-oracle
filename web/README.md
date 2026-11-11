@@ -29,7 +29,7 @@ One app, three surfaces:
 
 | Route | Page |
 |---|---|
-| `/` | Landing, one argument from top to bottom: hero with a simulated pool card, the problem, what TIO adds, a comparison with today's checks, where the statement goes (data-path schematic), what is built and what isn't (stages from `domain/roadmap.ts`) with the checkable proof items, the sourced market, the vision, the pilot close, live status strip |
+| `/` | Landing, one argument from top to bottom: hero with a simulated pool card, the problem, what TIO adds, a bad-loan simulation with the example rules (`domain/pool-simulation.ts`; thresholds marked planned), a comparison with today's checks, where the statement goes (data-path schematic), what is built and what isn't (stages from `domain/roadmap.ts`) with the checkable proof items, the sourced market, the vision, the pilot close, live status strip |
 | `/borrow[?pool=0\|1]` | Borrower flow: demo wallet → bank account (4 sandbox personas) → consent (signs the exact §9 intent, 10-minute countdown) → live stages → result or REJECT. The loan book's "Borrow now" sets `?pool=`; the default is pool 0 |
 | `/loan?pool=0\|1` | Loan screen, one tab per pool: borrow up to `min(tier limit, vault)`, the open loan, repay. It reads only the chain, so a reload or a returning wallet lands in the right state |
 | `/book?pool=0\|1` | Loan book, one tab per pool: policy card, KPIs, tier mix, and every open loan (tier at borrow, amount, time out, tier age, build, credential badge, explorer links). Re-read every 30 s. A badge judges the borrower's current SAS attestation by the pool's own borrow checks: fresh, stale, build retired, old policy, … |

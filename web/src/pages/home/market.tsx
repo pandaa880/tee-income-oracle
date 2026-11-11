@@ -17,7 +17,7 @@ const CARDS = [
  */
 export function Market() {
   return (
-    <SectionBand labelledBy="market-h" tinted>
+    <SectionBand labelledBy="market-h">
       <SectionHeading
         id="market-h"
         kicker="07 · The market"

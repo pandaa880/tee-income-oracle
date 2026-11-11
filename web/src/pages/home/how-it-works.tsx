@@ -26,7 +26,7 @@ const SPOKES = DATA_NODES.filter((n) => n.slot !== 'center').map((n) => n.id);
  */
 export function HowItWorks() {
   return (
-    <SectionBand labelledBy="security-h" tinted>
+    <SectionBand labelledBy="security-h">
       <SectionHeading
         id="security-h"
         kicker="05 · Security"
