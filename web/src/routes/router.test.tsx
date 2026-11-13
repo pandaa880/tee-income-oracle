@@ -23,7 +23,7 @@ describe('app router', () => {
   it('renders the landing page at /', async () => {
     await renderAt('/');
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
-      /every loan decision, with receipts/i,
+      /proof-of-reserves for loan books/i,
     );
   });
 
