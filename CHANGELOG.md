@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.7](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.6...v0.5.7) (2026-11-18)
+
+
+### Bug Fixes
+
+* **deploy:** register devnet enclave measurement 3 ([#85](https://github.com/pandaa880/tee-income-oracle/issues/85)) ([4874103](https://github.com/pandaa880/tee-income-oracle/commit/48741030fa0ebe9dd913ac83f4a758e5c5c4e931))
+* **ops:** mention the repo owner when the devnet monitor turns FAIL ([#84](https://github.com/pandaa880/tee-income-oracle/issues/84)) ([546e876](https://github.com/pandaa880/tee-income-oracle/commit/546e876b65d6bc56fd2e21a9912624eb88e23e85))
+
 ## [0.5.6](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.5...v0.5.6) (2026-11-11)
 
 

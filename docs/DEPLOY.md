@@ -166,7 +166,9 @@ borrows and repays. Expect `PASS` on every row.
 
 Then point the monitor at the deployment. The `monitor` workflow checks it
 every 30 minutes and keeps one `monitor` issue open while something is wrong
-(`ops/README.md` lists the checks):
+(`ops/README.md` lists the checks). The run that turns the status into FAIL
+@-mentions the repo owner, so an outage doesn't hide in an issue already open
+for a WARN:
 
 ```sh
 gh variable set MONITOR_GATEWAY_URL --body https://<gateway fqdn>

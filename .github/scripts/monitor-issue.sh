@@ -3,6 +3,8 @@
 # (reopening one closed in the last 24 h, so a flapping check doesn't pile up issues), edits it on
 # later runs (a comment, which notifies, only when the status changes) and closes it with the
 # healthy report once everything is ok again.
+# A run that turns the status into FAIL also @-mentions MONITOR_NOTIFY (a GitHub login), so a
+# demo outage reaches that person directly instead of hiding in an issue already open for a WARN.
 # Usage: monitor-issue.sh <dir holding report.md and status>. Needs GH_TOKEN and the Actions env.
 set -euo pipefail
 
@@ -19,6 +21,12 @@ cat "$report" >> "$GITHUB_STEP_SUMMARY"
 gh label create monitor --color B60205 --description "Devnet demo monitor" --force > /dev/null
 open="$(gh issue list --label monitor --state open --json number --jq '.[0].number // empty')"
 title="Devnet demo monitor: $(printf '%s' "$status" | tr '[:lower:]' '[:upper:]')"
+
+# The posts that notify (a new issue, a comment) happen only when the status changes, so the
+# mention pings once per outage; later FAIL runs repeat it in the issue body edit, which doesn't.
+if [ "$status" = fail ] && [ -n "${MONITOR_NOTIFY:-}" ]; then
+  printf '\n@%s the devnet demo is failing.\n' "$MONITOR_NOTIFY" >> "$report"
+fi
 
 if [ "$status" = ok ]; then
   if [ -n "$open" ]; then

@@ -59,4 +59,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          # Mentioned when the status turns into FAIL, so an outage notifies the owner directly.
+          MONITOR_NOTIFY: ${{ github.repository_owner }}
         run: bash .github/scripts/monitor-issue.sh "$RUNNER_TEMP/monitor"

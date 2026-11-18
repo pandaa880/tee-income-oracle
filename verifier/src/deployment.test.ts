@@ -24,7 +24,7 @@ describe('parseDeployment', () => {
 
   it('maps_every_enclave_record', () => {
     const { enclaves } = parseDeployment(devnet());
-    expect(enclaves).toHaveLength(3);
+    expect(enclaves).toHaveLength(4);
     expect(enclaves[0]).toMatchObject({
       measurementId: 0,
       imageId: '7dd33d974511a825c871f267ebdc6b34fb9cdc2c63210e27a31a8c7cfb96daff',
@@ -39,6 +39,14 @@ describe('parseDeployment', () => {
       attestationFile: 'devnet/attestation-2.hex',
       release: 'v0.5.1',
       endpoint: 'http://65.1.14.135:1301',
+    });
+    // Registered 2026-11-18 on a new Oyster job after the second instance stopped.
+    expect(enclaves[3]).toMatchObject({
+      measurementId: 3,
+      attester: '0xaadefd68bd8158b88fd84327d973b8d63f729da8',
+      attestationFile: 'devnet/attestation-3.hex',
+      release: 'v0.5.1',
+      endpoint: 'http://15.206.64.116:1301',
     });
   });
 
