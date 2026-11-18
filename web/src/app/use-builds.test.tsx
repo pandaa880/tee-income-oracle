@@ -19,9 +19,10 @@ async function open(options: WorldOptions = {}) {
 
 describe('useBuilds', () => {
   it('lists every build of the deployment, newest first, one revoked', async () => {
-    const { result } = await open({ verify: { docId: 1 }, entries: { 2: {} } });
+    const { result } = await open({ verify: { docId: 1 }, entries: { 2: {}, 3: {} } });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.map((r) => [r.id, r.status])).toEqual([
+      [3, 'active'],
       [2, 'active'],
       [1, 'active'],
       [0, 'revoked'],
@@ -47,6 +48,7 @@ describe('useBuilds', () => {
     const { result } = await open();
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.map((r) => [r.id, r.status])).toEqual([
+      [3, 'unknown'],
       [2, 'unknown'],
       [1, 'unknown'],
       [0, 'active'],
@@ -67,9 +69,14 @@ describe('useBuilds', () => {
     await waitFor(() => expect(w.result.current.isSuccess).toBe(true));
     expect(w.chain.accounts).toHaveBeenCalledTimes(1);
     const keys = vi.mocked(w.chain.accounts).mock.calls[0]?.[0] ?? [];
-    expect(keys).toHaveLength(3);
+    expect(keys).toHaveLength(4);
     expect(keys).toEqual(
-      expect.arrayContaining([await entryPda(0), await entryPda(1), await entryPda(2)]),
+      expect.arrayContaining([
+        await entryPda(0),
+        await entryPda(1),
+        await entryPda(2),
+        await entryPda(3),
+      ]),
     );
   });
 
