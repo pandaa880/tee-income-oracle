@@ -14,14 +14,19 @@ export type ExampleWallet = {
 
 const DEVNET: readonly ExampleWallet[] = [
   {
-    wallet: address('8Z6Fa1j6WChXyAgxu6bCyPPUVi9mnuPgWTxM7W8cngAp'),
-    label: 'Tier A borrower on build #1',
+    wallet: address('B8W78h32PVRXDAqiMASiwuLmUb9AXqn5gr93RaD8pyzD'),
+    label: 'Tier A borrower on build #3',
     retired: false,
   },
   {
-    wallet: address('CESaURSipHKZzVA92vQ55bGaXhbgUZhQ5E3QTmyHmfWy'),
-    label: 'Tier C borrower on build #1',
+    wallet: address('2JFhvhBEKVuHwEvAXfcFVhikFPTQ4h8barpECCpES5eH'),
+    label: 'Tier C borrower on build #3',
     retired: false,
+  },
+  {
+    wallet: address('8Z6Fa1j6WChXyAgxu6bCyPPUVi9mnuPgWTxM7W8cngAp'),
+    label: 'Tier A borrower on build #1, retired (fails)',
+    retired: true,
   },
   {
     wallet: address('9BhCFK5bmPCswYp13r84tBduvZzeEuRa9Wh4kCy9LpPS'),
