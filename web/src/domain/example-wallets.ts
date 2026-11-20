@@ -1,7 +1,9 @@
 // Devnet borrowers a reader can verify without running the borrow flow first. Public test
 // wallets from our own runs (no real person). The labels say who they are, never the verdict:
-// that comes from the live check (a rebuilt enclave retires build #1 and flips its wallets to
-// FAIL). A retired build is the one permanent fact: a revoked entry never comes back.
+// that comes from the live check (a rotation that revokes a build flips its wallets to FAIL).
+// A retired build is the one permanent fact: a revoked entry never comes back. After every
+// rotation, replace the examples on the revoked build with wallets on the active one
+// (`docs/DEPLOY.md` §6).
 import { type Address, address } from '@solana/kit';
 
 export type ExampleWallet = {
