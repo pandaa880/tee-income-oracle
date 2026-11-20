@@ -33,13 +33,18 @@ const unwrap = <T>(result: { ok: true; value: T } | { ok: false; error: AppError
   return result.value;
 };
 
-/** What every loan transaction needs from the network: the relayer and a fresh blockhash. */
+/**
+ * What every loan transaction needs: the relayer and a fresh blockhash. The relayer comes from
+ * the bundled deployment, not from the gateway: the gateway's word would make `isOurTransaction`
+ * only as strong as the gateway. A gateway that names another key is refused.
+ */
 async function common(deps: Deps, pool: Address, signal: AbortSignal) {
+  const { mint, credential, schema, relayer } = deps.config.deployment;
   const info = unwrap(await deps.gateway.info(signal));
+  if (info.relayer !== relayer) throw { code: 'protocol_error' } satisfies AppError;
   const blockhash = unwrap(await deps.chain.latestBlockhash(signal));
-  const { mint, credential, schema } = deps.config.deployment;
   return {
-    relayer: info.relayer,
+    relayer,
     borrower: deps.signer.signer,
     pool,
     deployment: { mint, credential, schema },
@@ -65,7 +70,11 @@ async function borrowTarget(deps: Deps, pool: Address, signal: AbortSignal) {
 /** Longer than the gateway's own 100 s relay deadline (FORMATS §16), so its answer arrives. */
 const LOAN_TIMEOUT_MS = 120_000;
 
-/** Reads after `confirmed` can hit a node a slot behind (load-balanced RPC): retry a little. */
+/**
+ * Reads after `confirmed` can hit a node a slot behind (load-balanced RPC). They ask for a node
+ * at least at the slot the transaction landed in, and retry a little while the node answering
+ * isn't.
+ */
 const READBACK = { tries: 5, intervalMs: 500 };
 
 type Expect = { pool: Address; kind: 'borrow'; amount: bigint } | { pool: Address; kind: 'repay' };
@@ -91,26 +100,48 @@ function requireBefore(loan: Awaited<ReturnType<typeof readLoan>>, kind: Expect[
  * Reads the whole pool (pool, vault, loan in one request, so one node's view) until it shows the
  * transition. That read is then the freshest the page has: it goes into the cache as is, rather
  * than being re-fetched from a load-balanced node that may still show the old loan.
+ *
+ * `minContextSlot` is the slot the confirmed transaction landed in. A node behind it answers
+ * `rpc_busy` instead of an older view, which would show the loan state from before the
+ * transaction and pass for "not landed yet" (or, for a replayed id, for a loan that never was).
  */
 async function poolLanded(
   deps: Deps,
   expect: Expect,
   signal: AbortSignal,
+  minContextSlot: number,
 ): Promise<PoolRead | null> {
   for (let attempt = 1; ; attempt++) {
-    const read = await fetchPool(deps, expect.pool, deps.signer.address, signal);
-    const { loan } = read;
-    const landed =
-      expect.kind === 'repay'
-        ? loan === null
-        : loan !== null &&
-          loan.borrower === deps.signer.address &&
-          loan.pool === expect.pool &&
-          loan.amount === expect.amount;
-    if (landed) return read;
+    const read = await fetchPoolOrBehind(deps, expect.pool, signal, minContextSlot);
+    if (read !== null && hasLanded(read.loan, deps.signer.address, expect)) return read;
     if (attempt >= READBACK.tries || signal.aborted) return null;
     await sleep(READBACK.intervalMs, signal);
   }
+}
+
+/** The pool read, or `null` while the node answering hasn't reached `minContextSlot`. */
+async function fetchPoolOrBehind(
+  deps: Deps,
+  pool: Address,
+  signal: AbortSignal,
+  minContextSlot: number,
+): Promise<PoolRead | null> {
+  try {
+    return await fetchPool(deps, pool, deps.signer.address, signal, minContextSlot);
+  } catch (thrown) {
+    if (toAppError(thrown).code === 'rpc_busy') return null;
+    throw thrown;
+  }
+}
+
+function hasLanded(loan: PoolRead['loan'], borrower: Address, expect: Expect): boolean {
+  if (expect.kind === 'repay') return loan === null;
+  return (
+    loan !== null &&
+    loan.borrower === borrower &&
+    loan.pool === expect.pool &&
+    loan.amount === expect.amount
+  );
 }
 
 /**
@@ -148,7 +179,7 @@ async function relayAndConfirm(
   if (outcome.status !== 'confirmed') {
     throw { code: outcome.status === 'failed' ? 'tx_failed' : outcome.status } satisfies AppError;
   }
-  const read = await poolLanded(deps, expect, signal);
+  const read = await poolLanded(deps, expect, signal, outcome.slot);
   if (read === null) throw { code: 'protocol_error' } satisfies AppError;
   return { signature, read };
 }

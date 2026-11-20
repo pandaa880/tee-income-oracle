@@ -99,6 +99,8 @@ export type FlowEvent =
 export type SignatureStatus = {
   confirmationStatus: 'processed' | 'confirmed' | 'finalized';
   err: unknown;
+  /** The slot the transaction landed in: a later read must come from a node at least this far. */
+  slot: number;
 };
 
 export type LatestBlockhash = { blockhash: Blockhash; lastValidBlockHeight: bigint };

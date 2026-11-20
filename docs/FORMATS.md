@@ -680,6 +680,7 @@ each merges its own keys in and keeps the rest:
 | Key | Written by | Value |
 |---|---|---|
 | the nine above | `sas:setup` | SAS program, oracle program, credential, schema |
+| `relayer` | by hand | base58 public key of the gateway's `RELAYER_KEYPAIR`. The web bundles it and refuses a gateway whose `/v1/info` names another key; a changed relayer key needs this file and a web release |
 | `demo_pool_program`, `mint` | `pool:setup` | base58; `mint` is classic SPL Token, 6 decimals, no freeze authority |
 | `pools` | `pool:setup` (adds its pool, keeps the others) | `[{ address, pool_id }]`, the pools `enclave:rotate` keeps approving |
 | `enclaves` | `enclave:rotate` | `[{ measurement_id, image_id, attester, attestation_file, release, endpoint }]`: hex image id (§13 `measurement`), `0x` eth address, path of the archived document relative to the deployment file, the git tag (`vX.Y.Z`) whose `enclave/docker-compose.yml` produced the image (the verifier recomputes PCR16 from it), the enclave's attestation server `http://<ip>:1301` (cross-check only; absent once the enclave is gone); one record per id |

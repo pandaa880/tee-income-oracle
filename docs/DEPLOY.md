@@ -28,7 +28,7 @@ gets echoed. Keep each key file outside the repo with mode `600`.
 | Secret | Used by |
 |---|---|
 | admin keypair (upgrade authority, oracle admin, SAS authority, pool admin) | `anchor`/`solana` CLI, every `ops` script |
-| relayer keypair (pays for `submit_attestation`, ~0.5 SOL) | gateway `RELAYER_KEYPAIR` |
+| relayer keypair (pays for `submit_attestation`, ~0.5 SOL; its public key is `relayer` in `deployments/<cluster>.json`, bundled into the web) | gateway `RELAYER_KEYPAIR` |
 | `BANK_TOKEN` (`openssl rand -hex 32`) | gateway and bank, same value |
 | AA + FIP demo private JWKs (FORMATS §2) | bank `SANDBOX_AA_PRIVATE_JWK`, `SANDBOX_FIP_PRIVATE_JWK` |
 | Solana RPC URL with an API key | gateway, bank, `ops` (`SOLANA_RPC_URL`, `SOLANA_WS_URL`) |

@@ -12,8 +12,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Deps } from '../../app/deps.ts';
 import { credentialMessage } from '../../domain/credential-copy.ts';
 import { explorerAddressUrl } from '../../domain/explorer.ts';
-import type { GatewayPort, RelayPort } from '../../domain/ports.ts';
-import { fakeGateway, INFO, ok } from '../../test-support/fakes.ts';
+import type { RelayPort } from '../../domain/ports.ts';
+import { fakeGateway, INFO, ok, withRelayer } from '../../test-support/fakes.ts';
 import { loanBytes } from '../../test-support/fixtures.ts';
 import { ledgerValue } from '../../test-support/ledger.ts';
 import { renderApp } from '../../test-support/render.tsx';
@@ -112,14 +112,8 @@ describe('PoolPanel with a valid tier and no loan', () => {
   });
 
   it('sends the typed amount to the relayer', async () => {
-    const relayer = await generateKeyPairSigner();
     const relay: RelayPort = { relay: vi.fn<RelayPort['relay']>(async () => ok('x'.repeat(88))) };
-    await open({
-      overrides: { relay },
-      gateway: {
-        info: vi.fn<GatewayPort['info']>(async () => ok({ ...INFO, relayer: relayer.address })),
-      },
-    });
+    await open({ overrides: { relay } });
     const box = await amountBox();
     fireEvent.change(box, { target: { value: '2.5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Borrow 2.5 tokens' }));
@@ -156,11 +150,14 @@ describe('PoolPanel with an open loan', () => {
         return ok(getBase58Decoder().decode(signature));
       }),
     };
-    hoisted.deps = {
-      ...w.deps,
-      relay,
-      gateway: fakeGateway({ info: async () => ok({ ...INFO, relayer: relayer.address }) }),
-    };
+    hoisted.deps = withRelayer(
+      {
+        ...w.deps,
+        relay,
+        gateway: fakeGateway({ info: async () => ok({ ...INFO, relayer: relayer.address }) }),
+      },
+      relayer.address,
+    );
     await renderApp('/loan?pool=0');
     fireEvent.click(await screen.findByRole('button', { name: 'Repay 2,500 tokens' }));
     expect(await screen.findByText(/loan repaid\. your tier is still valid/i)).toBeInTheDocument();
@@ -198,12 +195,15 @@ describe('PoolPanel with an open loan', () => {
         return ok(getBase58Decoder().decode(signature));
       }),
     };
-    hoisted.deps = {
-      ...w.deps,
-      chain: { ...w.deps.chain, accounts },
-      relay,
-      gateway: fakeGateway({ info: async () => ok({ ...INFO, relayer: relayer.address }) }),
-    };
+    hoisted.deps = withRelayer(
+      {
+        ...w.deps,
+        chain: { ...w.deps.chain, accounts },
+        relay,
+        gateway: fakeGateway({ info: async () => ok({ ...INFO, relayer: relayer.address }) }),
+      },
+      relayer.address,
+    );
     await renderApp('/loan?pool=0');
     fireEvent.click(await screen.findByRole('button', { name: 'Repay 2,500 tokens' }));
     expect(await screen.findByText(/loan repaid/i)).toBeInTheDocument();
@@ -272,11 +272,14 @@ async function relaying(
       return ok(getBase58Decoder().decode(signature));
     }),
   };
-  hoisted.deps = {
-    ...w.deps,
-    relay,
-    gateway: fakeGateway({ info: async () => ok({ ...INFO, relayer: relayer.address }) }),
-  };
+  hoisted.deps = withRelayer(
+    {
+      ...w.deps,
+      relay,
+      gateway: fakeGateway({ info: async () => ok({ ...INFO, relayer: relayer.address }) }),
+    },
+    relayer.address,
+  );
   return w;
 }
 
