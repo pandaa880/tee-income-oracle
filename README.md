@@ -22,9 +22,9 @@ speaks the real ReBIT protocol with test keys: simulated bank, real protocol.
 - **Live demo:** https://tee-income-oracle-web.vercel.app. Get a tier with a
   demo wallet, then borrow and repay against it.
 - **Check a tier in the browser:**
-  https://tee-income-oracle-web.vercel.app/verify?wallet=8Z6Fa1j6WChXyAgxu6bCyPPUVi9mnuPgWTxM7W8cngAp
+  https://tee-income-oracle-web.vercel.app/verify?wallet=B8W78h32PVRXDAqiMASiwuLmUb9AXqn5gr93RaD8pyzD
   runs the verifier's seven checks from public data. It passed 7 of 7 on
-  2026-10-13. You can also click an example borrower on the page.
+  2026-11-20. You can also click an example borrower on the page.
 - **Check a tier from a clone:**
   `pnpm --filter @tio/verifier verify -- <wallet> --cluster devnet`.
   [`docs/VERIFY.md`](docs/VERIFY.md) explains each check.

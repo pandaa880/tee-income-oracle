@@ -209,6 +209,13 @@ dead and every pool must approve the new one.
 5. Run `e2e:devnet` again.
 6. If the enclave moved (new job, new IP), set the `MONITOR_ENCLAVE_IP`
    variable and the `MONITOR_OYSTER_JOB_ID` secret again (§5).
+7. If the rotation revoked a build, refresh the verify page's example
+   wallets (`web/src/domain/example-wallets.ts`): mark the wallets of the
+   revoked build `retired`, and add a tier A and a tier C wallet on the new
+   build (an `e2e:devnet` run makes them; list them from the SAS program).
+   Check each new one with `pnpm --filter @tio/verifier verify -- <wallet>
+   --cluster devnet`, then update the wallet in `README.md` and
+   `docs/VERIFY.md`. Skipping this leaves a failing example on the page.
 
 Borrowers attested by a revoked entry must attest again (FORMATS §13).
 
