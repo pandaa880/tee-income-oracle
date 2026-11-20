@@ -40,7 +40,12 @@ export type RelayPort = {
 
 export type ChainPort = {
   /** In request order; `null` for an account that doesn't exist. */
-  accounts: (addresses: Address[], signal: AbortSignal) => Promise<Result<(ChainAccount | null)[]>>;
+  accounts: (
+    addresses: Address[],
+    signal: AbortSignal,
+    /** The node must have reached this slot, or the call fails with `rpc_busy` (a node behind). */
+    minContextSlot?: number,
+  ) => Promise<Result<(ChainAccount | null)[]>>;
   /** The same read, undecoded: owner and bytes for a caller that checks them itself (the verifier). */
   rawAccounts: (
     addresses: Address[],

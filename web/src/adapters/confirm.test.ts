@@ -30,6 +30,7 @@ const status = (
 ): SignatureStatus => ({
   confirmationStatus,
   err,
+  slot: 7,
 });
 
 beforeEach(() => {
@@ -47,7 +48,7 @@ describe('waitConfirmed', () => {
       signal: new AbortController().signal,
     });
     await vi.advanceTimersByTimeAsync(0);
-    expect(await pending).toEqual({ status: 'confirmed' });
+    expect(await pending).toEqual({ status: 'confirmed', slot: 7 });
     expect(signatureStatus).toHaveBeenCalledTimes(1);
     expect(signatureStatus.mock.calls[0]?.[0]).toBe('sig');
   });
@@ -65,7 +66,7 @@ describe('waitConfirmed', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(signatureStatus).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(await pending).toEqual({ status: 'confirmed' });
+    expect(await pending).toEqual({ status: 'confirmed', slot: 7 });
     expect(signatureStatus).toHaveBeenCalledTimes(3);
   });
 
@@ -76,7 +77,7 @@ describe('waitConfirmed', () => {
       signal: new AbortController().signal,
     });
     await vi.advanceTimersByTimeAsync(0);
-    expect(await pending).toEqual({ status: 'confirmed' });
+    expect(await pending).toEqual({ status: 'confirmed', slot: 7 });
   });
 
   it('returns failed with the err when the transaction failed on chain', async () => {
@@ -97,7 +98,7 @@ describe('waitConfirmed', () => {
       signal: new AbortController().signal,
     });
     await vi.advanceTimersByTimeAsync(2000);
-    expect(await pending).toEqual({ status: 'confirmed' });
+    expect(await pending).toEqual({ status: 'confirmed', slot: 7 });
   });
 
   it('times out after timeoutMs when the signature never shows up', async () => {

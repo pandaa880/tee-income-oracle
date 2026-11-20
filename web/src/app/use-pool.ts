@@ -16,12 +16,14 @@ export async function fetchPool(
   pool: Address,
   wallet: Address,
   signal: AbortSignal,
+  /** Read from a node at least this far along (see `ChainPort.accounts`). */
+  minContextSlot?: number,
 ): Promise<PoolRead> {
   const [[vault], [loanAddress]] = await Promise.all([
     findVaultPda({ pool }),
     findLoanPda({ pool, borrower: wallet }),
   ]);
-  const read = await deps.chain.accounts([pool, vault, loanAddress], signal);
+  const read = await deps.chain.accounts([pool, vault, loanAddress], signal, minContextSlot);
   if (!read.ok) throw read.error;
   const [poolAccount, vaultAccount, loanAccount] = read.value;
   // The pool and its vault always exist once the pool is set up; anything else is a bad read.

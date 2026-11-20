@@ -250,6 +250,7 @@ describe('rate limiting and failures', () => {
 
   it.each([
     [-32005, 'rpc_busy'],
+    [-32016, 'rpc_busy'], // minContextSlot not reached: the node is behind
     [-32602, 'network'],
   ])('maps a JSON-RPC error %i to %s, not protocol_error', async (code, expected) => {
     stubFetch(async (_, init) => {
@@ -262,6 +263,21 @@ describe('rate limiting and failures', () => {
       ok: false,
       error: { code: expected },
     });
+  });
+
+  it('sends minContextSlot only when asked to', async () => {
+    const configs: unknown[] = [];
+    stubFetch(async (_, init) => {
+      const body = JSON.parse(bodyOf(init)) as { id: unknown; params: [string[], unknown] };
+      configs.push(body.params[1]);
+      return rpcJson(body.id, { context: { slot: 1 }, value: [null] });
+    });
+    await createChain(RPC_URL).accounts([OTHER], signal());
+    await createChain(RPC_URL).accounts([OTHER], signal(), 4242);
+    expect(configs).toEqual([
+      { encoding: 'base64', commitment: 'confirmed' },
+      { encoding: 'base64', commitment: 'confirmed', minContextSlot: 4242 },
+    ]);
   });
 
   it('is a network error for a server error or a rejected fetch', async () => {
@@ -680,7 +696,7 @@ describe('latestBlockhash and signatureStatus', () => {
     statusReply({ slot: 5, confirmations: 3, err: null, confirmationStatus: 'confirmed' });
     expect(await createChain(RPC_URL).signatureStatus('sig', signal())).toEqual({
       ok: true,
-      value: { confirmationStatus: 'confirmed', err: null },
+      value: { confirmationStatus: 'confirmed', err: null, slot: 5 },
     });
   });
 
@@ -693,7 +709,11 @@ describe('latestBlockhash and signatureStatus', () => {
     });
     expect(await createChain(RPC_URL).signatureStatus('sig', signal())).toMatchObject({
       ok: true,
-      value: { confirmationStatus: 'finalized', err: { InstructionError: [1, { Custom: 6008 }] } },
+      value: {
+        confirmationStatus: 'finalized',
+        err: { InstructionError: [1, { Custom: 6008 }] },
+        slot: 5,
+      },
     });
   });
 });

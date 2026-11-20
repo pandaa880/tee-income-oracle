@@ -24,7 +24,16 @@ import { checkLoanTx, verifyBorrowerSignature } from '../../../gateway/src/loan-
 import { useLoan } from './use-loan.ts';
 import type { ChainPort, GatewayPort, RelayPort } from '../domain/ports.ts';
 import type { ChainAccount } from '../domain/types.ts';
-import { fail, fakeChain, fakeDeps, fakeGateway, INFO, ok, SIG } from '../test-support/fakes.ts';
+import {
+  CONFIG,
+  fail,
+  fakeChain,
+  fakeDeps,
+  fakeGateway,
+  INFO,
+  ok,
+  SIG,
+} from '../test-support/fakes.ts';
 import {
   CREDENTIAL,
   entry,
@@ -122,6 +131,8 @@ async function setup(
     chain,
     {
       relay,
+      // The bundled deployment names the relayer; the gateway only confirms it.
+      config: { ...CONFIG, deployment: { ...CONFIG.deployment, relayer: relayer.address } },
       gateway: fakeGateway({
         info: vi.fn<GatewayPort['info']>(async () => ok({ ...INFO, relayer: relayer.address })),
       }),
@@ -157,14 +168,28 @@ describe('useLoan borrow', () => {
     expect(ix?.accounts?.[8]?.address).toBe((await findEnclaveEntryPda({ measurementId: 1 }))[0]);
   });
 
-  it('takes the relayer from /v1/info and a fresh blockhash from the chain', async () => {
-    const { deps } = await setup();
+  it('takes the relayer from the bundled deployment and a fresh blockhash from the chain', async () => {
+    const { deps, relay } = await setup();
     const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
     await act(async () => {
       await result.current.borrow.mutateAsync(1n);
     });
-    expect(deps.gateway.info).toHaveBeenCalled();
     expect(deps.chain.latestBlockhash).toHaveBeenCalled();
+    const shape = await checkLoanTx(sentBytes(relay), relayer.address, GATEWAY_DEPLOYMENT);
+    expect(shape.ok).toBe(true);
+  });
+
+  it('refuses a gateway that names another relayer, before relaying anything', async () => {
+    const { deps, relay } = await setup();
+    const impostor = await generateKeyPairSigner();
+    vi.mocked(deps.gateway.info).mockResolvedValue(ok({ ...INFO, relayer: impostor.address }));
+    const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
+    await act(async () => {
+      await expect(result.current.borrow.mutateAsync(1n)).rejects.toEqual({
+        code: 'protocol_error',
+      });
+    });
+    expect(relay.relay).not.toHaveBeenCalled();
   });
 
   it('polls for confirmation after the relay answers', async () => {
@@ -221,7 +246,11 @@ describe('useLoan borrow', () => {
     const { deps } = await setup({
       chain: (chain) => {
         vi.mocked(chain.signatureStatus).mockResolvedValue(
-          ok({ confirmationStatus: 'confirmed', err: { InstructionError: [1, { Custom: 6008 }] } }),
+          ok({
+            confirmationStatus: 'confirmed',
+            err: { InstructionError: [1, { Custom: 6008 }] },
+            slot: 1,
+          }),
         );
       },
     });
@@ -279,6 +308,57 @@ describe('useLoan readback and cancellation', () => {
       );
     });
     expect(readbacks).toBeGreaterThanOrEqual(2);
+  });
+
+  it('asks for a node at least at the slot the transaction landed in', async () => {
+    const { deps, chain } = await setup({
+      chain: (c) => {
+        vi.mocked(c.signatureStatus).mockResolvedValue(
+          ok({ confirmationStatus: 'confirmed', err: null, slot: 4242 }),
+        );
+      },
+    });
+    const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
+    await act(async () => {
+      await result.current.borrow.mutateAsync(5n);
+    });
+    const poolReads = vi.mocked(chain.accounts).mock.calls.filter(([keys]) => keys.length === 3);
+    expect(poolReads.length).toBeGreaterThan(0);
+    for (const [, , minContextSlot] of poolReads) expect(minContextSlot).toBe(4242);
+  });
+
+  it('retries the readback while the node answering is behind that slot', async () => {
+    const { deps, chain } = await setup();
+    const real = vi.mocked(chain.accounts).getMockImplementation();
+    let behind = 2;
+    vi.mocked(chain.accounts).mockImplementation(async (addresses, signal, minContextSlot) => {
+      if (addresses.length === 3 && behind-- > 0) return fail({ code: 'rpc_busy' });
+      return real ? real(addresses, signal, minContextSlot) : ok([]);
+    });
+    const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
+    await act(async () => {
+      await expect(result.current.borrow.mutateAsync(5n)).resolves.toMatch(
+        /^[1-9A-HJ-NP-Za-km-z]{64,88}$/,
+      );
+    });
+    expect(behind).toBeLessThan(0);
+  });
+
+  it('does not retry a readback that fails for another reason', async () => {
+    const { deps, chain } = await setup();
+    const real = vi.mocked(chain.accounts).getMockImplementation();
+    vi.mocked(chain.accounts).mockImplementation(async (addresses, signal, minContextSlot) =>
+      addresses.length === 3
+        ? fail({ code: 'network' })
+        : (real?.(addresses, signal, minContextSlot) ?? ok([])),
+    );
+    const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
+    await act(async () => {
+      await expect(result.current.borrow.mutateAsync(5n)).rejects.toMatchObject({
+        code: 'network',
+      });
+    });
+    expect(vi.mocked(chain.accounts).mock.calls.filter(([k]) => k.length === 3)).toHaveLength(1);
   });
 
   it('refuses to borrow while a loan is open, before relaying anything', async () => {
@@ -349,6 +429,7 @@ describe('useLoan binds the confirmation to its own transaction', () => {
 describe('useLoan error typing', () => {
   it('maps a stray throw (kit refusing relayer == borrower) to protocol_error', async () => {
     const { deps } = await setup();
+    deps.config = { ...CONFIG, deployment: { ...CONFIG.deployment, relayer: key.address } };
     vi.mocked(deps.gateway.info).mockResolvedValue(ok({ ...INFO, relayer: key.address }));
     const { result } = renderHook(() => useLoan(POOL_0, deps), { wrapper: queryWrapper() });
     await act(async () => {
