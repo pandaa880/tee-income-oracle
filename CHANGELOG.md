@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.8](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.7...v0.5.8) (2026-11-20)
+
+
+### Bug Fixes
+
+* **web:** pin the relayer key and the loan readback slot ([#89](https://github.com/pandaa880/tee-income-oracle/issues/89)) ([09dbb06](https://github.com/pandaa880/tee-income-oracle/commit/09dbb06c0dbb3bf0e993fc4679b4ba5f5c90c76f))
+* **web:** point verify examples at the active build ([#88](https://github.com/pandaa880/tee-income-oracle/issues/88)) ([0b76280](https://github.com/pandaa880/tee-income-oracle/commit/0b762805935adb15e0610bee4aaad85812edbb30))
+
 ## [0.5.7](https://github.com/pandaa880/tee-income-oracle/compare/v0.5.6...v0.5.7) (2026-11-18)
 
 
