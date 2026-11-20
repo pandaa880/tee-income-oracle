@@ -3,7 +3,7 @@ import { sleep } from './sleep.ts';
 import type { ChainPort } from '../domain/ports.ts';
 
 export type ConfirmOutcome =
-  | { status: 'confirmed' }
+  | { status: 'confirmed'; slot: number }
   | { status: 'failed'; err: unknown }
   | { status: 'timeout' }
   | { status: 'cancelled' };
@@ -30,7 +30,7 @@ export async function waitConfirmed(
     const status = reply.ok ? reply.value : null;
     if (status !== null && status.err !== null) return { status: 'failed', err: status.err };
     if (status !== null && status.confirmationStatus !== 'processed')
-      return { status: 'confirmed' };
+      return { status: 'confirmed', slot: status.slot };
     if (Date.now() >= deadline) return { status: 'timeout' };
     await sleep(intervalMs, signal);
   }

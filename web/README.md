@@ -49,8 +49,11 @@ The gateway is untrusted. The browser:
 
 - rebuilds the intent before the wallet signs it;
 - checks the result against the wallet's SAS attestation PDA and payload;
+- takes the relayer's public key from the bundled `deployments/<cluster>.json`,
+  not from `/v1/info`, and refuses a gateway that names another key;
 - confirms a relayed loan by verifying the relayer's signature over its own
-  message, and by reading the Loan account.
+  message, and by reading the Loan account from a node at or past the slot the
+  transaction landed in (`minContextSlot`).
 
 ### Borrower flow and loan page
 

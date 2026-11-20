@@ -13,6 +13,8 @@ export type Deployment = {
   oracleProgram: Address;
   sasSigner: Address;
   authority: Address;
+  /** The gateway relayer's public key: the fee payer the borrow and repay pages check against. */
+  relayer: Address;
   credential: Address;
   schema: Address;
   mint: Address;
@@ -58,6 +60,7 @@ const deploymentSchema = z.object({
   oracle_program: z.string(),
   sas_signer: z.string(),
   authority: z.string(),
+  relayer: z.string(),
   credential: z.string(),
   schema: z.string(),
   mint: z.string(),
@@ -71,6 +74,7 @@ function loadDeployment(raw: unknown): Deployment {
     oracleProgram: address(d.oracle_program),
     sasSigner: address(d.sas_signer),
     authority: address(d.authority),
+    relayer: address(d.relayer),
     credential: address(d.credential),
     schema: address(d.schema),
     mint: address(d.mint),

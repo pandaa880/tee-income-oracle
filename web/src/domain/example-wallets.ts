@@ -1,7 +1,9 @@
 // Devnet borrowers a reader can verify without running the borrow flow first. Public test
 // wallets from our own runs (no real person). The labels say who they are, never the verdict:
-// that comes from the live check (a rebuilt enclave retires build #1 and flips its wallets to
-// FAIL). A retired build is the one permanent fact: a revoked entry never comes back.
+// that comes from the live check (a rotation that revokes a build flips its wallets to FAIL).
+// A retired build is the one permanent fact: a revoked entry never comes back. After every
+// rotation, replace the examples on the revoked build with wallets on the active one
+// (`docs/DEPLOY.md` §6).
 import { type Address, address } from '@solana/kit';
 
 export type ExampleWallet = {
@@ -14,14 +16,19 @@ export type ExampleWallet = {
 
 const DEVNET: readonly ExampleWallet[] = [
   {
-    wallet: address('8Z6Fa1j6WChXyAgxu6bCyPPUVi9mnuPgWTxM7W8cngAp'),
-    label: 'Tier A borrower on build #1',
+    wallet: address('B8W78h32PVRXDAqiMASiwuLmUb9AXqn5gr93RaD8pyzD'),
+    label: 'Tier A borrower on build #3',
     retired: false,
   },
   {
-    wallet: address('CESaURSipHKZzVA92vQ55bGaXhbgUZhQ5E3QTmyHmfWy'),
-    label: 'Tier C borrower on build #1',
+    wallet: address('2JFhvhBEKVuHwEvAXfcFVhikFPTQ4h8barpECCpES5eH'),
+    label: 'Tier C borrower on build #3',
     retired: false,
+  },
+  {
+    wallet: address('8Z6Fa1j6WChXyAgxu6bCyPPUVi9mnuPgWTxM7W8cngAp'),
+    label: 'Tier A borrower on build #1, retired (fails)',
+    retired: true,
   },
   {
     wallet: address('9BhCFK5bmPCswYp13r84tBduvZzeEuRa9Wh4kCy9LpPS'),

@@ -50,6 +50,7 @@ export const CONFIG: Config = {
     oracleProgram: OTHER,
     sasSigner: SAS_SIGNER,
     authority: ADMIN,
+    relayer: RELAYER,
     credential: CREDENTIAL,
     schema: SCHEMA,
     mint: MINT,
@@ -93,7 +94,7 @@ export function fakeChain(
       }),
     ),
     signatureStatus: vi.fn<ChainPort['signatureStatus']>(async () =>
-      ok({ confirmationStatus: 'confirmed', err: null }),
+      ok({ confirmationStatus: 'confirmed', err: null, slot: 1 }),
     ),
   };
 }
@@ -152,6 +153,14 @@ export function memoryStorage(): Deps['storage'] {
     get: (key) => map.get(key) ?? null,
     set: (key, value) => void map.set(key, value),
     remove: (key) => void map.delete(key),
+  };
+}
+
+/** `deps` whose bundled deployment names `relayer` as the gateway's fee payer. */
+export function withRelayer(deps: Deps, relayer: Address): Deps {
+  return {
+    ...deps,
+    config: { ...deps.config, deployment: { ...deps.config.deployment, relayer } },
   };
 }
 

@@ -28,7 +28,7 @@ gets echoed. Keep each key file outside the repo with mode `600`.
 | Secret | Used by |
 |---|---|
 | admin keypair (upgrade authority, oracle admin, SAS authority, pool admin) | `anchor`/`solana` CLI, every `ops` script |
-| relayer keypair (pays for `submit_attestation`, ~0.5 SOL) | gateway `RELAYER_KEYPAIR` |
+| relayer keypair (pays for `submit_attestation`, ~0.5 SOL; its public key is `relayer` in `deployments/<cluster>.json`, bundled into the web) | gateway `RELAYER_KEYPAIR` |
 | `BANK_TOKEN` (`openssl rand -hex 32`) | gateway and bank, same value |
 | AA + FIP demo private JWKs (FORMATS §2) | bank `SANDBOX_AA_PRIVATE_JWK`, `SANDBOX_FIP_PRIVATE_JWK` |
 | Solana RPC URL with an API key | gateway, bank, `ops` (`SOLANA_RPC_URL`, `SOLANA_WS_URL`) |
@@ -209,6 +209,13 @@ dead and every pool must approve the new one.
 5. Run `e2e:devnet` again.
 6. If the enclave moved (new job, new IP), set the `MONITOR_ENCLAVE_IP`
    variable and the `MONITOR_OYSTER_JOB_ID` secret again (§5).
+7. If the rotation revoked a build, refresh the verify page's example
+   wallets (`web/src/domain/example-wallets.ts`): mark the wallets of the
+   revoked build `retired`, and add a tier A and a tier C wallet on the new
+   build (an `e2e:devnet` run makes them; list them from the SAS program).
+   Check each new one with `pnpm --filter @tio/verifier verify -- <wallet>
+   --cluster devnet`, then update the wallet in `README.md` and
+   `docs/VERIFY.md`. Skipping this leaves a failing example on the page.
 
 Borrowers attested by a revoked entry must attest again (FORMATS §13).
 

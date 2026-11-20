@@ -35,6 +35,9 @@ const envelopeSchema = z.union([
 /** JSON-RPC error codes nodes answer with when they want us to slow down. */
 const BUSY_CODES = new Set([-32005, -32429]);
 
+/** `minContextSlot` not reached: the node answering is behind the slot we asked for. */
+const MIN_CONTEXT_SLOT_NOT_REACHED = -32016;
+
 const accountShape = z.object({
   owner: z.string(),
   data: z.tuple([z.string(), z.literal('base64')]),
@@ -127,7 +130,8 @@ async function rpcCall(url: string, call: Call, signal: AbortSignal): Promise<Re
     const parsed = envelopeSchema.safeParse(body);
     if (!parsed.success) return { ok: false, error: protocolError };
     if ('error' in parsed.data) {
-      const busy = BUSY_CODES.has(parsed.data.error.code);
+      const { code } = parsed.data.error;
+      const busy = BUSY_CODES.has(code) || code === MIN_CONTEXT_SLOT_NOT_REACHED;
       return { ok: false, error: { code: busy ? 'rpc_busy' : 'network' } };
     }
     return { ok: true, value: parsed.data.result };
@@ -206,6 +210,7 @@ const statusSchema = z.object({
       .object({
         err: z.unknown(),
         confirmationStatus: z.enum(['processed', 'confirmed', 'finalized']),
+        slot: z.number().int().nonnegative(),
       })
       .nullable(),
   ]),
@@ -221,6 +226,7 @@ async function readAccounts<T>(
   addresses: Address[],
   signal: AbortSignal,
   parse: (result: unknown) => Result<(T | null)[]>,
+  minContextSlot?: number,
 ): Promise<Result<(T | null)[]>> {
   const all: (T | null)[] = [];
   for (const keys of chunks(addresses, MAX_KEYS)) {
@@ -228,7 +234,14 @@ async function readAccounts<T>(
       rpcUrl,
       {
         method: 'getMultipleAccounts',
-        params: [keys, { encoding: 'base64', commitment: 'confirmed' }],
+        params: [
+          keys,
+          {
+            encoding: 'base64',
+            commitment: 'confirmed',
+            ...(minContextSlot === undefined ? {} : { minContextSlot }),
+          },
+        ],
       },
       signal,
     );
@@ -242,7 +255,8 @@ async function readAccounts<T>(
 
 export function createChain(rpcUrl: string): ChainPort {
   return {
-    accounts: (addresses, signal) => readAccounts(rpcUrl, addresses, signal, parseAccounts),
+    accounts: (addresses, signal, minContextSlot) =>
+      readAccounts(rpcUrl, addresses, signal, parseAccounts, minContextSlot),
     rawAccounts: (addresses, signal) => readAccounts(rpcUrl, addresses, signal, parseRawAccounts),
     async poolLoans(pool, signal) {
       const filters = [
@@ -296,7 +310,7 @@ export function createChain(rpcUrl: string): ChainPort {
         value:
           status === null
             ? null
-            : { confirmationStatus: status.confirmationStatus, err: status.err },
+            : { confirmationStatus: status.confirmationStatus, err: status.err, slot: status.slot },
       };
     },
   };
